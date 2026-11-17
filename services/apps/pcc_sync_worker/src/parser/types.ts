@@ -53,8 +53,8 @@ export interface ParsedPccProject {
   maturity: string | null
   description: string | null
   logoUrl: string | null
-  /** segment_id from Snowflake ACTIVE_SEGMENTS JOIN — used for step-1 matching. */
-  segmentIdFromSnowflake: string | null
+  /** Distinct segment_ids from the Snowflake ACTIVE_SEGMENTS JOIN — step-1 matching needs exactly one. */
+  segmentIdsFromSnowflake: string[]
   cdpTarget: CdpHierarchyTarget
 }
 

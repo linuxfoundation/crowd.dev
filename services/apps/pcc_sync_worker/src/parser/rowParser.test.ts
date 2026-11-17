@@ -143,7 +143,7 @@ describe('parsePccRow', () => {
         maturity: 'Incubating',
         description: 'Kubernetes security platform',
         logoUrl: 'https://example.org/kubescape.svg',
-        segmentIdFromSnowflake: 'segment-1',
+        segmentIdsFromSnowflake: ['segment-1'],
         cdpTarget: {
           group: 'Cloud Native Computing Foundation (CNCF)',
           project: 'Kubescape',
@@ -151,6 +151,40 @@ describe('parsePccRow', () => {
         },
       },
     })
+  })
+
+  it('keeps one segment id when every hierarchy row repeats it', () => {
+    const rows = spineRowsFromTop(['LF AI & Data', 'AIRSEAI']).map((row) => ({
+      ...row,
+      SEGMENT_ID: 'segment-1',
+    }))
+
+    const result = parsePccRow(rows)
+
+    expect(result).toMatchObject({ ok: true, project: { segmentIdsFromSnowflake: ['segment-1'] } })
+  })
+
+  it('keeps every segment id when two CDP sub-projects share the PCC project', () => {
+    const rows = spineRowsFromTop(['FINOS', 'Rune DSL'])
+
+    const result = parsePccRow([
+      ...rows.map((row) => ({ ...row, SEGMENT_ID: 'segment-rosetta' })),
+      ...rows.map((row) => ({ ...row, SEGMENT_ID: 'segment-rune' })),
+    ])
+
+    expect(result).toMatchObject({
+      ok: true,
+      project: {
+        segmentIdsFromSnowflake: ['segment-rosetta', 'segment-rune'],
+        cdpTarget: { group: 'FINOS', project: 'Rune DSL', subproject: 'Rune DSL' },
+      },
+    })
+  })
+
+  it('has no segment id for a project that is not in CDP', () => {
+    const result = parsePccRow(spineRowsFromTop(['Zephyr Project']))
+
+    expect(result).toMatchObject({ ok: true, project: { segmentIdsFromSnowflake: [] } })
   })
 
   it('reports a leaf that has no PROJECT_SPINE rows as a schema mismatch', () => {
