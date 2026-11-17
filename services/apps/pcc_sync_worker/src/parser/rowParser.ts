@@ -59,6 +59,13 @@ function trimOrNull(value: unknown): string | null {
   return s === '' ? null : s
 }
 
+function distinctSegmentIds(rawRows: Record<string, unknown>[]): string[] {
+  const segmentIds = rawRows
+    .map((row) => trimOrNull((row as Partial<PccParquetRow>).SEGMENT_ID))
+    .filter((segmentId): segmentId is string => segmentId !== null)
+  return [...new Set(segmentIds)]
+}
+
 /**
  * Parse and validate all raw Parquet rows for a single PCC leaf project.
  *
@@ -151,7 +158,7 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
       maturity: trimOrNull(firstRaw.PROJECT_ADMIN_CATEGORY),
       description: trimOrNull(firstRaw.DESCRIPTION),
       logoUrl: trimOrNull(firstRaw.PROJECT_LOGO),
-      segmentIdFromSnowflake: trimOrNull(firstRaw.SEGMENT_ID),
+      segmentIdsFromSnowflake: distinctSegmentIds(rawRows),
       cdpTarget: cdpTargetResult.target,
     },
   }

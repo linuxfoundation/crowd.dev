@@ -307,9 +307,9 @@ export class PccProjectConsumer {
     | { action: 'SKIPPED'; possibleExisting: boolean }
   > {
     // Step 1: segment_id from Snowflake ACTIVE_SEGMENTS JOIN
-    let segment = project.segmentIdFromSnowflake
-      ? await findSegmentById(tx, project.segmentIdFromSnowflake)
-      : null
+    const exportedSegmentIds = project.segmentIdsFromSnowflake
+    let segment =
+      exportedSegmentIds.length === 1 ? await findSegmentById(tx, exportedSegmentIds[0]) : null
 
     // Step 2: sourceId fallback
     if (!segment) {
