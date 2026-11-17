@@ -40,8 +40,14 @@ describe('socialHandles', () => {
     })
   })
 
-  it('does not read a handle from inside another domain', () => {
+  it('does not read a handle from inside another domain or URL path', () => {
     expect(socialHandles(undefined, 'Files on dropbox.com/team and netflix.com/browse')).toEqual({})
+    expect(
+      socialHandles(
+        undefined,
+        'See https://example.org/github.com/octocat and <a href="https://example.org/linkedin.com/in/jane-doe">me</a>',
+      ),
+    ).toEqual({})
   })
 
   it('returns nothing without a website or bio', () => {

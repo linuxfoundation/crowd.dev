@@ -37,7 +37,6 @@ function decode(part: string): string {
   }
 }
 
-/** The profile handle in a GitHub, LinkedIn or X profile link, or null for any other link. */
 export function socialProfile(link: string): { platform: SocialPlatform; handle: string } | null {
   const url = parseUrl(link.trim())
   if (!url) {
@@ -65,24 +64,19 @@ export function socialProfile(link: string): { platform: SocialPlatform; handle:
   return null
 }
 
-/** Links in a bio: link targets and bare URLs, including ones written without a scheme. */
 function linksIn(text: string): string[] {
   const links: string[] = []
   for (const match of text.matchAll(/href=["']([^"']+)["']/gi)) {
     links.push(match[1])
   }
   for (const match of text.matchAll(
-    /(?<![\w.-])(?:https?:\/\/)?(?:[a-z]{2,6}\.)?(?:github\.com|linkedin\.com|twitter\.com|x\.com)\/[^\s"'<>),]+/gi,
+    /(?<=^|[\s(>"'[])(?:https?:\/\/)?(?:[a-z]{2,6}\.)?(?:github\.com|linkedin\.com|twitter\.com|x\.com)\/[^\s"'<>),]+/gi,
   )) {
     links.push(match[0].replace(/[.;:!?]+$/, ''))
   }
   return links
 }
 
-/**
- * One handle per platform from a Sched profile: the website field first, then links in the bio.
- * People type these links themselves, so callers store them as unverified identities.
- */
 export function socialHandles(
   website: string | undefined,
   about: string | undefined,
