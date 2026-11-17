@@ -17,6 +17,8 @@ FROM dependencies AS builder
 RUN NODE_ENV=production pnpm --filter frontend run build:production
 
 FROM nginx:1.23-alpine AS release
+ARG APP_VERSION=unknown
+ENV APP_VERSION=$APP_VERSION
 
 RUN apk add --no-cache bash
 

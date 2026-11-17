@@ -11,6 +11,8 @@ COPY ./services ./services
 RUN pnpm i --frozen-lockfile
 
 FROM node:24-bookworm-slim as runner
+ARG APP_VERSION=unknown
+ENV APP_VERSION=$APP_VERSION
 
 WORKDIR /usr/crowd/app
 ENV pnpm_config_verify_deps_before_run=false

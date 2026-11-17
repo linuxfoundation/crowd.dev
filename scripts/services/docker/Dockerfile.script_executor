@@ -1,4 +1,6 @@
 FROM node:24-alpine
+ARG APP_VERSION=unknown
+ENV APP_VERSION=$APP_VERSION
 
 WORKDIR /usr/crowd/app
 COPY ./package.json ./

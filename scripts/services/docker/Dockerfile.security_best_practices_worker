@@ -33,6 +33,8 @@ COPY ./services ./services
 RUN pnpm i --frozen-lockfile
 
 FROM node:24-bookworm-slim as runner
+ARG APP_VERSION=unknown
+ENV APP_VERSION=$APP_VERSION
 
 RUN mkdir -p /.privateer/bin
 WORKDIR /.privateer/bin

@@ -39,6 +39,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Runner: minimal image with runtime deps and virtualenv only
 FROM base AS runner
+ARG APP_VERSION=unknown
+ENV APP_VERSION=$APP_VERSION
 
 # Install runtime dependencies, including public-inbox for mirroring lists
 # curl is required by public-inbox-clone itself (not pulled in via --no-install-recommends)

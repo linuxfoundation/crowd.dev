@@ -407,7 +407,13 @@ function build_and_publish() {
 
     if [[ ${BUILD} ]]; then
         say "Building $REPO version $VERSION with dockerfile '$DOCKERFILE' and context '$CONTEXT' and pushing it to $REPO:$VERSION"
-        docker build --platform linux/amd64 --tag "$REPO:$VERSION" -f "$DOCKERFILE" "$CONTEXT"
+        APP_VERSION=$(git describe --tags --match 'v[0-9]*' --always)
+        APP_REVISION=$(git rev-parse HEAD)
+        docker build --platform linux/amd64 --tag "$REPO:$VERSION" \
+            --build-arg APP_VERSION="$APP_VERSION" \
+            --label org.opencontainers.image.version="$APP_VERSION" \
+            --label org.opencontainers.image.revision="$APP_REVISION" \
+            -f "$DOCKERFILE" "$CONTEXT"
     fi
 
     if [[ ${PUSH} ]]; then
