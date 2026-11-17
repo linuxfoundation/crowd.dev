@@ -40,6 +40,8 @@ function buildSourceQuery(): string {
       FROM ANALYTICS.SILVER_DIM.PROJECTS
       WHERE parent_id IS NOT NULL
     )
+      AND COALESCE(p.is_internal_project, FALSE) = FALSE
+      AND COALESCE(p.category, '') <> 'Internal Allocation'
     ORDER BY p.name, ps.hierarchy_level ASC
   `
 }
