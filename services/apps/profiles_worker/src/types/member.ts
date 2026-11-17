@@ -6,6 +6,7 @@ export interface MemberUpdateInput {
   }
   memberOrganizationIds?: string[]
   syncToOpensearch?: boolean
+  sources?: string[]
 }
 
 export interface ProcessMemberBotSuggestionWithLLMInput {

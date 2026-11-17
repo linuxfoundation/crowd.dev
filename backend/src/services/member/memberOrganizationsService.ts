@@ -254,7 +254,7 @@ export default class MemberOrganizationsService extends LoggerBase {
       await SequelizeRepository.commitTransaction(transaction)
 
       // Signal after commit so the workflow sees persisted changes
-      await signalMemberUpdate(this.options.temporal, memberId, {
+      await signalMemberUpdate(this.options.temporal, memberId, 'ui-member-organizations', {
         memberOrganizationIds: [data.organizationId],
       })
 
@@ -346,7 +346,7 @@ export default class MemberOrganizationsService extends LoggerBase {
       await SequelizeRepository.commitTransaction(transaction)
 
       // Signal after commit so the workflow sees persisted changes
-      await signalMemberUpdate(this.options.temporal, memberId, {
+      await signalMemberUpdate(this.options.temporal, memberId, 'ui-member-organizations', {
         memberOrganizationIds: orgsToRecalculate,
       })
 
@@ -393,7 +393,7 @@ export default class MemberOrganizationsService extends LoggerBase {
       await SequelizeRepository.commitTransaction(transaction)
 
       // Signal after commit so the workflow sees persisted changes
-      await signalMemberUpdate(this.options.temporal, memberId, {
+      await signalMemberUpdate(this.options.temporal, memberId, 'ui-member-organizations', {
         memberOrganizationIds: [memberOrganizationToBeDeleted.organizationId],
         syncToOpensearch: true,
       })

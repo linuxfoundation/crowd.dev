@@ -2,6 +2,23 @@ import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { Client as TemporalClient, WorkflowIdConflictPolicy } from '@crowd/temporal'
 import { TemporalWorkflowId } from '@crowd/types'
 
+export type MemberUpdateSource =
+  | 'api-project-affiliation'
+  | 'api-work-experience'
+  | 'bot-analysis'
+  | 'enrichment'
+  | 'member-merge'
+  | 'member-unmerge'
+  | 'organization-marked-fake'
+  | 'organization-update'
+  | 'script'
+  | 'stint-inference'
+  | 'ui-affiliation-override'
+  | 'ui-member-organizations'
+  | 'ui-member-update'
+  | 'ui-organization-update'
+  | 'ui-segment-update'
+
 interface MemberUpdateOptions {
   memberOrganizationIds?: string[]
   syncToOpensearch?: boolean
@@ -15,6 +32,7 @@ interface MemberUpdateOptions {
 export async function signalMemberUpdate(
   temporal: TemporalClient,
   memberId: string,
+  source: MemberUpdateSource,
   options: MemberUpdateOptions = {},
 ): Promise<void> {
   await temporal.workflow.signalWithStart('memberUpdate', {
@@ -27,6 +45,7 @@ export async function signalMemberUpdate(
         member: { id: memberId },
         memberOrganizationIds: options.memberOrganizationIds ?? [],
         syncToOpensearch: options.syncToOpensearch ?? false,
+        sources: [source],
       },
     ],
     retry: { maximumAttempts: 10 },

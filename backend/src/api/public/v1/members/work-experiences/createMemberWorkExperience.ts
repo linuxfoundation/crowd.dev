@@ -131,7 +131,7 @@ export async function createMemberWorkExperience(req: Request, res: Response): P
       })
 
       // Signal after commit so the workflow sees persisted changes
-      await signalMemberUpdate(req.temporal, memberId, {
+      await signalMemberUpdate(req.temporal, memberId, 'api-work-experience', {
         memberOrganizationIds: [data.organizationId],
       })
 

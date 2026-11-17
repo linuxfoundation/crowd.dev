@@ -40,6 +40,7 @@ export async function memberUpdate(input?: MemberUpdateInput): Promise<void> {
           ]),
         ],
         syncToOpensearch: queued.syncToOpensearch || next.syncToOpensearch,
+        sources: [...new Set([...(queued.sources || []), ...(next.sources || [])])],
       }
     }
   })
@@ -56,7 +57,7 @@ export async function memberUpdate(input?: MemberUpdateInput): Promise<void> {
     queued = null
 
     const memberId = pending.member.id
-    await updateMemberAffiliations(memberId)
+    await updateMemberAffiliations(memberId, pending.sources || [])
     if (pending.syncToOpensearch) {
       await syncMember(memberId)
       for (const orgId of pending.memberOrganizationIds || []) {

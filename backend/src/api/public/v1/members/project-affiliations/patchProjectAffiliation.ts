@@ -111,7 +111,7 @@ export async function patchProjectAffiliation(req: Request, res: Response): Prom
       })
 
       // Signal after commit so the workflow sees persisted changes
-      await signalMemberUpdate(req.temporal, memberId, {
+      await signalMemberUpdate(req.temporal, memberId, 'api-project-affiliation', {
         memberOrganizationIds: orgIdsToRecalculate,
       })
 
