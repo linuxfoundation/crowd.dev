@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 
 import { runDependabotGate } from './dependabot-gate.ts'
 import { runDeployed } from './deployed.ts'
+import { runSecuritySla } from './security-sla.ts'
 import { runTag } from './tag.ts'
 
 export type Handler = (env: NodeJS.ProcessEnv) => Promise<number>
@@ -31,6 +32,7 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<numb
 register('tag', runTag)
 register('deployed', runDeployed)
 register('dependabot-gate', runDependabotGate)
+register('security-sla', runSecuritySla)
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   process.exit(await main(process.argv.slice(2), process.env))
