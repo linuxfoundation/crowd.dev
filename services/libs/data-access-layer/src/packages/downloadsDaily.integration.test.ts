@@ -186,35 +186,26 @@ describe.skipIf(!HAVE_DB)('npm daily downloads: real packages-db', () => {
           scope: FIXTURE_TAG,
           critical: false,
         }),
+        scopedAfterCutoff: await makePackage('scoped-after-cutoff', {
+          scope: FIXTURE_TAG,
+          processedAt: '2001-01-10T04:30:00Z',
+        }),
       }
       return Object.fromEntries(Object.entries(fixtures).map(([k, v]) => [v.purl, k]))
     }
 
-    async function selected(scopedMinAgeDays: number, byPurl: Record<string, string>) {
-      const rows = await getNpmPackagesNeedingDailyBackfill(
-        qx,
-        CUTOFF,
-        100_000,
-        0,
-        1,
-        scopedMinAgeDays,
-      )
+    async function selected(byPurl: Record<string, string>) {
+      const rows = await getNpmPackagesNeedingDailyBackfill(qx, CUTOFF, 100_000, 0, 1)
       return rows
         .map((r) => byPurl[r.purl])
         .filter(Boolean)
         .sort()
     }
 
-    it('selects scoped packages only once they were processed 6 or more days before the cutoff', async () => {
+    it('selects every critical package processed before the cutoff, scoped or not', async () => {
       const byPurl = await makeSelectionFixtures()
 
-      expect(await selected(6, byPurl)).toEqual(['scoped7d', 'scopedNever', 'unscopedRecent'])
-    })
-
-    it('selects every critical package processed before the cutoff when the interval is 0', async () => {
-      const byPurl = await makeSelectionFixtures()
-
-      expect(await selected(0, byPurl)).toEqual([
+      expect(await selected(byPurl)).toEqual([
         'scoped3d',
         'scoped7d',
         'scopedNever',
@@ -224,7 +215,7 @@ describe.skipIf(!HAVE_DB)('npm daily downloads: real packages-db', () => {
 
     it('returns the npm registry name for scoped packages', async () => {
       const byPurl = await makeSelectionFixtures()
-      const rows = await getNpmPackagesNeedingDailyBackfill(qx, CUTOFF, 100_000, 0, 1, 0)
+      const rows = await getNpmPackagesNeedingDailyBackfill(qx, CUTOFF, 100_000, 0, 1)
 
       const scoped = rows.find((r) => byPurl[r.purl] === 'scopedNever')
       expect(scoped?.name).toBe(`@${FIXTURE_TAG}/scoped-never`)

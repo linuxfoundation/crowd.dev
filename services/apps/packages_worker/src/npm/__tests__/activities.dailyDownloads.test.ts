@@ -589,8 +589,8 @@ describe('backfillDailyLane: bulk for unscoped packages', () => {
   })
 })
 
-describe('backfillDailyLane: scoped packages weekly', () => {
-  it('asks for scoped packages last processed at least 6 days before the cutoff', async () => {
+describe('backfillDailyLane: due selection', () => {
+  it('asks for every package due before the cutoff, scoped ones included', async () => {
     h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([])
 
     const { value, error } = await settle(
@@ -606,7 +606,6 @@ describe('backfillDailyLane: scoped packages weekly', () => {
       128,
       0,
       1,
-      6,
     )
   })
 })
@@ -614,7 +613,7 @@ describe('backfillDailyLane: scoped packages weekly', () => {
 describe('backfillDailyLane: repair from a date', () => {
   const REFETCH_FROM = '2026-05-01'
 
-  it('refetches every day from refetchFrom to the bound with the weekly rule off', async () => {
+  it('refetches every day from refetchFrom to the bound', async () => {
     h.dal.getNpmPackagesNeedingDailyBackfill.mockResolvedValue([scoped('a')])
     storedState({ 'id-a': { newest: UPPER, missing: [] } })
 
@@ -624,14 +623,6 @@ describe('backfillDailyLane: repair from a date', () => {
     )
 
     expect(error).toBeUndefined()
-    expect(h.dal.getNpmPackagesNeedingDailyBackfill).toHaveBeenCalledWith(
-      expect.anything(),
-      CUTOFF,
-      128,
-      0,
-      1,
-      0,
-    )
     expect(h.fetch.fetchDailyRange.mock.calls.map((c) => c.slice(0, 3))).toEqual([
       ['@scope/a', REFETCH_FROM, UPPER],
     ])
