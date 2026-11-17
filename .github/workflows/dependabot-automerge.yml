@@ -1,0 +1,38 @@
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: dependabot-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dependabot-automerge-gate:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+      statuses: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - id: meta
+        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2.5.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - if: >-
+          steps.meta.outputs.update-type == 'version-update:semver-patch' &&
+          (steps.meta.outputs.dependency-type == 'direct:development' ||
+           steps.meta.outputs.package-ecosystem == 'github_actions')
+        uses: ./.github/actions/repo-automation
+        with:
+          command: dependabot-gate
+          pr-number: ${{ github.event.pull_request.number }}
+          self-check: dependabot-automerge-gate
