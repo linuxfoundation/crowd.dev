@@ -78,6 +78,8 @@ function fake(opts: {
 }) {
   const calls: Call[] = []
   const sleeps: number[] = []
+  const warnings: string[] = []
+  const infos: string[] = []
   const tagsAt = [...(opts.tagsAtSha ?? ['v9.9.9'])]
   const exec = (cmd: string, args: string[]): string => {
     calls.push({ cmd, args })
@@ -116,9 +118,14 @@ function fake(opts: {
     sleep: async (ms) => {
       sleeps.push(ms)
     },
+    log: {
+      info: (m) => void infos.push(m),
+      warning: (m) => void warnings.push(m),
+      error: (m) => void warnings.push(`error: ${m}`),
+    },
   }
   const edits = () => calls.filter((c) => c.cmd === 'gh' && c.args[0] === 'release')
-  return { calls, sleeps, deps, edits }
+  return { calls, sleeps, warnings, infos, deps, edits }
 }
 
 const env = (extra: Record<string, string> = {}): NodeJS.ProcessEnv => ({
@@ -142,6 +149,7 @@ test('not on main: records deployments, never edits releases', async () => {
   const posts = f.calls.filter((c) => c.cmd === 'gh' && c.args.join(' ').includes('/deployments'))
   assert.equal(posts.length, 4) // 2 services x (deployment + status)
   assert.equal(f.edits().length, 0)
+  assert.deepEqual(f.warnings, [])
 })
 
 test('publishes oldest first and flags only the newest as latest', async () => {
@@ -185,6 +193,8 @@ test('skips orphan drafts whose tag does not exist and non-semver drafts', async
     f.edits().map((c) => c.args[2]),
     ['v1.1.0'],
   )
+  assert.equal(f.warnings.length, 1)
+  assert.match(f.warnings[0], /draft v1\.2\.0 has no tag yet/)
 })
 
 test('deployment failure does not stop publishing', async () => {
@@ -196,6 +206,9 @@ test('deployment failure does not stop publishing', async () => {
   const code = await runDeployed(env({ INPUT_DEPLOYMENT_ENVIRONMENT: 'production' }), f.deps)
   assert.equal(code, 0)
   assert.equal(f.edits().length, 1)
+  assert.equal(f.warnings.length, 2)
+  assert.match(f.warnings[0], /could not record deployment for api: boom/)
+  assert.match(f.warnings[1], /could not record deployment for worker/)
 })
 
 test('publish failure is a warning, exit 0', async () => {
@@ -206,6 +219,8 @@ test('publish failure is a warning, exit 0', async () => {
     return exec(cmd, args)
   }
   assert.equal(await runDeployed(env(), f.deps), 0)
+  assert.equal(f.warnings.length, 1)
+  assert.match(f.warnings[0], /could not publish v1\.1\.0: nope/)
 })
 
 test('publish false returns before touching git', async () => {
@@ -218,6 +233,8 @@ test('waits for the tag with the injected sleep, then gives up at the timeout', 
   const f = fake({ tagsAtSha: ['', '', ''], drafts: [] })
   await runDeployed(env({ INPUT_TAG_WAIT_SECONDS: '30' }), f.deps)
   assert.deepEqual(f.sleeps, [15000, 15000])
+  assert.equal(f.warnings.length, 1)
+  assert.match(f.warnings[0], /no tag points at deadbeef after 30s/)
 })
 
 // --- hermetic git helpers ---

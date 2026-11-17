@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { ghJson, run } from './gh.ts'
+import { consoleLogger } from './log.ts'
+import type { Logger } from './log.ts'
 import { renderReleaseBody } from './release-body.ts'
 import { loadRules, servicesForPaths } from './services.ts'
 import type { Rule } from './services.ts'
@@ -134,7 +136,11 @@ type Runner = (cmd: string, args: string[]) => string
  * Local tags first, then draft releases, then one atomic push. A failed draft aborts before
  * the push, so a re-run replans the same versions and retries.
  */
-export function applyPlan(planned: PlannedTag[], exec: Runner = run): number {
+export function applyPlan(
+  planned: PlannedTag[],
+  exec: Runner = run,
+  log: Logger = consoleLogger,
+): number {
   for (const t of planned) exec('git', ['tag', '-a', t.version, '-m', t.title, t.sha])
 
   const dir = mkdtempSync(join(tmpdir(), 'release-notes-'))
@@ -142,7 +148,7 @@ export function applyPlan(planned: PlannedTag[], exec: Runner = run): number {
     for (const t of planned.filter((p) => p.release)) {
       try {
         exec('gh', ['release', 'view', t.version])
-        console.log(`release ${t.version} already exists`)
+        log.info(`release ${t.version} already exists`)
         continue
       } catch {
         // not found: create it below
@@ -163,9 +169,7 @@ export function applyPlan(planned: PlannedTag[], exec: Runner = run): number {
           notes,
         ])
       } catch (err) {
-        console.log(
-          `::error::could not create draft release ${t.version}: ${(err as Error).message}`,
-        )
+        log.error(`could not create draft release ${t.version}: ${(err as Error).message}`)
         return 1
       }
     }
@@ -174,7 +178,7 @@ export function applyPlan(planned: PlannedTag[], exec: Runner = run): number {
   }
 
   exec('git', ['push', '--atomic', 'origin', ...planned.map((t) => `refs/tags/${t.version}`)])
-  console.log(`tagged ${planned.map((t) => t.version).join(', ')}`)
+  log.info(`tagged ${planned.map((t) => t.version).join(', ')}`)
   return 0
 }
 

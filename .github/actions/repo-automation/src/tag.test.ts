@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
+import type { Logger } from './log.ts'
 import { applyPlan, planTags, resolveBase } from './tag.ts'
 import type { PlannedTag } from './tag.ts'
 
@@ -94,6 +95,12 @@ const fakeRunner =
     return ''
   }
 
+function capture(): { log: Logger; lines: string[] } {
+  const lines: string[] = []
+  const push = (level: string) => (m: string) => void lines.push(`${level}:${m}`)
+  return { log: { info: push('info'), warning: push('warning'), error: push('error') }, lines }
+}
+
 const kind = (call: string[]): string => call.slice(0, 3).join(' ')
 
 test('drafts are created before the single atomic push', () => {
@@ -103,6 +110,7 @@ test('drafts are created before the single atomic push', () => {
     applyPlan(
       planned,
       fakeRunner(calls, (a) => a[2] === 'view'),
+      capture().log,
     ),
     0,
   )
@@ -127,10 +135,13 @@ test('drafts are created before the single atomic push', () => {
 test('a failed draft means no push', () => {
   const calls: string[][] = []
   const failing = (a: string[]) => a[2] === 'view' || (a[2] === 'create' && a[3] === 'v0.51.0')
+  const cap = capture()
   assert.equal(
-    applyPlan([plan('v0.51.0', true), plan('v0.52.0', true)], fakeRunner(calls, failing)),
+    applyPlan([plan('v0.51.0', true), plan('v0.52.0', true)], fakeRunner(calls, failing), cap.log),
     1,
   )
+  assert.equal(cap.lines.length, 1)
+  assert.match(cap.lines[0], /^error:could not create draft release v0\.51\.0/)
   assert.equal(
     calls.some((a) => a[1] === 'push'),
     false,
@@ -139,7 +150,9 @@ test('a failed draft means no push', () => {
 
 test('existing releases are skipped', () => {
   const calls: string[][] = []
-  assert.equal(applyPlan([plan('v0.51.0', true)], fakeRunner(calls)), 0)
+  const cap = capture()
+  assert.equal(applyPlan([plan('v0.51.0', true)], fakeRunner(calls), cap.log), 0)
+  assert.ok(cap.lines.includes('info:release v0.51.0 already exists'))
   assert.equal(
     calls.some((a) => a[2] === 'create'),
     false,

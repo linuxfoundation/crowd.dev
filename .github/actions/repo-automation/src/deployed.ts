@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { run } from './gh.ts'
+import { consoleLogger } from './log.ts'
+import type { Logger } from './log.ts'
 import { parseReleaseServices } from './release-body.ts'
 import { compareVersions, isSemverTag } from './version.ts'
 
@@ -36,12 +38,14 @@ export type Deps = {
   exec: Runner
   now: () => Date
   sleep: (ms: number) => Promise<void>
+  log: Logger
 }
 
 const defaultDeps: Deps = {
   exec: (cmd, args) => run(cmd, args),
   now: () => new Date(),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  log: consoleLogger,
 }
 
 /** True when `sha` is reachable from origin/main. */
@@ -77,6 +81,7 @@ type ApiRelease = { tag_name: string; body: string | null; created_at: string }
 
 function recordDeployments(
   exec: Runner,
+  log: Logger,
   repo: string,
   sha: string,
   environment: string,
@@ -86,7 +91,7 @@ function recordDeployments(
   try {
     version = exec('git', ['describe', '--tags', '--match', 'v[0-9]*', '--always', sha])
   } catch (err) {
-    console.log(`::warning::could not describe ${sha}: ${msg(err)}`)
+    log.warning(`could not describe ${sha}: ${msg(err)}`)
   }
   const dir = mkdtempSync(join(tmpdir(), 'deployment-'))
   try {
@@ -115,9 +120,9 @@ function recordDeployments(
           '-f',
           'state=success',
         ])
-        console.log(`recorded deployment ${service} (${version}) in ${environment}`)
+        log.info(`recorded deployment ${service} (${version}) in ${environment}`)
       } catch (err) {
-        console.log(`::warning::could not record deployment for ${service}: ${msg(err)}`)
+        log.warning(`could not record deployment for ${service}: ${msg(err)}`)
       }
     }
   } finally {
@@ -129,7 +134,7 @@ function msg(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-function listDrafts(exec: Runner, repo: string): Draft[] {
+function listDrafts(exec: Runner, log: Logger, repo: string): Draft[] {
   const out = exec('gh', [
     'api',
     `repos/${repo}/releases`,
@@ -143,7 +148,7 @@ function listDrafts(exec: Runner, repo: string): Draft[] {
     if (!isSemverTag(r.tag_name)) continue
     const sha = tagCommit(r.tag_name, exec)
     if (!sha) {
-      console.log(`::warning::draft ${r.tag_name} has no tag yet, skipping`)
+      log.warning(`draft ${r.tag_name} has no tag yet, skipping`)
       continue
     }
     drafts.push({
@@ -171,21 +176,21 @@ export async function runDeployed(
   env: NodeJS.ProcessEnv,
   deps: Deps = defaultDeps,
 ): Promise<number> {
-  const { exec, now, sleep } = deps
+  const { exec, now, sleep, log } = deps
   const repo = env.GITHUB_REPOSITORY ?? ''
   const sha = env.GITHUB_SHA ?? ''
   if (!repo || !sha) throw new Error('GITHUB_REPOSITORY and GITHUB_SHA are required')
   const services = (env.INPUT_SERVICES ?? '').split(/\s+/).filter(Boolean)
   const deploymentEnv = (env.INPUT_DEPLOYMENT_ENVIRONMENT ?? '').trim()
 
-  if (deploymentEnv) recordDeployments(exec, repo, sha, deploymentEnv, services)
+  if (deploymentEnv) recordDeployments(exec, log, repo, sha, deploymentEnv, services)
   if (env.INPUT_PUBLISH !== 'true') return 0
 
   try {
     exec('git', ['fetch', 'origin', 'main', '--tags'])
     const onMain = isOnMain(sha, exec)
     if (!onMain) {
-      console.log(`${sha} is not on main, not publishing releases`)
+      log.info(`${sha} is not on main, not publishing releases`)
       return 0
     }
 
@@ -193,7 +198,7 @@ export async function runDeployed(
     let waited = 0
     while (exec('git', ['tag', '--points-at', sha]) === '') {
       if (waited >= waitSeconds) {
-        console.log(`::warning::no tag points at ${sha} after ${waited}s, continuing`)
+        log.warning(`no tag points at ${sha} after ${waited}s, continuing`)
         break
       }
       await sleep(POLL_SECONDS * 1000)
@@ -201,7 +206,7 @@ export async function runDeployed(
       exec('git', ['fetch', 'origin', 'main', '--tags'])
     }
 
-    const drafts = listDrafts(exec, repo)
+    const drafts = listDrafts(exec, log, repo)
     const selected = selectDraftsToPublish({
       drafts,
       deployed: services,
@@ -211,7 +216,7 @@ export async function runDeployed(
       maxAgeDays: 3,
     })
     if (selected.length === 0) {
-      console.log('no draft releases to publish')
+      log.info('no draft releases to publish')
       return 0
     }
 
@@ -223,13 +228,13 @@ export async function runDeployed(
       try {
         const latest = markLatest && d.tag === newest ? '--latest' : '--latest=false'
         exec('gh', ['release', 'edit', d.tag, '--draft=false', latest])
-        console.log(`published ${d.tag}`)
+        log.info(`published ${d.tag}`)
       } catch (err) {
-        console.log(`::warning::could not publish ${d.tag}: ${msg(err)}`)
+        log.warning(`could not publish ${d.tag}: ${msg(err)}`)
       }
     }
   } catch (err) {
-    console.log(`::warning::release publishing failed: ${msg(err)}`)
+    log.warning(`release publishing failed: ${msg(err)}`)
   }
   return 0
 }
