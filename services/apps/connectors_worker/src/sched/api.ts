@@ -59,7 +59,11 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-function rows(subdomain: string, path: string, body: unknown): Row[] {
+export function rows(subdomain: string, path: string, body: unknown): Row[] {
+  // Sched answers `false`, not `[]`, when a list is empty (e.g. user/sessions with no sign-ups).
+  if (body === false) {
+    return []
+  }
   if (!Array.isArray(body)) {
     throw new SchedCallError(`${subdomain}: ${path} did not return a list`)
   }
