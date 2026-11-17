@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { loadBuilderServiceMap, toBuilders } from './builders.ts'
 import { run } from './gh.ts'
 import { consoleLogger } from './log.ts'
 import type { Logger } from './log.ts'
@@ -206,10 +207,18 @@ export async function runDeployed(
       exec('git', ['fetch', 'origin', 'main', '--tags'])
     }
 
+    let deployedNames = services
+    const buildersDir = (env.INPUT_BUILDERS_DIR ?? '').trim()
+    if (buildersDir) {
+      const mapped = toBuilders(services, loadBuilderServiceMap(buildersDir))
+      for (const name of mapped.unknown) log.warning(`no builder found for service ${name}`)
+      deployedNames = mapped.builders
+    }
+
     const drafts = listDrafts(exec, log, repo)
     const selected = selectDraftsToPublish({
       drafts,
-      deployed: services,
+      deployed: deployedNames,
       onMain,
       isAncestor: (s) => isAncestorOf(s, sha, exec),
       now: now(),

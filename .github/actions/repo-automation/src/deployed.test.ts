@@ -223,6 +223,39 @@ test('publish failure is a warning, exit 0', async () => {
   assert.match(f.warnings[0], /could not publish v1\.1\.0: nope/)
 })
 
+test('builders-dir maps input services to builder names for publishing', async () => {
+  const bdir = mkdtempSync(join(tmpdir(), 'deployed-builders-'))
+  try {
+    writeFileSync(join(bdir, 'backend.env'), 'SERVICES="api api-e2e"\n')
+    const f = fake({ drafts: [draft('v1.1.0', ['backend'])], tagCommits: { 'v1.1.0': 'a' } })
+    await runDeployed(
+      env({
+        INPUT_SERVICES: 'api mystery',
+        INPUT_BUILDERS_DIR: bdir,
+        INPUT_DEPLOYMENT_ENVIRONMENT: 'production',
+      }),
+      f.deps,
+    )
+    assert.deepEqual(
+      f.edits().map((c) => c.args[2]),
+      ['v1.1.0'],
+    )
+    assert.deepEqual(f.warnings, ['no builder found for service mystery'])
+    const tasks = f.calls
+      .filter((c) => c.cmd === 'gh' && c.args.includes('--input'))
+      .map((c) => c.args.join(' '))
+    assert.equal(tasks.length, 2) // deployments recorded per input name (api, mystery)
+    const withoutMap = fake({
+      drafts: [draft('v1.1.0', ['backend'])],
+      tagCommits: { 'v1.1.0': 'a' },
+    })
+    await runDeployed(env({ INPUT_SERVICES: 'api' }), withoutMap.deps)
+    assert.equal(withoutMap.edits().length, 0)
+  } finally {
+    rmSync(bdir, { recursive: true, force: true })
+  }
+})
+
 test('publish false returns before touching git', async () => {
   const f = fake({})
   assert.equal(await runDeployed(env({ INPUT_PUBLISH: 'false' }), f.deps), 0)
