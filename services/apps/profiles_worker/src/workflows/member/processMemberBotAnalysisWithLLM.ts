@@ -92,7 +92,7 @@ export async function processMemberBotAnalysisWithLLM(
   if (confidence >= THRESHOLD) {
     await updateMemberAttributes(memberId, { isBot: { default: true, system: true } })
     await removeMemberOrganizations(memberId)
-    await triggerMemberAffiliationsRefresh(memberId, 'bot-analysis', [], true)
+    await triggerMemberAffiliationsRefresh(memberId, [], true, 'bot-analysis')
   } else {
     // Otherwise, record a bot suggestion for further review
     await createMemberBotSuggestion({ memberId, confidence })

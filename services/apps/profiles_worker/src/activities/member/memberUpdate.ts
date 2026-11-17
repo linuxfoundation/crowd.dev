@@ -7,7 +7,7 @@ import { svc } from '../../main'
 
 export async function updateMemberAffiliations(
   memberId: string,
-  sources: string[] = [],
+  sources: MemberUpdateSource[] = [],
 ): Promise<void> {
   const qx = pgpQx(svc.postgres.writer.connection())
   await refreshMemberOrganizationAffiliations(qx, memberId, sources)
@@ -15,9 +15,9 @@ export async function updateMemberAffiliations(
 
 export async function triggerMemberAffiliationsRefresh(
   memberId: string,
+  memberOrganizationIds: string[],
+  syncToOpensearch: boolean,
   source: MemberUpdateSource,
-  memberOrganizationIds: string[] = [],
-  syncToOpensearch = false,
 ): Promise<void> {
   await signalMemberUpdate(svc.temporal, memberId, source, {
     memberOrganizationIds,

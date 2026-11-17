@@ -45,7 +45,7 @@ export async function signalMemberUpdate(
         member: { id: memberId },
         memberOrganizationIds: options.memberOrganizationIds ?? [],
         syncToOpensearch: options.syncToOpensearch ?? false,
-        sources: [source],
+        sources: source ? [source] : [],
       },
     ],
     retry: { maximumAttempts: 10 },

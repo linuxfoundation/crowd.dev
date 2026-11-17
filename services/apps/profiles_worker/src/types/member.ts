@@ -1,3 +1,4 @@
+import type { MemberUpdateSource } from '@crowd/common_services'
 import { IMemberIdentity } from '@crowd/types'
 
 export interface MemberUpdateInput {
@@ -6,7 +7,7 @@ export interface MemberUpdateInput {
   }
   memberOrganizationIds?: string[]
   syncToOpensearch?: boolean
-  sources?: string[]
+  sources?: MemberUpdateSource[]
 }
 
 export interface ProcessMemberBotSuggestionWithLLMInput {
