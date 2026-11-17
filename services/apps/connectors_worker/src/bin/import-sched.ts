@@ -95,8 +95,13 @@ async function importEvent(
   key: string,
 ): Promise<Outcome> {
   const segmentId = await findSegmentId(qx, event)
-  if (!segmentId) {
-    return { subdomain: event.subdomain, status: 'failed', reason: 'project not found' }
+  const projectNotFound: Outcome = {
+    subdomain: event.subdomain,
+    status: 'failed',
+    reason: 'project not found',
+  }
+  if (!segmentId && emitter) {
+    return projectNotFound
   }
 
   const data = await readEvent(event.subdomain, key)
@@ -113,10 +118,15 @@ async function importEvent(
     skipped,
   }
 
-  if (!emitter) {
-    const integrationId = await findSegmentIntegrationId(qx, segmentId, PlatformType.SCHED)
-    log.info({ ...counts, integrationExists: !!integrationId }, 'dry run: nothing sent')
-    return { subdomain: event.subdomain, status: 'done' }
+  if (!emitter || !segmentId) {
+    const integrationId = segmentId
+      ? await findSegmentIntegrationId(qx, segmentId, PlatformType.SCHED)
+      : null
+    log.info(
+      { ...counts, projectFound: !!segmentId, integrationExists: !!integrationId },
+      'dry run: nothing sent',
+    )
+    return segmentId ? { subdomain: event.subdomain, status: 'done' } : projectNotFound
   }
 
   const integrationId =

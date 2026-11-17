@@ -47,12 +47,12 @@ POD=$(kubectl get pods -o name | grep connectors-worker | head -1)
   --stdin --events kccnceu2021 --dry-run
 ```
 
-| Flags          | What it does                                                                                              |
-| -------------- | --------------------------------------------------------------------------------------------------------- |
-| `--check-keys` | One `user/list` call per event: `ok-rw` (returns emails), `ok-ro` (no emails) or `bad key`. Nothing sent. |
-| `--dry-run`    | Reads and transforms each event and logs the counts. Nothing sent, no integration created.                |
-| none           | Imports the events.                                                                                       |
-| `--events a,b` | Limits any of the above to those events; the default is every event received.                             |
+| Flags          | What it does                                                                                                                                 |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--check-keys` | One `user/list` call per event: `ok-rw` (returns emails), `ok-ro` (no emails) or `bad key`. Nothing sent.                                    |
+| `--dry-run`    | Reads and transforms each event and logs the counts, also when its project is missing (then `failed`). Nothing sent, no integration created. |
+| none           | Imports the events.                                                                                                                          |
+| `--events a,b` | Limits any of the above to those events; the default is every event received.                                                                |
 
 Order: check the keys, dry-run the event, import `kccnceu2021` and check it in CDP, then the rest
 in batches with `--events`, largest first.
