@@ -1,0 +1,61 @@
+name: Repo automation
+description: Release tagging, deployment tracking, Dependabot gating and security SLA checks.
+inputs:
+  command:
+    description: One of tag, deployed, dependabot-gate, security-sla.
+    required: true
+  token:
+    description: GitHub token used by gh.
+    default: ${{ github.token }}
+  config:
+    description: Path to the release services config.
+    default: .github/release-services.json
+  initial-version:
+    description: Version used when a service has no tag yet.
+    default: ""
+  services:
+    description: Space separated service names.
+    default: ""
+  environment:
+    description: Target environment name.
+    default: ""
+  publish:
+    description: Whether to publish ('true' or 'false').
+    default: "false"
+  deployment-environment:
+    description: GitHub Deployments environment to record. Empty means do not record Deployments.
+    default: ""
+  tag-wait-seconds:
+    description: Seconds to wait for a tag to appear.
+    default: "300"
+  pr-number:
+    description: Pull request number.
+    default: ""
+  self-check:
+    description: The gate's own check name.
+    default: ""
+outputs:
+  slack_text:
+    description: Message text for a Slack notification.
+    value: ${{ steps.cli.outputs.slack_text }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: 24
+    - id: cli
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/src/cli.ts" "$INPUT_COMMAND"
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_INITIAL_VERSION: ${{ inputs.initial-version }}
+        INPUT_SERVICES: ${{ inputs.services }}
+        INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_PUBLISH: ${{ inputs.publish }}
+        INPUT_DEPLOYMENT_ENVIRONMENT: ${{ inputs.deployment-environment }}
+        INPUT_TAG_WAIT_SECONDS: ${{ inputs.tag-wait-seconds }}
+        INPUT_PR_NUMBER: ${{ inputs.pr-number }}
+        INPUT_SELF_CHECK: ${{ inputs.self-check }}
