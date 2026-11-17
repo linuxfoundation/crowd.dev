@@ -156,12 +156,23 @@ test('a read error is logged as a warning and never approves', async () => {
   assert.ok(h.logs.some((l) => l.level === 'warning' && /ENOENT/.test(l.msg)))
 })
 
-test('merge failure leaves the PR for code-owner review', async () => {
+test('merge failure falls back to auto-merge', async () => {
+  const h = harness([pass], { failOn: 'gh pr merge 42 --squash' })
+  assert.equal(await runDependabotGate(env, h.deps), 0)
+  assert.ok(approve(h.calls) >= 0)
+  assert.ok(h.calls.includes('gh pr merge 42 --auto --squash'))
+  assert.equal(h.logs.at(-1)?.level, 'info')
+  assert.equal(h.logs.at(-1)?.msg, 'auto-merge enabled; waiting for code-owner review')
+  assert.equal(h.logs.filter((l) => l.level === 'warning').length, 0)
+})
+
+test('merge and auto-merge both failing leaves the PR for code-owner review', async () => {
   const h = harness([pass], { failOn: 'gh pr merge' })
   assert.equal(await runDependabotGate(env, h.deps), 0)
   assert.ok(approve(h.calls) >= 0)
+  assert.ok(h.calls.includes('gh pr merge 42 --auto --squash'))
   assert.equal(h.logs.at(-1)?.level, 'info')
-  assert.match(h.logs.at(-1)?.msg ?? '', /code-owner review/)
+  assert.match(h.logs.at(-1)?.msg ?? '', /^left for code-owner review \(auto-merge unavailable\)/)
   assert.equal(h.logs.filter((l) => l.level === 'warning').length, 0)
 })
 

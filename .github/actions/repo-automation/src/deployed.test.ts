@@ -29,6 +29,14 @@ test('publishes overlapping and unknown, skips others', () =>
     }).map((x) => x.tag),
     ['v1', 'v3'],
   ))
+test('empty services list is treated like unknown', () =>
+  assert.deepEqual(
+    selectDraftsToPublish({ ...base, drafts: [d('v1', []), d('v2', ['worker'])] }).map(
+      (x) => x.tag,
+    ),
+    ['v1'],
+  ))
+
 test('publishes drafts older than 3 days regardless of service', () =>
   assert.deepEqual(
     selectDraftsToPublish({ ...base, drafts: [d('v1', ['worker'], '2026-11-16T00:00:00Z')] }).map(
@@ -75,12 +83,15 @@ function fake(opts: {
   latest?: string | null
   failDeployments?: boolean
   tagsAtSha?: string[]
+  runs?: string[] | 'fail'
 }) {
   const calls: Call[] = []
   const sleeps: number[] = []
   const warnings: string[] = []
   const infos: string[] = []
   const tagsAt = [...(opts.tagsAtSha ?? ['v9.9.9'])]
+  const runs = Array.isArray(opts.runs) ? [...opts.runs] : []
+  const lastRun = runs.at(-1) ?? '[]'
   const exec = (cmd: string, args: string[]): string => {
     calls.push({ cmd, args })
     const a = args.join(' ')
@@ -99,6 +110,10 @@ function fake(opts: {
         return sha
       }
       return ''
+    }
+    if (a.startsWith('run list')) {
+      if (opts.runs === 'fail') throw new Error('gh down')
+      return runs.shift() ?? lastRun
     }
     if (a.includes('/deployments/') && a.includes('statuses')) return '{}'
     if (a.includes('/deployments')) {
@@ -262,12 +277,45 @@ test('publish false returns before touching git', async () => {
   assert.equal(f.calls.length, 0)
 })
 
-test('waits for the tag with the injected sleep, then gives up at the timeout', async () => {
-  const f = fake({ tagsAtSha: ['', '', ''], drafts: [] })
+const active = '[{"status":"in_progress"}]'
+const done = '[{"status":"completed"}]'
+
+test('active release-tag run: waits with the injected sleep, then gives up at the timeout', async () => {
+  const f = fake({ tagsAtSha: ['', '', ''], runs: [active], drafts: [] })
   await runDeployed(env({ INPUT_TAG_WAIT_SECONDS: '30' }), f.deps)
   assert.deepEqual(f.sleeps, [15000, 15000])
   assert.equal(f.warnings.length, 1)
   assert.match(f.warnings[0], /no tag points at deadbeef after 30s/)
+})
+
+test('active release-tag run: stops waiting as soon as the tag appears', async () => {
+  const f = fake({ tagsAtSha: ['', 'v1.0.0'], runs: [active], drafts: [] })
+  await runDeployed(env(), f.deps)
+  assert.deepEqual(f.sleeps, [15000])
+  assert.equal(f.warnings.length, 0)
+})
+
+test('stops waiting early once the release-tag run is no longer active', async () => {
+  const f = fake({ tagsAtSha: ['', '', ''], runs: [active, done], drafts: [] })
+  await runDeployed(env(), f.deps)
+  assert.deepEqual(f.sleeps, [15000])
+  assert.ok(f.infos.some((m) => /no release-tag run in progress for deadbeef; not waiting/.test(m)))
+})
+
+test('no release-tag run: does not wait', async () => {
+  const f = fake({ tagsAtSha: [''], runs: ['[]'], drafts: [] })
+  await runDeployed(env(), f.deps)
+  assert.deepEqual(f.sleeps, [])
+  assert.ok(f.infos.some((m) => /no release-tag run in progress for deadbeef; not waiting/.test(m)))
+  assert.equal(f.warnings.length, 0)
+})
+
+test('run query failure: warns and does not wait', async () => {
+  const f = fake({ tagsAtSha: [''], runs: 'fail', drafts: [] })
+  await runDeployed(env(), f.deps)
+  assert.deepEqual(f.sleeps, [])
+  assert.equal(f.warnings.length, 1)
+  assert.match(f.warnings[0], /could not query release-tag runs/)
 })
 
 // --- hermetic git helpers ---

@@ -45,6 +45,7 @@ jobs:
           services: ${{ github.event.inputs.services }}
 
       - uses: ./.github/actions/repo-automation
+        continue-on-error: true
         with:
           command: deployed
           services: ${{ github.event.inputs.services }}

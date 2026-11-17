@@ -26,7 +26,7 @@ export function selectDraftsToPublish(i: {
   return i.drafts
     .filter((d) => {
       if (!i.isAncestor(d.sha)) return false
-      if (d.services === null) return true
+      if (d.services === null || d.services.length === 0) return true
       if (d.services.some((s) => i.deployed.includes(s))) return true
       return i.now.getTime() - new Date(d.createdAt).getTime() > i.maxAgeDays * DAY_MS
     })
@@ -131,6 +131,34 @@ function recordDeployments(
   }
 }
 
+const ACTIVE_RUN_STATUSES = ['queued', 'in_progress', 'waiting', 'pending', 'requested']
+
+/** True only when a release-tag workflow run for `sha` is queued or in progress; false (never waits) otherwise. */
+function releaseTagRunActive(exec: Runner, log: Logger, sha: string): boolean {
+  try {
+    const runs = JSON.parse(
+      exec('gh', [
+        'run',
+        'list',
+        '--workflow',
+        'release-tag.yml',
+        '--commit',
+        sha,
+        '--json',
+        'status',
+        '--limit',
+        '5',
+      ]),
+    ) as { status?: string }[]
+    if (runs.some((r) => ACTIVE_RUN_STATUSES.includes(r.status ?? ''))) return true
+    log.info(`no release-tag run in progress for ${sha}; not waiting`)
+    return false
+  } catch (err) {
+    log.warning(`could not query release-tag runs for ${sha}: ${msg(err)}, not waiting`)
+    return false
+  }
+}
+
 function msg(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
@@ -198,6 +226,7 @@ export async function runDeployed(
     const waitSeconds = Number(env.INPUT_TAG_WAIT_SECONDS ?? '0') || 0
     let waited = 0
     while (exec('git', ['tag', '--points-at', sha]) === '') {
+      if (!releaseTagRunActive(exec, log, sha)) break
       if (waited >= waitSeconds) {
         log.warning(`no tag points at ${sha} after ${waited}s, continuing`)
         break

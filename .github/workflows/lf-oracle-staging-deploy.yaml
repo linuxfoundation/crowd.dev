@@ -19,7 +19,7 @@ env:
   ORACLE_CLUSTER: ${{ secrets.ORACLE_STAGING_CLUSTER }}
 
 permissions:
-  contents: write
+  contents: read
   deployments: write
 
 jobs:
@@ -45,6 +45,7 @@ jobs:
           services: ${{ github.event.inputs.services }}
 
       - uses: ./.github/actions/repo-automation
+        continue-on-error: true
         with:
           command: deployed
           services: ${{ github.event.inputs.services }}

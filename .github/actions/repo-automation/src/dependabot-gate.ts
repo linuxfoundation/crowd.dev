@@ -134,8 +134,15 @@ export async function runDependabotGate(
   try {
     exec('gh', ['pr', 'merge', pr, '--squash'])
     log.info(`approved and merged #${pr}`)
+    return 0
   } catch (err) {
-    log.info(`approved #${pr} but could not merge, left for code-owner review: ${msg(err)}`)
+    log.info(`could not merge #${pr} directly: ${msg(err)}`)
+  }
+  try {
+    exec('gh', ['pr', 'merge', pr, '--auto', '--squash'])
+    log.info('auto-merge enabled; waiting for code-owner review')
+  } catch (err) {
+    log.info(`left for code-owner review (auto-merge unavailable): ${msg(err)}`)
   }
   return 0
 }
