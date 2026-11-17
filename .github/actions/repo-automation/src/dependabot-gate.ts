@@ -11,14 +11,31 @@ export type Verdict = 'pending' | 'pass' | 'fail'
 
 const POLL_MS = 30 * 1000
 const TIMEOUT_MS = 45 * 60 * 1000
+const SETTLE_MS = 120 * 1000
 
-/** Verdict over every check except the gate's own; no checks yet counts as pending. */
+/** Verdict over every check except the gate's own; fails closed: unknown or missing checks are pending. */
 export function checksVerdict(checks: Check[], selfName: string): Verdict {
   const others = checks.filter((c) => c.name !== selfName)
-  if (others.length === 0) return 'pending'
   if (others.some((c) => c.bucket === 'fail' || c.bucket === 'cancel')) return 'fail'
-  if (others.some((c) => c.bucket === 'pending')) return 'pending'
-  return 'pass'
+  if (others.length > 0 && others.every((c) => c.bucket === 'pass' || c.bucket === 'skipping')) {
+    return 'pass'
+  }
+  return 'pending'
+}
+
+/** A pass is acted on only once the gate has waited long enough and the set of checks stopped changing. */
+export function shouldApprove(i: {
+  verdict: Verdict
+  names: string[]
+  previousNames: string[] | null
+  elapsedMs: number
+}): boolean {
+  if (i.verdict !== 'pass') return false
+  if (i.elapsedMs < SETTLE_MS) return false
+  if (i.previousNames === null) return false
+  const prev = [...i.previousNames].sort()
+  const cur = [...i.names].sort()
+  return prev.length === cur.length && prev.every((n, idx) => n === cur[idx])
 }
 
 export type Deps = {
@@ -44,11 +61,19 @@ function msg(err: unknown): string {
 }
 
 function readChecks(deps: Deps, pr: string): Check[] {
+  let out: string
   try {
-    const parsed = JSON.parse(deps.execOut('gh', ['pr', 'checks', pr, '--json', 'name,bucket']))
+    out = deps.execOut('gh', ['pr', 'checks', pr, '--json', 'name,bucket'])
+  } catch (err) {
+    deps.log.warning(`could not read checks on #${pr}: ${msg(err)}`)
+    return []
+  }
+  try {
+    const parsed: unknown = JSON.parse(out)
     return Array.isArray(parsed) ? (parsed as Check[]) : []
   } catch {
     // e.g. "no checks reported": nothing registered yet
+    deps.log.info(`no checks reported on #${pr} yet`)
     return []
   }
 }
@@ -65,17 +90,24 @@ export async function runDependabotGate(
   const selfName = (env.INPUT_SELF_CHECK ?? '').trim()
   if (!selfName) throw new Error('INPUT_SELF_CHECK is required')
 
-  const deadline = now().getTime() + TIMEOUT_MS
-  let checks = readChecks(deps, pr)
-  let verdict = checksVerdict(checks, selfName)
-  while (verdict === 'pending') {
-    if (now().getTime() >= deadline) {
-      log.info(`checks on #${pr} still pending after 45 minutes, not approving`)
-      return 0
-    }
-    await sleep(POLL_MS)
+  const start = now().getTime()
+  const deadline = start + TIMEOUT_MS
+  let previousNames: string[] | null = null
+  let checks: Check[] = []
+  let verdict: Verdict = 'pending'
+  for (;;) {
     checks = readChecks(deps, pr)
     verdict = checksVerdict(checks, selfName)
+    if (verdict === 'fail') break
+    const names = checks.filter((c) => c.name !== selfName).map((c) => c.name)
+    const t = now().getTime()
+    if (shouldApprove({ verdict, names, previousNames, elapsedMs: t - start })) break
+    if (t >= deadline) {
+      log.info(`checks on #${pr} not settled after 45 minutes, not approving`)
+      return 0
+    }
+    previousNames = names
+    await sleep(POLL_MS)
   }
 
   if (verdict === 'fail') {

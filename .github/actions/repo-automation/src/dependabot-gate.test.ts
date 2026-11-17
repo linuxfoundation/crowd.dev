@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { checksVerdict, runDependabotGate } from './dependabot-gate.ts'
+import { checksVerdict, runDependabotGate, shouldApprove } from './dependabot-gate.ts'
 import type { Check, Deps } from './dependabot-gate.ts'
 import type { Logger } from './log.ts'
 
@@ -29,7 +29,29 @@ test('skipped path-filtered checks count as pass', () =>
   ))
 test('any failure fails', () =>
   assert.equal(checksVerdict([{ name: 'test', bucket: 'fail' }], 'gate'), 'fail'))
+test('cancel fails', () =>
+  assert.equal(checksVerdict([{ name: 'test', bucket: 'cancel' }], 'gate'), 'fail'))
+test('unknown bucket is pending', () =>
+  assert.equal(
+    checksVerdict([{ name: 'test', bucket: 'weird' as unknown as Check['bucket'] }], 'gate'),
+    'pending',
+  ))
 test('no checks yet is pending', () => assert.equal(checksVerdict([], 'gate'), 'pending'))
+
+const settled = { verdict: 'pass' as const, names: ['a', 'b'], elapsedMs: 120000 }
+test('shouldApprove: early pass is not acted on', () =>
+  assert.equal(shouldApprove({ ...settled, previousNames: ['a', 'b'], elapsedMs: 119999 }), false))
+test('shouldApprove: changed check names are not acted on', () =>
+  assert.equal(shouldApprove({ ...settled, previousNames: ['a'] }), false))
+test('shouldApprove: first poll is not acted on', () =>
+  assert.equal(shouldApprove({ ...settled, previousNames: null }), false))
+test('shouldApprove: stable and 120s elapsed is acted on', () =>
+  assert.equal(shouldApprove({ ...settled, previousNames: ['b', 'a'] }), true))
+test('shouldApprove: non-pass verdict is not acted on', () =>
+  assert.equal(
+    shouldApprove({ ...settled, verdict: 'pending' as never, previousNames: ['a', 'b'] }),
+    false,
+  ))
 
 const env = { INPUT_PR_NUMBER: '42', INPUT_SELF_CHECK: 'gate' }
 
@@ -82,7 +104,7 @@ const merge = (c: string[]) => c.findIndex((l) => l === 'gh pr merge 42 --squash
 test('pending then pass approves and then merges', async () => {
   const h = harness([pending, pass])
   assert.equal(await runDependabotGate(env, h.deps), 0)
-  assert.deepEqual(h.slept, [30000])
+  assert.equal(h.slept.length, 4)
   assert.ok(approve(h.calls) >= 0)
   assert.ok(merge(h.calls) > approve(h.calls))
   assert.ok(h.calls.some((l) => l.includes('Patch dev-dependency update; all checks green.')))
@@ -111,6 +133,29 @@ test('timeout after 45 minutes does not approve', async () => {
   assert.match(h.logs.at(-1)?.msg ?? '', /45 minutes/)
 })
 
+test('a pass is held until the check set stops changing', async () => {
+  const h = harness([
+    [{ name: 'DCO', bucket: 'pass' }],
+    [
+      { name: 'DCO', bucket: 'pass' },
+      { name: 'build', bucket: 'pass' },
+    ],
+  ])
+  assert.equal(await runDependabotGate(env, h.deps), 0)
+  assert.equal(h.slept.length, 4)
+  assert.ok(merge(h.calls) >= 0)
+})
+
+test('a read error is logged as a warning and never approves', async () => {
+  const h = harness([pass])
+  h.deps.execOut = () => {
+    throw new Error('spawn gh ENOENT')
+  }
+  assert.equal(await runDependabotGate(env, h.deps), 0)
+  assert.equal(approve(h.calls), -1)
+  assert.ok(h.logs.some((l) => l.level === 'warning' && /ENOENT/.test(l.msg)))
+})
+
 test('merge failure leaves the PR for code-owner review', async () => {
   const h = harness([pass], { failOn: 'gh pr merge' })
   assert.equal(await runDependabotGate(env, h.deps), 0)
@@ -130,7 +175,7 @@ test('approve failure warns and does not merge', async () => {
 test('non-JSON checks output (no checks reported) is pending, then recovers', async () => {
   const h = harness(['no checks reported on the branch', pass])
   assert.equal(await runDependabotGate(env, h.deps), 0)
-  assert.equal(h.slept.length, 1)
+  assert.equal(h.slept.length, 4)
   assert.ok(merge(h.calls) >= 0)
 })
 
