@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { bumpFor, isReleaseType, nextVersion } from './version.ts'
+import { bumpFor, compareVersions, isReleaseType, isSemverTag, nextVersion } from './version.ts'
 
 test('feat is minor', () =>
   assert.equal(nextVersion('v0.50.0', bumpFor('feat: x'), 'v0.1.0'), 'v0.51.0'))
@@ -20,3 +20,17 @@ test('non-conventional title is patch without release', () => {
 test('chore is not a release type', () => assert.equal(isReleaseType('chore(deps): bump x'), false))
 test('malformed latest tag throws', () =>
   assert.throws(() => nextVersion('nope', 'patch', 'v0.1.0')))
+
+test('compareVersions orders numerically, not lexically', () => {
+  assert.ok(compareVersions('v0.9.0', 'v0.10.0') < 0)
+  assert.ok(compareVersions('v1.0.0', 'v0.99.99') > 0)
+  assert.equal(compareVersions('v0.50.1', 'v0.50.1'), 0)
+  assert.ok(compareVersions('v0.50.2', 'v0.50.10') < 0)
+})
+test('compareVersions throws on malformed tags', () =>
+  assert.throws(() => compareVersions('v0.50.1-rc.1', 'v0.50.0'), /Malformed/))
+test('isSemverTag is strict', () => {
+  assert.equal(isSemverTag('v0.50.1'), true)
+  assert.equal(isSemverTag('v0.50.1-rc.1'), false)
+  assert.equal(isSemverTag('0.50.1'), false)
+})

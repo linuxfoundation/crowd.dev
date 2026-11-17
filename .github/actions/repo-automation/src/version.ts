@@ -36,3 +36,21 @@ export function nextVersion(latest: string | null, bump: Bump, initial: string):
   if (level === 'minor') return `v${major}.${minor + 1}.0`
   return `v${major}.${minor}.${patch + 1}`
 }
+
+const SEMVER_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)$/
+
+export function isSemverTag(tag: string): boolean {
+  return SEMVER_TAG_RE.test(tag)
+}
+
+/** Negative, zero or positive like a sort comparator; both arguments must be strict vX.Y.Z tags. */
+export function compareVersions(a: string, b: string): number {
+  const parse = (tag: string): number[] => {
+    const m = SEMVER_TAG_RE.exec(tag)
+    if (!m) throw new Error(`Malformed tag "${tag}", expected vX.Y.Z`)
+    return [Number(m[1]), Number(m[2]), Number(m[3])]
+  }
+  const [pa, pb] = [parse(a), parse(b)]
+  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i]
+  return 0
+}

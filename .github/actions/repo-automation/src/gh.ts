@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process'
 
 /** Runs a command, returns trimmed stdout, throws on a non-zero exit. */
-export function run(cmd: string, args: string[]): string {
+export function run(cmd: string, args: string[], cwd?: string): string {
   return execFileSync(cmd, args, {
     encoding: 'utf8',
+    cwd,
     maxBuffer: 64 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'inherit'],
   }).trim()
