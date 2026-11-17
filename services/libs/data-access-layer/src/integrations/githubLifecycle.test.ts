@@ -8,7 +8,6 @@ import { createSegments } from '@crowd/test-kit/factories'
 import { createInsightsProject } from '../collections'
 import { findRepositoryOwnersForSegment, insertRepositories } from '../repositories'
 import {
-  addGithubNangoConnection,
   addRepoToGitIntegration,
   fetchGithubLifecycleIntegration,
   listGithubChannelsOwnedElsewhere,
@@ -110,7 +109,6 @@ describe('listGithubIntegrationsNeedingReconcile', () => {
 
     const e = await createIntegration(qx, 'github-nango', segmentId)
     await createLiveRepository(qx, segmentId, e, `https://github.com/Acme/${e}`)
-    await addGithubNangoConnection(qx, e, 'conn-e', 'acme', e)
 
     const f = await createIntegration(qx, 'github-nango', segmentId, { deleted: true })
     await createLiveRepository(qx, segmentId, f, `https://github.com/acme/${f}`)
@@ -177,20 +175,17 @@ describe('addRepoToGitIntegration', () => {
 })
 
 describe('listGithubRepoKeysUnderOwners', () => {
-  test('returns lower-cased repo keys of live github-nango integrations under the owners, ignoring nango mappings', async ({
+  test('returns lower-cased repo keys of live github-nango integrations under the owners', async ({
     qx,
   }) => {
     const segmentId = await createSegmentId(qx)
     const token = generateUUIDv1()
     const owner = `acme-${token}`
     const own = await createIntegration(qx, 'github-nango', segmentId)
-    const other = await createIntegration(qx, 'github-nango', segmentId)
     const deleted = await createIntegration(qx, 'github-nango', segmentId, { deleted: true })
 
     await createLiveRepository(qx, segmentId, own, `https://github.com/Acme-${token}/Own`)
-    await addGithubNangoConnection(qx, other, `conn-${token}`, `ACME-${token}`, 'Mapped')
     await createLiveRepository(qx, segmentId, deleted, `https://github.com/acme-${token}/gone`)
-    await addGithubNangoConnection(qx, deleted, `conn-d-${token}`, owner, 'gone-mapped')
     await createLiveRepository(qx, segmentId, own, `https://github.com/beta-${token}/elsewhere`)
 
     const keys = await listGithubRepoKeysUnderOwners(qx, [owner])
@@ -201,7 +196,7 @@ describe('listGithubRepoKeysUnderOwners', () => {
 })
 
 describe('listGithubChannelsOwnedElsewhere', () => {
-  test('returns keys held by another live integration via units, ignoring nango mappings, this integration and deleted ones', async ({
+  test('returns keys held by another live integration via units, ignoring this integration and deleted ones', async ({
     qx,
   }) => {
     const segmentId = await createSegmentId(qx)
@@ -210,11 +205,9 @@ describe('listGithubChannelsOwnedElsewhere', () => {
 
     const x = await createIntegration(qx, 'github-nango', segmentId)
     const y = await createIntegration(qx, 'github-nango', segmentId)
-    const z = await createIntegration(qx, 'github-nango', segmentId)
     const w = await createIntegration(qx, 'github-nango', segmentId, { deleted: true })
 
     await createSyncUnit(qx, y, url('one'))
-    await addGithubNangoConnection(qx, z, 'conn-z', `Acme-${token}`, 'Two')
     await createSyncUnit(qx, w, url('three'))
     await createSyncUnit(qx, x, url('four'))
 
