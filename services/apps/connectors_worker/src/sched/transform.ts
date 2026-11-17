@@ -43,6 +43,7 @@ export interface EventActivities {
     onCancelledSessions: number
     onUnknownSessions: number
     withoutTimestamp: number
+    withoutAccountId: number
   }
 }
 
@@ -142,15 +143,23 @@ export function buildEventActivities(
 ): EventActivities {
   const result: EventActivities = {
     activities: [],
-    skipped: { onCancelledSessions: 0, onUnknownSessions: 0, withoutTimestamp: 0 },
+    skipped: {
+      onCancelledSessions: 0,
+      onUnknownSessions: 0,
+      withoutTimestamp: 0,
+      withoutAccountId: 0,
+    },
   }
   const usersByName = new Map(data.users.map((user) => [user.username, user]))
   const sessionsByKey = new Map(data.sessions.map((session) => [session.key, session]))
   const sessionsById = new Map(data.sessions.map((session) => [session.id, session]))
-  // Sched usernames can be renamed; the account id cannot. `-` is not allowed in usernames.
-  const personKey = (username: string) => {
+  // Usernames can be renamed, so activity ids need the account id (AGENTS.md: immutable ids only).
+  const accountId = (username: string): string | null => {
     const id = usersByName.get(username)?.id
-    return id ? `id-${id}` : username
+    if (!id) {
+      result.skipped.withoutAccountId++
+    }
+    return id ?? null
   }
 
   const usableSession = (session: SchedSession | undefined): SchedSession | null => {
@@ -170,6 +179,10 @@ export function buildEventActivities(
     if (!session) {
       return null
     }
+    const userId = accountId(registration.username)
+    if (!userId) {
+      return null
+    }
     const sessionStart = toUtc(session.start, SESSION_START_FORMAT, data.timezone)
     const timestamp =
       options.registrationTime === 'session-start'
@@ -184,7 +197,7 @@ export function buildEventActivities(
       type: SchedActivityType.REGISTERED_SESSION,
       score: SCHED_GRID[SchedActivityType.REGISTERED_SESSION].score,
       timestamp,
-      sourceId: `${event.subdomain}:${personKey(registration.username)}:${session.id}`,
+      sourceId: `${event.subdomain}:${userId}:${session.id}`,
       sourceParentId: `${event.subdomain}:${session.id}`,
       username: registration.username,
       member: buildMember(
@@ -196,8 +209,12 @@ export function buildEventActivities(
     }
   }
 
-  const speakerActivities = (speaker: SchedSpeaker): IActivityData[] =>
-    speaker.sessionIds.flatMap((sessionId) => {
+  const speakerActivities = (speaker: SchedSpeaker): IActivityData[] => {
+    const userId = accountId(speaker.username)
+    if (!userId) {
+      return []
+    }
+    return speaker.sessionIds.flatMap((sessionId) => {
       const session = usableSession(sessionsById.get(sessionId))
       if (!session) {
         return []
@@ -213,7 +230,7 @@ export function buildEventActivities(
           type: SchedActivityType.SPOKE_AT_SESSION,
           score: SCHED_GRID[SchedActivityType.SPOKE_AT_SESSION].score,
           timestamp: sessionStart,
-          sourceId: `${event.subdomain}:speaker:${personKey(speaker.username)}:${session.id}`,
+          sourceId: `${event.subdomain}:speaker:${userId}:${session.id}`,
           sourceParentId: `${event.subdomain}:${session.id}`,
           username: speaker.username,
           member: buildMember(
@@ -225,6 +242,7 @@ export function buildEventActivities(
         },
       ]
     })
+  }
 
   for (const registration of data.registrations) {
     const activity = registrationActivity(registration)

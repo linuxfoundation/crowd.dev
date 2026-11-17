@@ -34,6 +34,7 @@ function eventData(overrides: Partial<SchedEventData> = {}): SchedEventData {
     users: [
       {
         username: 'jdoe',
+        id: '12345',
         name: 'Jane Doe',
         email: ' Jane.Doe@Example.org ',
         company: 'Acme',
@@ -54,7 +55,7 @@ describe('buildEventActivities', () => {
       type: 'registered-session',
       platform: PlatformType.SCHED,
       channel: 'testevent2021',
-      sourceId: `testevent2021:jdoe:${SESSION_ID}`,
+      sourceId: `testevent2021:12345:${SESSION_ID}`,
       sourceParentId: `testevent2021:${SESSION_ID}`,
       url: `https://testevent2021.sched.com/event/${SESSION_ID}`,
       score: 3,
@@ -62,21 +63,17 @@ describe('buildEventActivities', () => {
     expect(speaker).toMatchObject({
       type: 'spoke-at-session',
       channel: 'testevent2021',
-      sourceId: `testevent2021:speaker:jdoe:${SESSION_ID}`,
+      sourceId: `testevent2021:speaker:12345:${SESSION_ID}`,
       sourceParentId: `testevent2021:${SESSION_ID}`,
       score: 8,
     })
   })
 
-  it('builds ids from the Sched account id when the user list has it', () => {
-    const [registration, speaker] = buildEventActivities(
-      event,
-      eventData({ users: [{ username: 'jdoe', id: '12345' }] }),
-    ).activities
+  it('skips people missing from the user list, since activity ids need their account id', () => {
+    const result = buildEventActivities(event, eventData({ users: [] }))
 
-    expect(registration.sourceId).toBe(`testevent2021:id-12345:${SESSION_ID}`)
-    expect(speaker.sourceId).toBe(`testevent2021:speaker:id-12345:${SESSION_ID}`)
-    expect(registration.username).toBe('jdoe')
+    expect(result.activities).toEqual([])
+    expect(result.skipped.withoutAccountId).toBe(2)
   })
 
   it('reads session times in the event timezone', () => {
@@ -114,6 +111,7 @@ describe('buildEventActivities', () => {
       onCancelledSessions: 1,
       onUnknownSessions: 2,
       withoutTimestamp: 0,
+      withoutAccountId: 0,
     })
   })
 
@@ -146,6 +144,7 @@ describe('buildEventActivities', () => {
         users: [
           {
             username: 'jdoe',
+            id: '12345',
             url: 'https://github.com/janedoe',
             about: 'Find me on <a href="https://www.linkedin.com/in/jane-doe">LinkedIn</a>',
           },
@@ -176,11 +175,11 @@ describe('buildEventActivities', () => {
     ])
   })
 
-  it('keeps only the username without an email, using registration fields as fallback', () => {
+  it('keeps only the username without an email, using registration fields for missing profile fields', () => {
     const [registration] = buildEventActivities(
       event,
       eventData({
-        users: [],
+        users: [{ username: 'guest', id: '777' }],
         registrations: [
           { username: 'guest', name: 'Guest', sessionKey: '297', company: 'Initech' },
         ],
