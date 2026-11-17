@@ -13,6 +13,7 @@ export interface SchedSession {
 
 export interface SchedUser {
   username: string
+  id?: string
   name?: string
   email?: string
   company?: string
@@ -48,7 +49,7 @@ export interface SchedEventData {
 
 type Row = Record<string, unknown>
 
-const USER_FIELDS = 'username,name,email,company,position,location,avatar,url,about'
+const USER_FIELDS = 'id,username,name,email,company,position,location,avatar,url,about'
 const SPEAKER_FIELDS = 'username,name,sessions'
 
 function text(value: unknown): string | undefined {
@@ -83,6 +84,7 @@ function toUser(row: Row): SchedUser | null {
   }
   return {
     username,
+    id: text(row.id),
     name: text(row.name),
     email: text(row.email),
     company: text(row.company),

@@ -54,8 +54,8 @@ describe('buildEventActivities', () => {
       type: 'registered-session',
       platform: PlatformType.SCHED,
       channel: 'testevent2021',
-      sourceId: 'testevent2021:jdoe:297',
-      sourceParentId: 'testevent2021:297',
+      sourceId: `testevent2021:jdoe:${SESSION_ID}`,
+      sourceParentId: `testevent2021:${SESSION_ID}`,
       url: `https://testevent2021.sched.com/event/${SESSION_ID}`,
       score: 3,
     })
@@ -66,6 +66,17 @@ describe('buildEventActivities', () => {
       sourceParentId: `testevent2021:${SESSION_ID}`,
       score: 8,
     })
+  })
+
+  it('builds ids from the Sched account id when the user list has it', () => {
+    const [registration, speaker] = buildEventActivities(
+      event,
+      eventData({ users: [{ username: 'jdoe', id: '12345' }] }),
+    ).activities
+
+    expect(registration.sourceId).toBe(`testevent2021:id-12345:${SESSION_ID}`)
+    expect(speaker.sourceId).toBe(`testevent2021:speaker:id-12345:${SESSION_ID}`)
+    expect(registration.username).toBe('jdoe')
   })
 
   it('reads session times in the event timezone', () => {

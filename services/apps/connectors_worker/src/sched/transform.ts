@@ -147,6 +147,11 @@ export function buildEventActivities(
   const usersByName = new Map(data.users.map((user) => [user.username, user]))
   const sessionsByKey = new Map(data.sessions.map((session) => [session.key, session]))
   const sessionsById = new Map(data.sessions.map((session) => [session.id, session]))
+  // Sched usernames can be renamed; the account id cannot. `-` is not allowed in usernames.
+  const personKey = (username: string) => {
+    const id = usersByName.get(username)?.id
+    return id ? `id-${id}` : username
+  }
 
   const usableSession = (session: SchedSession | undefined): SchedSession | null => {
     if (!session) {
@@ -179,8 +184,8 @@ export function buildEventActivities(
       type: SchedActivityType.REGISTERED_SESSION,
       score: SCHED_GRID[SchedActivityType.REGISTERED_SESSION].score,
       timestamp,
-      sourceId: `${event.subdomain}:${registration.username}:${session.key}`,
-      sourceParentId: `${event.subdomain}:${session.key}`,
+      sourceId: `${event.subdomain}:${personKey(registration.username)}:${session.id}`,
+      sourceParentId: `${event.subdomain}:${session.id}`,
       username: registration.username,
       member: buildMember(
         registration.username,
@@ -208,7 +213,7 @@ export function buildEventActivities(
           type: SchedActivityType.SPOKE_AT_SESSION,
           score: SCHED_GRID[SchedActivityType.SPOKE_AT_SESSION].score,
           timestamp: sessionStart,
-          sourceId: `${event.subdomain}:speaker:${speaker.username}:${session.id}`,
+          sourceId: `${event.subdomain}:speaker:${personKey(speaker.username)}:${session.id}`,
           sourceParentId: `${event.subdomain}:${session.id}`,
           username: speaker.username,
           member: buildMember(
