@@ -251,7 +251,7 @@ async function main() {
             { memberId, activeOrgs: activeOrgIds.length, deletedOrgs: deletedOrgCount },
             'Triggering memberUpdate workflow',
           )
-          await signalMemberUpdate(temporal, memberId, {
+          await signalMemberUpdate(temporal, memberId, 'script', {
             memberOrganizationIds: activeOrgIds,
             syncToOpensearch: true,
           })

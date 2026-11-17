@@ -530,7 +530,11 @@ async function applyAffiliationTimeline(
   return { processed, batches }
 }
 
-export async function refreshMemberOrganizationAffiliations(qx: QueryExecutor, memberId: string) {
+export async function refreshMemberOrganizationAffiliations(
+  qx: QueryExecutor,
+  memberId: string,
+  sources: string[] = [],
+) {
   const start = performance.now()
 
   const timeline = await prepareMemberOrganizationAffiliationTimeline(qx, memberId)
@@ -543,6 +547,7 @@ export async function refreshMemberOrganizationAffiliations(qx: QueryExecutor, m
   logger.info(
     {
       memberId,
+      sources,
       timelineItems: timeline.length,
       batches,
       timelineMs: Math.round(timelineMs),

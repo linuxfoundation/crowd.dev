@@ -41,7 +41,7 @@ export async function organizationUpdate(input: IOrganizationProfileSyncInput): 
 
   for (const memberId of memberIds) {
     // Queue through memberUpdate so concurrent refreshes coalesce on the same member slot.
-    await triggerMemberAffiliationsRefresh(memberId)
+    await triggerMemberAffiliationsRefresh(memberId, [], false, 'organization-update')
   }
 
   await continueAsNew<typeof organizationUpdate>({

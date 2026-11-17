@@ -156,5 +156,5 @@ export async function getWorkflowsCount(workflowType: string, status: string): P
 }
 
 export async function triggerMemberAffiliationsRefresh(memberId: string): Promise<void> {
-  await signalMemberUpdate(svc.temporal, memberId)
+  await signalMemberUpdate(svc.temporal, memberId, 'script')
 }
