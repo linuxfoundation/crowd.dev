@@ -1,0 +1,148 @@
+{
+  "rules": [
+    {
+      "prefix": "backend/",
+      "services": ["backend"]
+    },
+    {
+      "prefix": "frontend/",
+      "services": ["frontend", "frontend-dev"]
+    },
+    {
+      "prefix": "services/apps/automatic_onboarding_worker/",
+      "services": ["automatic-onboarding-worker"]
+    },
+    {
+      "prefix": "services/apps/automatic_projects_discovery_worker/",
+      "services": ["automatic-projects-discovery-worker"]
+    },
+    {
+      "prefix": "services/apps/cache_worker/",
+      "services": ["cache-worker"]
+    },
+    {
+      "prefix": "services/apps/categorization_worker/",
+      "services": ["categorization-worker"]
+    },
+    {
+      "prefix": "services/apps/connectors_worker/",
+      "services": ["connectors-worker"]
+    },
+    {
+      "prefix": "services/apps/cron_service/",
+      "services": ["cron-service"]
+    },
+    {
+      "prefix": "services/apps/data_sink_worker/",
+      "services": ["data-sink-worker"]
+    },
+    {
+      "prefix": "services/apps/docs_readiness_worker/",
+      "services": ["docs-readiness-worker"]
+    },
+    {
+      "prefix": "services/apps/entity_merging_worker/",
+      "services": ["entity-merging-worker"]
+    },
+    {
+      "prefix": "services/apps/exports_worker/",
+      "services": ["exports-worker"]
+    },
+    {
+      "prefix": "services/apps/git_integration/",
+      "services": ["git-integration"]
+    },
+    {
+      "prefix": "services/apps/integration_run_worker/",
+      "services": ["integration-run-worker"]
+    },
+    {
+      "prefix": "services/apps/integration_stream_worker/",
+      "services": ["integration-stream-worker"]
+    },
+    {
+      "prefix": "services/apps/kafka_connect_monitor/",
+      "services": ["kafka-connect-monitor"]
+    },
+    {
+      "prefix": "services/apps/mailing_list_integration/",
+      "services": ["mailing-list-integration"]
+    },
+    {
+      "prefix": "services/apps/members_enrichment_worker/",
+      "services": ["members-enrichment-worker"]
+    },
+    {
+      "prefix": "services/apps/merge_suggestions_worker/",
+      "services": ["merge-suggestions-worker"]
+    },
+    {
+      "prefix": "services/apps/nango_webhook_api/",
+      "services": ["nango-webhook-api"]
+    },
+    {
+      "prefix": "services/apps/nango_worker/",
+      "services": ["nango-worker"]
+    },
+    {
+      "prefix": "services/apps/organizations_enrichment_worker/",
+      "services": ["organizations-enrichment-worker"]
+    },
+    {
+      "prefix": "services/apps/pcc_sync_worker/",
+      "services": ["pcc-sync-worker"]
+    },
+    {
+      "prefix": "services/apps/profiles_worker/",
+      "services": ["profiles-worker"]
+    },
+    {
+      "prefix": "services/apps/projects_evaluation_worker/",
+      "services": ["projects-evaluation-worker"]
+    },
+    {
+      "prefix": "services/apps/script_executor_worker/",
+      "services": ["script-executor-worker"]
+    },
+    {
+      "prefix": "services/apps/search_sync_api/",
+      "services": ["search-sync-api"]
+    },
+    {
+      "prefix": "services/apps/search_sync_worker/",
+      "services": ["search-sync-worker"]
+    },
+    {
+      "prefix": "services/apps/security_best_practices_worker/",
+      "services": ["security-best-practices-worker"]
+    },
+    {
+      "prefix": "services/apps/star_snapshot_worker/",
+      "services": ["star-snapshot-worker"]
+    },
+    {
+      "prefix": "services/apps/webhook_api/",
+      "services": ["webhook-api"]
+    },
+    {
+      "prefix": "services/libs/",
+      "services": "*"
+    },
+    {
+      "prefix": "services/archetypes/",
+      "services": "*"
+    },
+    {
+      "prefix": "package.json",
+      "services": "*"
+    },
+    {
+      "prefix": "pnpm-lock.yaml",
+      "services": "*"
+    },
+    {
+      "prefix": "pnpm-workspace.yaml",
+      "services": "*"
+    }
+  ]
+}
