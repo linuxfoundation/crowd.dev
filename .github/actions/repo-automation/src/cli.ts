@@ -1,5 +1,7 @@
 import { fileURLToPath } from 'node:url'
 
+import { runTag } from './tag.ts'
+
 export type Handler = (env: NodeJS.ProcessEnv) => Promise<number>
 
 const handlers = new Map<string, Handler>()
@@ -16,8 +18,15 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<numb
     console.error(`unknown command: ${name}`)
     return 2
   }
-  return handler(env)
+  try {
+    return await handler(env)
+  } catch (err) {
+    console.error(`error: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
 }
+
+register('tag', runTag)
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   process.exit(await main(process.argv.slice(2), process.env))
