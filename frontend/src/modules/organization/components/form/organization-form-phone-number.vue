@@ -28,7 +28,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import {
   ref, watch,
 } from 'vue';
@@ -36,23 +36,25 @@ import AppOrganizationFormPhoneNumberItem
   from '@/modules/organization/components/form/organization-form-phone-number-item.vue';
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
+import type { Organization } from '../../types/Organization';
 
-const props = defineProps({
-  modelValue: {
-    type: Object,
-    default: () => {},
-  },
+defineOptions({
+  name: 'AppOrganizationFormPhoneNumber',
 });
 
-const emit = defineEmits(['update:modelValue']);
+const props = defineProps<{
+  modelValue: Organization;
+}>();
 
-const model = ref([]);
+const emit = defineEmits<{(e: 'update:modelValue', value: Organization): void }>();
+
+const model = ref<string[]>([]);
 
 watch(
   props.modelValue,
   (organization, previous) => {
     if (!previous) {
-      model.value = organization.phoneNumbers?.length > 0
+      model.value = organization.phoneNumbers?.length
         ? organization.phoneNumbers
         : [''];
     }
@@ -75,17 +77,11 @@ watch(
 const addPhoneNumber = () => {
   model.value.push('');
 };
-const removePhoneNumber = (index) => {
+const removePhoneNumber = (index: number) => {
   if (model.value.length > 1) {
     model.value.splice(index, 1);
   } else if (model.value.length > 0) {
     model.value[0] = '';
   }
-};
-</script>
-
-<script>
-export default {
-  name: 'AppOrganizationFormPhoneNumber',
 };
 </script>

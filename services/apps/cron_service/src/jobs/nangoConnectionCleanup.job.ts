@@ -3,10 +3,8 @@ import CronTime from 'cron-time-generator'
 import { IS_DEV_ENV, IS_STAGING_ENV, singleOrDefault } from '@crowd/common'
 import { READ_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import {
-  INangoIntegrationData,
   fetchNangoDeletedIntegrationData,
   fetchNangoIntegrationData,
-  getNangoMappingByConnectionId,
 } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import {
@@ -17,7 +15,6 @@ import {
   initNangoCloudClient,
   nangoIntegrationToPlatform,
 } from '@crowd/nango'
-import { PlatformType } from '@crowd/types'
 
 import { IJobDefinition } from '../types'
 
@@ -59,21 +56,7 @@ const job: IJobDefinition = {
         continue
       }
 
-      let integration: INangoIntegrationData | undefined
-
-      // github integrations have connection ids per repo in the integration.nango_mapping table
-      if (connection.provider_config_key === NangoIntegration.GITHUB) {
-        const mapping = await getNangoMappingByConnectionId(qx, connection.connection_id)
-        if (mapping) {
-          integration = singleOrDefault(
-            allIntegrations,
-            (i) => i.id === mapping.integrationId && i.platform === PlatformType.GITHUB_NANGO,
-          )
-        }
-        // for other integrations, check if the connection belongs to an integration
-      } else {
-        integration = singleOrDefault(allIntegrations, (i) => i.id === connection.connection_id)
-      }
+      const integration = singleOrDefault(allIntegrations, (i) => i.id === connection.connection_id)
 
       const integrationCreatedAt = new Date(connection.created)
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)

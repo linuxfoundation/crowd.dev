@@ -36,7 +36,7 @@ Every path ends at the `data_sink_worker` Kafka queue, except where noted.
 | --------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | Integrations v1 | `webhook_api`, `integration_run_worker`, `integration_stream_worker` | Queue chain on Kafka: a run splits into streams, each stream emits results. Queue settings in `services/libs/queue/src/vendors/kafka/config.ts` |
 | Connectors v2   | `connectors_worker`                                                  | Temporal-based framework in `services/libs/connectors`                                                                                          |
-| Nango           | `nango_webhook_api`, `nango_worker`                                  | GitHub through Nango                                                                                                                            |
+| Nango           | `nango_webhook_api`, `nango_worker`                                  | Jira, Confluence and Gerrit through Nango                                                                                                       |
 | Snowflake       | `snowflake_connectors`                                               | Exports through S3, transforms, emits to the data sink                                                                                          |
 | Git             | `git_integration`                                                    | Python; sends processed commits to Kafka                                                                                                        |
 | Mailing lists   | `mailing_list_integration`                                           | Python (`crowdmail`)                                                                                                                            |
@@ -48,14 +48,16 @@ Every path ends at the `data_sink_worker` Kafka queue, except where noted.
 1. resolves the member from the activity's identities, creating or merging as needed (see
    [`member-identity.md`](member-identity.md));
 2. resolves the organization to credit, with `findAffiliation`;
-3. sends the **full activity**, body and attributes included, through `insertActivities` to the
-   Kafka topic `activities` (`services/libs/data-access-layer/src/activities/insert.ts`);
-4. writes the **relation row** through `createOrUpdateRelations` into Postgres `activityRelations`
+3. writes the **relation row** through `createOrUpdateRelations` into Postgres `activityRelations`
    (`services/libs/data-access-layer/src/activities/sql.ts`);
+4. sends the **full activity**, body and attributes included, through `insertActivities` to the
+   Kafka topic `activities` (`services/libs/data-access-layer/src/activities/insert.ts`);
 5. queues an OpenSearch sync through `search_sync_worker`.
 
-Because the Kafka send comes first, a failure between steps 3 and 4 can leave an activity in
-Tinybird's `activities` with no relation row in Postgres yet.
+The relation is written first. When two writes of the same new activity race, the second upsert
+lands on the stored row, and its content is sent under that row's `activityId`. A failure between
+steps 3 and 4 leaves a relation row without its content in Tinybird until the result is retried;
+the retry finds the relation and sends the content under the same `activityId`.
 
 The relation row is not just foreign keys. Besides `memberId`, `organizationId`, `segmentId` and
 the other links, it keeps the activity's `type`, `timestamp`, `platform`, `channel`, `sourceId`,

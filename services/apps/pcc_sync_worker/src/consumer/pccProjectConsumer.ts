@@ -8,12 +8,13 @@
  * a single failing row would lose all diagnostic breadcrumbs for the batch.
  */
 import { DEFAULT_TENANT_ID } from '@crowd/common'
-import { DbConnOrTx, DbConnection, WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
+import { DbConnOrTx, DbConnection, WRITE_DB_CONFIG, getDbConnection, pgpQx } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
 import { MetadataStore, S3Service, SnowflakeExportJob, buildPlatformFilter } from '@crowd/snowflake'
 
 import { parsePccRow } from '../parser'
 import type { CdpHierarchyTarget, ParsedPccProject } from '../parser'
+import { resolveSyncErrorsNotReportedByExport } from './syncErrors'
 
 const log = getServiceChildLogger('pccProjectConsumer')
 
@@ -32,6 +33,8 @@ export class PccProjectConsumer {
   // claim so nothing is persisted, which means the same "oldest pending" job
   // would otherwise be re-claimed on every loop iteration → endless reprocessing.
   private readonly dryRunProcessedJobIds = new Set<number>()
+  private syncErrorWriteFailed = false
+  private readonly exportsWithUnrecordedSyncErrors = new Set<string>()
 
   constructor(
     private readonly metadataStore: MetadataStore,
@@ -97,6 +100,7 @@ export class PccProjectConsumer {
     log.info({ jobId: job.id, s3Path: job.s3Path, dryRun: this.dryRun }, 'Processing PCC job')
 
     const startTime = Date.now()
+    this.syncErrorWriteFailed = false
     let totalCount = 0
     let upsertedCount = 0
     let skippedCount = 0
@@ -151,9 +155,9 @@ export class PccProjectConsumer {
             schemaMismatchCount++
             const errorDetails: Record<string, unknown> = { ...parsed.details }
 
-            // If the row had identifiable fields (depth-range errors), attempt a segment
-            // match so the error record reflects whether a CDP segment exists for this
-            // project — useful for triage even when the depth rule is unsupported.
+            // If the row had identifiable fields, attempt a segment match so the error
+            // record reflects whether a CDP segment exists for this project — useful for
+            // triage even when the hierarchy could not be mapped.
             if (parsed.pccProjectId) {
               const matched = await findSegmentBySourceId(tx, parsed.pccProjectId)
               if (isAmbiguousMatch(matched)) {
@@ -232,6 +236,7 @@ export class PccProjectConsumer {
           skippedCount: skippedCount + schemaMismatchCount + missingProjectIdCount,
           processingDurationMs: durationMs,
         })
+        await this.resolveSyncErrorsNotReportedBy(job)
       }
     } catch (err) {
       log.error({ jobId: job.id, err }, 'PCC job failed')
@@ -251,6 +256,26 @@ export class PccProjectConsumer {
           log.error({ jobId: job.id, updateErr }, 'Failed to mark job as failed')
         }
       }
+    }
+  }
+
+  private async resolveSyncErrorsNotReportedBy(job: SnowflakeExportJob): Promise<void> {
+    if (!job.exportStartedAt) return
+    const exportKey = String(job.exportStartedAt)
+    if (this.syncErrorWriteFailed) this.exportsWithUnrecordedSyncErrors.add(exportKey)
+    if (this.exportsWithUnrecordedSyncErrors.has(exportKey)) {
+      log.warn({ jobId: job.id }, 'Skipped resolving PCC sync errors: some were not recorded')
+      return
+    }
+    try {
+      const resolved = await resolveSyncErrorsNotReportedByExport(
+        pgpQx(this.db),
+        PLATFORM,
+        job.exportStartedAt,
+      )
+      log.info({ jobId: job.id, resolved }, 'Resolved PCC sync errors no longer reported')
+    } catch (err) {
+      log.error({ jobId: job.id, err }, 'Failed to resolve PCC sync errors no longer reported')
     }
   }
 
@@ -425,6 +450,7 @@ export class PccProjectConsumer {
     try {
       await insertSyncError(this.db, externalProjectId, externalProjectSlug, errorType, details)
     } catch (err) {
+      this.syncErrorWriteFailed = true
       log.error(
         { err, externalProjectId, externalProjectSlug, errorType },
         'Failed to record sync error (best-effort)',
@@ -503,10 +529,10 @@ async function upsertSegment(
 ): Promise<void> {
   // Update all CDP segments whose sourceId equals this PCC PROJECT_ID.
   // Each PCC node has its own PROJECT_ID. In CDP, how many segment levels share this
-  // sourceId depends on the effective depth:
-  //   eff=1 → group+project+subproject all share the same PROJECT_ID (same name for all)
-  //   eff=2 → project+subproject share the leaf's PROJECT_ID; group has a different one
-  //   eff=3 or 4 → only the subproject segment carries this PROJECT_ID
+  // sourceId depends on how many PCC levels the leaf has:
+  //   1 (standalone) → group+project+subproject all share the same PROJECT_ID (same name for all)
+  //   2 → project+subproject share the leaf's PROJECT_ID; group has a different one
+  //   3 or more → only the subproject segment carries this PROJECT_ID
   // So this UPDATE always writes the correct name and never touches unrelated levels.
   await db.none(
     `UPDATE segments
@@ -595,7 +621,7 @@ async function upsertInsightsProject(
   // INSERT path. Two guards before writing:
   //
   // 1. Same-family skip: a group/project-level segment sharing this sourceId already holds the
-  //    canonical name (shallow eff=1/2 hierarchy). The family is already represented — skip the
+  //    canonical name (leaf with one or two PCC levels). The family is already represented — skip the
   //    INSERT without recording a conflict.
   const sameFamilyNameHolder = await db.oneOrNone(
     `SELECT 1

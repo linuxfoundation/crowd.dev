@@ -1,8 +1,5 @@
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
-import {
-  clearNangoCursorForModel,
-  getNangoMappingByConnectionId,
-} from '@crowd/data-access-layer/src/integrations'
+import { clearNangoCursorForModel } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
 import { INangoWebhookPayload, platformToNangoIntegration } from '@crowd/nango'
@@ -32,12 +29,7 @@ setImmediate(async () => {
   )
 
   if (integration) {
-    const qx = pgpQx(dbConnection)
-    const nangoMappingRow = await getNangoMappingByConnectionId(qx, connectionId)
-    if (
-      integration.id === connectionId ||
-      (nangoMappingRow && nangoMappingRow.integrationId === integration.id)
-    ) {
+    if (integration.id === connectionId) {
       log.info(
         `Triggering nango integration check for integrationId '${integrationId}' and connectionId '${connectionId}'!`,
       )

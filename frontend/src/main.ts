@@ -17,7 +17,7 @@ import { vueSanitizeOptions } from '@/shared/plugins/sanitize';
 import marked from '@/shared/plugins/marked';
 import { useLogRocket } from '@/utils/logRocket';
 import { initRUM } from '@/utils/datadog/rum';
-import { installAnalyticsStub, loadSegment, isRealSegmentKey } from '@/utils/segment';
+import { loadSegment, isRealSegmentKey } from '@/utils/segment';
 import { VueQueryPlugin } from '@tanstack/vue-query';
 import { queryClient } from '@/shared/queries/client';
 import type { marked as Marked } from 'marked';
@@ -35,7 +35,6 @@ declare module 'vue' {
  */
 /* eslint-disable no-param-reassign, no-underscore-dangle, func-names */
 (async function () {
-  installAnalyticsStub();
   if (isRealSegmentKey(config.segmentKey)) {
     loadSegment(config.segmentKey!);
   }

@@ -222,6 +222,7 @@ import { EventType, FeatureEventKey } from '@/shared/modules/monitoring/types/ev
 import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfSwitch from '@/ui-kit/switch/Switch.vue';
+import { analytics } from '@/utils/segment';
 
 defineOptions({
   name: 'LfSavedViewsForm',
@@ -428,7 +429,7 @@ const submit = (): void => {
       .then(() => {
         SavedViewsService.update((props.view as SavedView).id, data)
           .then(() => {
-            window.analytics.track('Custom view updated', {
+            analytics.track('Custom view updated', {
               placement: props.placement,
               name: form.name,
               visibility: form.shared ? 'tenant' : 'user',
@@ -470,7 +471,7 @@ const submit = (): void => {
         } else {
           ToastStore.success('View successfully created!');
         }
-        window.analytics.track('Custom view created', {
+        analytics.track('Custom view created', {
           placement: props.placement,
           name: form.name,
           visibility: form.shared ? 'tenant' : 'user',

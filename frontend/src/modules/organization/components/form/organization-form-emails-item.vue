@@ -30,14 +30,17 @@ import useVuelidate from '@vuelidate/core';
 import { email } from '@vuelidate/validators';
 import AppFormItem from '@/shared/form/form-item.vue';
 
-const props = defineProps({
-  modelValue: {
-    type: String,
-    default: '',
-  },
+defineOptions({
+  name: 'AppOrganizationFormEmailsItem',
 });
 
-const emit = defineEmits(['update:modelValue']);
+const props = withDefaults(defineProps<{
+  modelValue?: string;
+}>(), {
+  modelValue: '',
+});
+
+const emit = defineEmits<{(e: 'update:modelValue', value: string): void }>();
 
 defineSlots<{
   actions?:() => unknown;
@@ -57,10 +60,4 @@ const rules: ValidationArgs = {
 };
 
 const $v = useVuelidate(rules, model);
-</script>
-
-<script lang="ts">
-export default {
-  name: 'AppOrganizationFormEmailsItem',
-};
 </script>

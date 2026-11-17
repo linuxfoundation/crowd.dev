@@ -31,6 +31,7 @@ import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AppActivityList from '@/modules/activity/components/activity-list.vue';
 import AppLfPageHeader from '@/modules/lf/layout/components/lf-page-header.vue';
+import { analytics } from '@/utils/segment';
 
 const route = useRoute();
 const router = useRouter();
@@ -38,7 +39,7 @@ const router = useRouter();
 const activeView = ref('activity');
 
 onMounted(() => {
-  window.analytics.page('Activities');
+  analytics.page('Activities');
 });
 
 const changeView = (view: string) => {

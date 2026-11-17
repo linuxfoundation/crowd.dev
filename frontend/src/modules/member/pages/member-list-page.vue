@@ -111,6 +111,7 @@ import {
   watch,
 } from 'vue';
 import { filterApiService } from '@/shared/modules/filters/services/filter-api.service';
+import { analytics } from '@/utils/segment';
 import { memberFilters, memberSearchFilter } from '../config/filters/main';
 import { memberSavedViews, memberStaticViews } from '../config/saved-views/main';
 
@@ -256,7 +257,6 @@ watch(
 
 onMounted(() => {
   memberStore.getMemberCustomAttributes();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shortcut: untyped window.analytics. revisit: when it gets a global type
-  (window as any).analytics.page('Members');
+  analytics.page('Members');
 });
 </script>

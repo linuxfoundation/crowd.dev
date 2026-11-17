@@ -2,8 +2,8 @@
   <div class="c-dropdown__separator" />
 </template>
 
-<script lang="ts">
-export default {
+<script setup lang="ts">
+defineOptions({
   name: 'LfDropdownSeparator',
-};
+});
 </script>

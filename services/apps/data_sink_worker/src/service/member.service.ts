@@ -20,6 +20,7 @@ import {
   CommonMemberService,
   MEMBER_ORG_STINT_CHANGES_DATES_PREFIX,
   MEMBER_ORG_STINT_CHANGES_QUEUE,
+  getEarliestMemberJoinedAt,
 } from '@crowd/common_services'
 import { QueryExecutor, createMember, dbStoreQx, updateMember } from '@crowd/data-access-layer'
 import {
@@ -67,26 +68,6 @@ import {
   linkMemberOrganizations,
 } from './organizationLinking'
 import { createOrgLookupCache } from './orgLookupCache'
-
-// Integrations stamp activities without a date at 1970-01-01 (e.g. Slack channel members), which is
-// never a real join date, so a date this close to the epoch never wins
-const JOINED_AT_PLACEHOLDER_UNTIL = Date.UTC(1970, 0, 6)
-
-export function getEarliestMemberJoinedAt(current: Date, incoming: Date): Date {
-  const isPlaceholder = (date: Date) =>
-    Number.isNaN(date.getTime()) || date.getTime() < JOINED_AT_PLACEHOLDER_UNTIL
-
-  if (Number.isNaN(incoming.getTime())) {
-    return current
-  }
-  if (isPlaceholder(current)) {
-    return incoming
-  }
-  if (isPlaceholder(incoming)) {
-    return current
-  }
-  return incoming.getTime() < current.getTime() ? incoming : current
-}
 
 /**
  * Checks the memberNoMerge table and, if allowed, merges secondaryId into primaryId

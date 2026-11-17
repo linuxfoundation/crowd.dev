@@ -2,7 +2,6 @@ import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/d
 import {
   clearNangoCursors,
   findIntegrationDataForNangoWebhookProcessing,
-  getNangoMappingsForIntegrations,
 } from '@crowd/data-access-layer/src/integrations'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { getServiceLogger } from '@crowd/logging'
@@ -38,12 +37,7 @@ setImmediate(async () => {
 
       try {
         const toTrigger: string[] = []
-        if (integration.platform === PlatformType.GITHUB_NANGO) {
-          const allNangoMappings = await getNangoMappingsForIntegrations(pgpQx(dbConnection), [
-            integration.id,
-          ])
-          toTrigger.push(...Object.keys(allNangoMappings[integration.id] || {}))
-        } else if (integration.platform === PlatformType.GERRIT) {
+        if (integration.platform === PlatformType.GERRIT) {
           toTrigger.push(integration.id)
         } else {
           throw new Error(`Unsupported platform: ${integration.platform}!`)
