@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 
+import { runDeployed } from './deployed.ts'
 import { runTag } from './tag.ts'
 
 export type Handler = (env: NodeJS.ProcessEnv) => Promise<number>
@@ -27,6 +28,7 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv): Promise<numb
 }
 
 register('tag', runTag)
+register('deployed', runDeployed)
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   process.exit(await main(process.argv.slice(2), process.env))
