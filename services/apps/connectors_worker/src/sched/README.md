@@ -43,7 +43,8 @@ POD=$(kubectl get pods -o name | grep connectors-worker | head -1)
   op item get "Sched import keys" --vault "$VAULT" --format json \
     | jq -r '.fields[] | select(.type == "CONCEALED") | "\(.label)=\(.value)"'
 } | kubectl exec -i "$POD" -- \
-  pnpm run script:import-sched --stdin --events kccnceu2021 --dry-run
+  pnpm --dir /usr/crowd/app/services/apps/connectors_worker run script:import-sched \
+  --stdin --events kccnceu2021 --dry-run
 ```
 
 | Flags          | What it does                                                                                              |

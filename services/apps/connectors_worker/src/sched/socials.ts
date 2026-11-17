@@ -70,7 +70,7 @@ function linksIn(text: string): string[] {
     links.push(match[1])
   }
   for (const match of text.matchAll(
-    /(?<=^|[\s(>"'[])(?:https?:\/\/)?(?:[a-z]{2,6}\.)?(?:github\.com|linkedin\.com|twitter\.com|x\.com)\/[^\s"'<>),]+/gi,
+    /(?<=^|[\s(>"'[:;,|])(?:https?:\/\/)?(?:[a-z]{2,6}\.)?(?:github\.com|linkedin\.com|twitter\.com|x\.com)\/[^\s"'<>),]+/gi,
   )) {
     links.push(match[0].replace(/[.;:!?]+$/, ''))
   }

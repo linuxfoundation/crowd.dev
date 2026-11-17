@@ -40,6 +40,13 @@ describe('socialHandles', () => {
     })
   })
 
+  it('reads links written right after a label', () => {
+    expect(socialHandles(undefined, 'GitHub:https://github.com/octocat; X:x.com/jdoe')).toEqual({
+      [PlatformType.GITHUB]: 'octocat',
+      [PlatformType.TWITTER]: 'jdoe',
+    })
+  })
+
   it('does not read a handle from inside another domain or URL path', () => {
     expect(socialHandles(undefined, 'Files on dropbox.com/team and netflix.com/browse')).toEqual({})
     expect(
