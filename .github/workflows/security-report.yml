@@ -1,0 +1,58 @@
+name: Security report
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: read
+  actions: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # Repo-mode report. force_notify makes the action build its Slack payload on every
+      # run instead of only on its own report day; posting is gated on the channel below.
+      # The default GITHUB_TOKEN cannot read Dependabot alerts: set SECURITY_REPORT_TOKEN
+      # (fine-grained PAT with Dependabot alerts and Code scanning alerts read).
+      - id: report
+        uses: lfreleng-actions/github-security-report-action@7857efb3833b61ded532366a7e63d8d5f0c5e57d # v0.1.0
+        with:
+          scope: repo
+          token: ${{ secrets.SECURITY_REPORT_TOKEN || github.token }}
+          slack_channel: ${{ vars.SECURITY_SLACK_CHANNEL_ID }}
+          force_notify: "true"
+
+      # Our own digest: open alerts by severity and the ones past the SLA (critical 7 days, high 30 days).
+      - id: sla
+        uses: ./.github/actions/repo-automation
+        with:
+          command: security-sla
+          token: ${{ secrets.SECURITY_REPORT_TOKEN || github.token }}
+
+      # Message 1: the report action's prebuilt payload.
+      - if: ${{ vars.SECURITY_SLACK_CHANNEL_ID != '' && steps.report.outputs.should_notify == 'true' }}
+        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: ${{ steps.report.outputs.slack_payload }}
+
+      # Message 2: the SLA digest.
+      - if: ${{ vars.SECURITY_SLACK_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a # v2.1.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ toJSON(vars.SECURITY_SLACK_CHANNEL_ID) }}
+            text: ${{ toJSON(steps.sla.outputs.slack_text) }}
