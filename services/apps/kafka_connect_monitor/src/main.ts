@@ -12,7 +12,6 @@ setImmediate(async () => {
   const app = express()
 
   app.use('/health', async (req, res) => {
-    res.set('X-App-Version', process.env.APP_VERSION ?? 'unknown')
     res.sendStatus(200)
   })
 

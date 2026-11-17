@@ -43,7 +43,6 @@ setImmediate(async () => {
   })
 
   app.use('/health', async (req, res) => {
-    res.set('X-App-Version', process.env.APP_VERSION ?? 'unknown')
     try {
       const dbPingRes = await dbConnection
         .result('select 1')

@@ -186,7 +186,6 @@ setImmediate(async () => {
   app.use(authMiddleware)
 
   app.use('/health', async (req: any, res) => {
-    res.set('X-App-Version', process.env.APP_VERSION ?? 'unknown')
     try {
       const seq = SequelizeRepository.getSequelize(req)
 
