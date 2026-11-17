@@ -72,10 +72,11 @@ export async function scheduleNpmIngest(): Promise<void> {
   })
 }
 
+// npm publishes a day's counts around 10:00 UTC the next day, so a noon run stores yesterday.
 export async function scheduleDailyDownloadsBackfill(): Promise<void> {
   await createOrReconcileSchedule({
     scheduleId: 'npm-daily-downloads-backfill',
-    cron: '30 3 * * *',
+    cron: '0 12 * * *',
     catchupWindow: '1 hour',
     workflowType: backfillDailyDownloads,
   })
