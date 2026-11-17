@@ -18,11 +18,17 @@ env:
   ORACLE_KEY: ${{ secrets.ORACLE_KEY }}
   ORACLE_CLUSTER: ${{ secrets.ORACLE_CLUSTER }}
 
+permissions:
+  contents: write
+  deployments: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Install OCI
         run: |
@@ -37,3 +43,11 @@ jobs:
       - uses: ./.github/actions/node/builder
         with:
           services: ${{ github.event.inputs.services }}
+
+      - uses: ./.github/actions/repo-automation
+        with:
+          command: deployed
+          services: ${{ github.event.inputs.services }}
+          builders-dir: scripts/builders
+          deployment-environment: production
+          publish: "true"
