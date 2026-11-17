@@ -45,6 +45,7 @@ setImmediate(async () => {
   app.use(organizationRoutes)
 
   app.use('/health', async (req: ApiRequest, res) => {
+    res.set('X-App-Version', process.env.APP_VERSION ?? 'unknown')
     try {
       const [opensearchCheck, redisCheck, dbCheck] = await Promise.all([
         // ping opensearch
