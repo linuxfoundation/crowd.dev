@@ -19,6 +19,8 @@ export interface SchedUser {
   position?: string
   location?: string
   avatar?: string
+  url?: string
+  about?: string
 }
 
 export interface SchedRegistration {
@@ -46,7 +48,7 @@ export interface SchedEventData {
 
 type Row = Record<string, unknown>
 
-const USER_FIELDS = 'username,name,email,company,position,location,avatar'
+const USER_FIELDS = 'username,name,email,company,position,location,avatar,url,about'
 const SPEAKER_FIELDS = 'username,name,sessions'
 
 function text(value: unknown): string | undefined {
@@ -87,6 +89,8 @@ function toUser(row: Row): SchedUser | null {
     position: text(row.position),
     location: text(row.location),
     avatar: text(row.avatar),
+    url: text(row.url),
+    about: text(row.about),
   }
 }
 

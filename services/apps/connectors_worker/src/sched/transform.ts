@@ -17,6 +17,7 @@ import type {
   SchedSpeaker,
   SchedUser,
 } from './api'
+import { SocialPlatform, socialHandles } from './socials'
 
 export interface SchedEvent {
   subdomain: string
@@ -89,6 +90,15 @@ function buildMember(
       type: MemberIdentityType.EMAIL,
       verified: options.emailsVerified,
       ...(options.emailsVerified && { verifiedBy: PlatformType.SCHED }),
+    })
+  }
+  // Profile links the person typed in: kept unverified, so they never merge members on their own.
+  for (const [platform, handle] of Object.entries(socialHandles(user?.url, user?.about))) {
+    identities.push({
+      platform: platform as SocialPlatform,
+      value: handle,
+      type: MemberIdentityType.USERNAME,
+      verified: false,
     })
   }
 

@@ -128,6 +128,43 @@ describe('buildEventActivities', () => {
     ])
   })
 
+  it('adds GitHub, LinkedIn and X profile links as unverified identities', () => {
+    const [registration] = buildEventActivities(
+      event,
+      eventData({
+        users: [
+          {
+            username: 'jdoe',
+            url: 'https://github.com/janedoe',
+            about: 'Find me on <a href="https://www.linkedin.com/in/jane-doe">LinkedIn</a>',
+          },
+        ],
+      }),
+    ).activities
+
+    expect(registration.member?.identities).toEqual([
+      {
+        platform: PlatformType.SCHED,
+        value: 'jdoe',
+        type: MemberIdentityType.USERNAME,
+        verified: true,
+        verifiedBy: PlatformType.SCHED,
+      },
+      {
+        platform: PlatformType.GITHUB,
+        value: 'janedoe',
+        type: MemberIdentityType.USERNAME,
+        verified: false,
+      },
+      {
+        platform: PlatformType.LINKEDIN,
+        value: 'jane-doe',
+        type: MemberIdentityType.USERNAME,
+        verified: false,
+      },
+    ])
+  })
+
   it('keeps only the username without an email, using registration fields as fallback', () => {
     const [registration] = buildEventActivities(
       event,
