@@ -34,7 +34,8 @@ interface Outcome {
   reason?: string
 }
 
-function parseArgs(argv: string[]): Args {
+function parseArgs(rawArgv: string[]): Args {
+  const argv = rawArgv.filter((arg) => arg !== '--')
   const args: Args = { events: null, checkKeys: false, dryRun: false }
   let stdin = false
   for (let i = 0; i < argv.length; i++) {

@@ -110,13 +110,14 @@ function toRegistration(row: Row): SchedRegistration | null {
   }
 }
 
-function toSpeaker(row: Row): SchedSpeaker | null {
+export function toSpeaker(row: Row): SchedSpeaker | null {
   const username = text(row.username)
   if (!username) {
     return null
   }
-  const sessionIds = Array.isArray(row.sessions)
-    ? row.sessions.map(text).filter((id): id is string => !!id)
+  const sessions = typeof row.sessions === 'string' ? row.sessions.split(',') : row.sessions
+  const sessionIds = Array.isArray(sessions)
+    ? sessions.map(text).filter((id): id is string => !!id)
     : []
   return { username, name: text(row.name), sessionIds }
 }
