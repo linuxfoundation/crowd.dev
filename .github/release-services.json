@@ -89,6 +89,10 @@
       "services": ["organizations-enrichment-worker"]
     },
     {
+      "prefix": "services/apps/packages_worker/",
+      "services": ["packages"]
+    },
+    {
       "prefix": "services/apps/pcc_sync_worker/",
       "services": ["pcc-sync-worker"]
     },
@@ -115,6 +119,10 @@
     {
       "prefix": "services/apps/security_best_practices_worker/",
       "services": ["security-best-practices-worker"]
+    },
+    {
+      "prefix": "services/apps/snowflake_connectors/",
+      "services": ["snowflake-connectors-worker"]
     },
     {
       "prefix": "services/apps/star_snapshot_worker/",
