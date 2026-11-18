@@ -65,9 +65,9 @@ All entry points write to `packages-db`, a dedicated Postgres instance whose sch
 (`getPackagesDbConfig()` in `src/config.ts`). `bq-dataset-ingest` and `security-contacts-worker`
 also connect to the CDP database. npm, PyPI and Packagist keep progress in their own state tables (`npm_package_state`, which also holds the npm
 30-day download watermarks, `npm_worker_state`, `pypi_package_state` and
-`packagist_package_state`). Go and Cargo stamp `last_synced_at` on the rows they update. Go pages
-through packages with a cursor kept in the workflow, so each scheduled run starts from the first
-package. NuGet, RubyGems and Maven keep no separate progress table. Of the contributor syncs, the git activity sync keeps
+`packagist_package_state`). The other registry workers (Go, Cargo, NuGet,
+RubyGems, Maven) have no state table of their own; how each one picks up where it left off is in
+its workflow code. Of the contributor syncs, the git activity sync keeps
 progress in `repo_contributors_sync_state`, the GitHub sync records `github_contributors_checked_at`
 on `repos`, and the governance file sync keeps no progress and rescans on each run. Bootstrap runs
 are tracked in `osspckgs_ingest_jobs`.
