@@ -23,7 +23,7 @@ COPY ./services/apps/git_integration/src/crowdgit/services/software_value/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-w -s" -o software-value ./
 
 # Go builder stage 2: build the vulnerability-scanner binary
-FROM golang:1.25-alpine AS go-vuln-builder
+FROM golang:1.26-alpine AS go-vuln-builder
 
 WORKDIR /go/src/vulnerability-scanner
 
