@@ -45,16 +45,17 @@ One-off backfills, run by hand: `maven-backfill`, `maven-repo-url-backfill` and
 
 ## Sources
 
-| Source                     | Used by                                                                                                                                                               |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| deps.dev BigQuery datasets | `bq-dataset-ingest` (the package universe, versions, dependencies, package→project links); see [`deps-dev/README.md`](src/deps-dev/README.md)                         |
-| Registry APIs              | the npm, PyPI, Maven, Cargo, Go, NuGet, RubyGems and Packagist workers; see [`npm/README.md`](src/npm/README.md) and [`packagist/README.md`](src/packagist/README.md) |
-| OSV                        | `osv-worker` (advisories and affected ranges)                                                                                                                         |
-| OpenSSF Scorecard API      | the `scorecard` job kind in `bq-dataset-ingest`                                                                                                                       |
-| GitHub (App)               | `github-repos-enricher`, `dockerhub-sync` (finds Dockerfiles), `security-contacts-worker`                                                                             |
-| Docker Hub                 | `dockerhub-sync`                                                                                                                                                      |
-| An LLM on Amazon Bedrock   | security contacts, member contributors and blast radius                                                                                                               |
-| Tinybird                   | the git activity contributor sync in `security-contacts-worker` (commit contributor snapshot, `CROWD_PACKAGES_TB_TOKEN`)                                              |
+| Source                     | Used by                                                                                                                                                                           |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| deps.dev BigQuery datasets | `bq-dataset-ingest` (the package universe, versions, dependencies, package→project links); see [`deps-dev/README.md`](src/deps-dev/README.md)                                     |
+| Registry APIs              | the npm, PyPI, Maven, Cargo, Go, NuGet, RubyGems and Packagist workers; see [`npm/README.md`](src/npm/README.md) and [`packagist/README.md`](src/packagist/README.md)             |
+| OSV                        | `osv-worker` (advisories and affected ranges)                                                                                                                                     |
+| OpenSSF Scorecard API      | the `scorecard` job kind in `bq-dataset-ingest`                                                                                                                                   |
+| GitHub (App)               | `github-repos-enricher`, `dockerhub-sync` (finds Dockerfiles), `security-contacts-worker` (`CROWD_GITHUB_APP_ID`, `CROWD_GITHUB_PRIVATE_KEY`, `ENRICHER_GITHUB_INSTALLATION_IDS`) |
+| Docker Hub                 | `dockerhub-sync`                                                                                                                                                                  |
+| An LLM on Amazon Bedrock   | security contacts, member contributors and blast radius                                                                                                                           |
+| Tinybird                   | the git activity contributor sync in `security-contacts-worker` (commit contributor snapshot, `CROWD_PACKAGES_TB_TOKEN`)                                                          |
+| CDP database               | `bq-dataset-ingest` (Scorecard jobs read CDP's GitHub repositories) and `security-contacts-worker` (`CROWD_DB_*`)                                                                 |
 
 ## State
 

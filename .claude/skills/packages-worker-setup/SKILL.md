@@ -32,7 +32,8 @@ a no-op on a running stack: it also builds missing images and runs every pending
 under another project name.
 
 When resuming on a machine where `scaffold up` has run before, start only what this worker needs
-instead: `docker compose -p crowd -f scripts/scaffold.yaml up -d packages temporal`.
+instead: `docker compose -p crowd -f scripts/scaffold.yaml up -d packages temporal db`. `db` is the
+CDP database, which `bq-dataset-ingest` (Scorecard jobs) and `security-contacts-worker` read.
 
 ```bash
 ./scripts/cli scaffold up
