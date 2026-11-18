@@ -56,7 +56,7 @@ Entry points, task queues, schedules and how to run them are in
 | Ranking               | `package_criticality_spotlight` and the impact scores written by `rank_packages_chunked()`                                                                        |
 | Stewardship           | `stewardships`, `stewards`, `stewardship_assessments`, `stewardship_findings`, `stewardship_remediation_actions`, `stewardship_activity`                          |
 | Blast radius          | `blast_radius_analyses`, `blast_radius_dependents`, `blast_radius_verdicts`, `blast_radius_stage_runs`, `blast_radius_symbol_specs`                               |
-| Jobs and state        | `osspckgs_ingest_jobs`, `member_contributor_jobs`, and a state table per registry worker                                                                          |
+| Jobs and state        | `osspckgs_ingest_jobs`, `member_contributor_jobs`, and the npm, PyPI and Packagist state tables (other registry workers have none)                                |
 
 ## Public API
 
