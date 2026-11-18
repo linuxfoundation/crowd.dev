@@ -11,8 +11,9 @@ allowed-tools: Read, Bash, Edit, AskUserQuestion
 
 # packages-worker
 
-Get `packages_worker` running locally. All steps are idempotent — safe to run
-whether this is your first time or you're resuming after a break.
+Get `packages_worker` running locally. Every step can be re-run, but
+Step 1's `scaffold up` does more than start containers (it rebuilds images and runs every local
+migration), so when resuming use the lighter command in Step 1.
 
 ## Prerequisites check
 
