@@ -3,7 +3,7 @@
 Collects open source package data (registries, deps.dev, OSV, OpenSSF Scorecard, GitHub) into
 `packages-db` and runs the pipelines built on it: package→repository mapping, security contacts,
 criticality, stewardship, blast radius and member contributors. Everything in this folder is one
-npm package and one Docker image (`scripts/services/docker/Dockerfile.packages-worker`); each
+npm package and one Docker image (`scripts/services/docker/Dockerfile.packages`); each
 entry point under `src/bin/` runs as its own process.
 
 Where this fits in CDP, and what reads the data, is in
@@ -63,8 +63,15 @@ also connect to the CDP database. Each registry worker keeps its own progress in
 
 ## Running locally
 
-Use the `packages-worker-setup` skill to start `packages-db`, apply migrations and run a worker,
-and `packages-worker-add-entrypoint` to add a new one. Useful scripts:
+1. Start `packages-db` (port 5434) with the rest of the local infrastructure:
+   `./scripts/cli scaffold up`.
+2. Apply the `packages-db` migrations with the Flyway image in `backend/src/osspckgs/`; the
+   `packages-worker-setup` skill has the exact commands.
+3. Start an entry point, either in Docker with `DEV=1 ./scripts/cli service <entry-point> up`
+   (each one has `scripts/services/<entry-point>.yaml`, except `criticality-worker`), or directly
+   with `pnpm dev:<entry-point>:local` from this folder.
+
+Use the `packages-worker-add-entrypoint` skill to add a new entry point. Useful scripts:
 
 - `pnpm trigger-bootstrap:local [full|incremental] [ECOSYSTEMS]` starts a deps.dev bootstrap.
 - `pnpm monitor:osspckgs:local` shows active and recent bootstrap jobs.

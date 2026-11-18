@@ -17,12 +17,9 @@ whether this is your first time or you're resuming after a break.
 ## Prerequisites check
 
 ```bash
-git branch --show-current        # should be feat/track-packages
 docker info --format '{{.ServerVersion}}'
 pnpm --version
 ```
-
-If the branch is wrong: `git checkout feat/track-packages && pnpm i`.
 
 ## Step 1 — Start packages-db
 
@@ -62,8 +59,11 @@ To create a new migration:
 ## Step 3 — Start the worker
 
 ```bash
-DEV=1 ./scripts/cli service packages-worker up
+DEV=1 ./scripts/cli service <entry-point> up
 ```
+
+`<entry-point>` is one of the files in `scripts/services/` for this worker, such as
+`npm-worker` or `bq-dataset-ingest`; the full list is in `services/apps/packages_worker/README.md`.
 
 Dev mode uses hot reload — edits to `services/apps/packages_worker/src/` and
 `services/libs/*/src/` are picked up immediately without restarting.
@@ -72,16 +72,16 @@ Dev mode uses hot reload — edits to `services/apps/packages_worker/src/` and
 
 ```bash
 # Follow logs
-./scripts/cli service packages-worker logs
+./scripts/cli service <entry-point> logs
 
 # Stop
-./scripts/cli service packages-worker down
+./scripts/cli service <entry-point> down
 
 # Restart
-./scripts/cli service packages-worker restart
+./scripts/cli service <entry-point> restart
 
 # Check status
-./scripts/cli service packages-worker status
+./scripts/cli service <entry-point> status
 ```
 
 ## Going further

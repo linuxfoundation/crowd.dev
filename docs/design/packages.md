@@ -31,7 +31,9 @@ GitHub repositories and integrations, and `security-contacts-worker`, which runs
 contacts jobs and resolves contributors' organizations for member contributors. The public API
 reads `packages-db` directly and starts the on-demand jobs in the packages Temporal namespace.
 Tinybird gets a replica of the main tables, derives `ossPackages_enriched_ds` from them, and
-sends its enrichment fields back to `packages` through Kafka.
+sends its enrichment fields back to `packages` through Kafka. Tinybird is also an input: the git
+activity contributor sync in `security-contacts-worker` reads a commit contributor snapshot from
+Tinybird (`CROWD_PACKAGES_TB_TOKEN`) before writing to `packages-db`.
 
 ```mermaid
 flowchart LR
@@ -95,6 +97,7 @@ flowchart LR
     pdb -.->|replication| tb
     tb -.->|"enrichment, via Kafka"| pdb
     tb --> ins
+    tb -->|"contributor snapshot"| scw
 ```
 
 `github-repos-enricher` and `dockerhub-sync` are plain long-running loops, not Temporal workers,
