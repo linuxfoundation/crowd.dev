@@ -91,19 +91,28 @@ is overwritten and the worker polls the namespace those files set.
 
 ### On-demand jobs from a local API
 
-Workers connect with `CROWD_TEMPORAL_SERVER_URL` and `CROWD_TEMPORAL_NAMESPACE`; the API starts
-blast radius and member contributor jobs with `CROWD_PACKAGES_TEMPORAL_SERVER_URL` and
-`CROWD_PACKAGES_TEMPORAL_NAMESPACE`. For those jobs to reach a local worker, point the API at the
-same Temporal instance and namespace:
+The API starts blast radius and member contributor jobs with
+`CROWD_PACKAGES_TEMPORAL_SERVER_URL` and `CROWD_PACKAGES_TEMPORAL_NAMESPACE`, read from the backend
+env files. The worker must poll the same Temporal instance and namespace, and where its namespace
+comes from depends on how it was started:
 
-- set `CROWD_PACKAGES_TEMPORAL_NAMESPACE` in `backend/.env.override.local`;
+- **In Docker** (`./scripts/cli service <entry-point> up`): the service file sets
+  `CROWD_TEMPORAL_NAMESPACE` to `${CROWD_PACKAGES_TEMPORAL_NAMESPACE:-default}`. Compose fills
+  that in from your shell when you run the command, not from the backend env files, so the worker
+  polls `default` unless you export `CROWD_PACKAGES_TEMPORAL_NAMESPACE` first.
+- **With `pnpm dev:<entry-point>:local`**: the worker uses `CROWD_TEMPORAL_NAMESPACE` from the
+  backend env files.
+
+Then point the API at that namespace and Temporal instance:
+
+- set `CROWD_PACKAGES_TEMPORAL_NAMESPACE` in `backend/.env.override.local` to the namespace the
+  worker polls;
 - set `CROWD_PACKAGES_TEMPORAL_SERVER_URL` to the address the API can reach: `localhost:7233`
   when the API runs on the host, or `temporal:7233` in `backend/.env.override.composed` when it
   runs in Docker (the Docker API loads that file last).
 
-Do not change the `CROWD_TEMPORAL_*` values: every local CDP service reads them.
-`pnpm trigger-bootstrap:local` connects through `CROWD_TEMPORAL_*`, like the workers, so it needs
-no change.
+Do not change the `CROWD_TEMPORAL_*` values in the env files: every local CDP service reads them.
+`pnpm trigger-bootstrap:local` connects through `CROWD_TEMPORAL_*`, like a `pnpm` worker.
 
 ## Day-to-day commands
 
