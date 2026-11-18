@@ -73,9 +73,12 @@ also connect to the CDP database. Each registry worker keeps its own progress in
    `packages-worker-setup` skill has the exact commands.
 3. Start an entry point, either in Docker with `DEV=1 ./scripts/cli service <entry-point> up`
    (each one has `scripts/services/<entry-point>.yaml`, except `criticality-worker`), or directly
-   with `pnpm dev:<entry-point>:local` from this folder. The `pnpm` scripts do not set
-   `CROWD_TEMPORAL_NAMESPACE`; set it to the value of `CROWD_PACKAGES_TEMPORAL_NAMESPACE` so the
-   worker polls the namespace the API starts jobs in.
+   with `pnpm dev:<entry-point>:local` from this folder. The `pnpm` scripts load
+   `backend/.env.dist.local` and `backend/.env.override.local` after your shell, so a
+   `CROWD_TEMPORAL_NAMESPACE` set in the shell is overwritten and the worker polls the namespace
+   those files set. For the API's on-demand jobs to reach a worker started this way, set
+   `CROWD_PACKAGES_TEMPORAL_NAMESPACE` in `backend/.env.override.local` to that same namespace.
+   Do not change `CROWD_TEMPORAL_NAMESPACE` there: every local CDP service reads it.
 
 Use the `packages-worker-add-entrypoint` skill to add a new entry point. Useful scripts:
 
