@@ -1,4 +1,6 @@
 import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
 import * as readline from 'readline'
 
 // GDPR erasure from every Tinybird datasource. Run after erase-member.ts once Kafka Connect has
@@ -22,7 +24,7 @@ const SOURCE_TABLES = ['activities', 'maintainersInternal', 'memberIdentities', 
 const memberId = process.argv[2]?.toLowerCase()
 const TOKEN = process.env.TINYBIRD_TOKEN
 // the first run deletes the sources of these ids, so a rerun reads them from here
-const SAVED_IDS_FILE = `tinybird-erasure-${memberId}.json`
+const SAVED_IDS_FILE = path.join(os.tmpdir(), `tinybird-erasure-${memberId}.json`)
 
 if (process.argv.length !== 3 || !TOKEN) {
   console.error(
