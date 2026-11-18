@@ -60,7 +60,8 @@ function text(value: unknown): string | undefined {
 }
 
 export function rows(subdomain: string, path: string, body: unknown): Row[] {
-  // Sched answers `false`, not `[]`, when a list is empty (e.g. user/sessions with no sign-ups).
+  // Sched answers `false`, not `[]`, for an empty list (e.g. user/sessions with no sign-ups). Not in
+  // https://sched.com/api#user-sessions; seen on 11 events in the staging dry run (issue 952).
   if (body === false) {
     return []
   }
