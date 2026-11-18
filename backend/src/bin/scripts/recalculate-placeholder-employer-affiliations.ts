@@ -113,7 +113,7 @@ setImmediate(async () => {
     await Promise.all(
       chunk.map(async (memberId) => {
         try {
-          await signalMemberUpdate(temporal, memberId, { syncToOpensearch: true })
+          await signalMemberUpdate(temporal, memberId, 'script', { syncToOpensearch: true })
           await temporal.workflow.result(`${TemporalWorkflowId.MEMBER_UPDATE}/${memberId}`)
         } catch (err) {
           log.error({ memberId, err }, 'Failed to recalculate affiliations for member!')

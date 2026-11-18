@@ -748,7 +748,7 @@ export default class SegmentService extends LoggerBase {
     }
 
     for (const memberId of new Set(segmentOnlyMemberIds)) {
-      await signalMemberUpdate(this.options.temporal, memberId)
+      await signalMemberUpdate(this.options.temporal, memberId, 'ui-segment-update')
     }
   }
 

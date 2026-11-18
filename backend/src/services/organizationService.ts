@@ -1232,7 +1232,7 @@ export default class OrganizationService extends LoggerBase {
       }
 
       for (const memberId of segmentOnlyMemberIds) {
-        await signalMemberUpdate(this.options.temporal, memberId)
+        await signalMemberUpdate(this.options.temporal, memberId, 'ui-organization-update')
       }
 
       return record

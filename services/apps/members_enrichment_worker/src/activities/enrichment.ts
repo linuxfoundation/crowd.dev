@@ -779,7 +779,7 @@ export async function updateMemberUsingSquashedPayload(
   }
 
   if (affiliationNeedsRefresh && affectedOrgIds.length > 0) {
-    await signalMemberUpdate(svc.temporal, memberId, {
+    await signalMemberUpdate(svc.temporal, memberId, 'enrichment', {
       memberOrganizationIds: [...new Set(affectedOrgIds)],
       syncToOpensearch: true,
     })

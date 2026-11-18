@@ -80,7 +80,8 @@ Every recalculation goes through `signalMemberUpdate`
 `memberUpdate/<memberId>` workflow on the `profiles` task queue, so concurrent requests for a
 member coalesce into one pass. Callers include work-history and project-affiliation edits in
 `backend`, member updates, enrichment, the stint job, and `entity_merging_worker` after a merge or
-unmerge.
+unmerge. Each caller names a `MemberUpdateSource`; the refresh's log line lists the sources of the
+signals it coalesced, next to the rows it changed.
 
 The recalculation builds a timeline from work history, per-project affiliations and email
 domains, then updates `activityRelations` in batches of 5,000. It changes only Postgres; Sequin

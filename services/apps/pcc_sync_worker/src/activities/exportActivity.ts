@@ -29,9 +29,11 @@ function buildSourceQuery(): string {
       ps.mapped_project_name,
       ps.mapped_project_slug,
       ps.hierarchy_level,
+      ancestor.project_model AS mapped_project_model,
       s.segment_id
     FROM ANALYTICS.SILVER_DIM.PROJECTS p
     LEFT JOIN ANALYTICS.SILVER_DIM.PROJECT_SPINE ps ON ps.base_project_id = p.project_id
+    LEFT JOIN ANALYTICS.SILVER_DIM.PROJECTS ancestor ON ancestor.project_id = ps.mapped_project_id
     LEFT JOIN ANALYTICS.SILVER_DIM.ACTIVE_SEGMENTS s
       ON s.source_id = p.project_id
       AND s.project_type = 'subproject'

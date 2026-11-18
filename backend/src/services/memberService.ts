@@ -851,7 +851,7 @@ export default class MemberService extends LoggerBase {
       // Pass invalidateCache from options to control whether to clear list caches
       await invalidateMemberQueryCache(this.options.redis, [id], invalidateCache)
 
-      await signalMemberUpdate(this.options.temporal, id, {
+      await signalMemberUpdate(this.options.temporal, id, 'ui-member-update', {
         memberOrganizationIds: (data.organizations || []).map((o) => o.id),
         syncToOpensearch,
       })

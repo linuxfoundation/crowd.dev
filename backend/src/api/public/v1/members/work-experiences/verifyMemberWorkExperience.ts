@@ -105,7 +105,7 @@ export async function verifyMemberWorkExperience(req: Request, res: Response): P
 
       // Signal after commit so the workflow sees persisted changes
       if (!verified) {
-        await signalMemberUpdate(req.temporal, memberId, {
+        await signalMemberUpdate(req.temporal, memberId, 'api-work-experience', {
           memberOrganizationIds: [memberOrg.organizationId],
         })
       }
