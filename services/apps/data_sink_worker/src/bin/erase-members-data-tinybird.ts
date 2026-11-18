@@ -1,8 +1,43 @@
 import * as readline from 'readline'
 
-const TINYBIRD_API = 'https://api.us-west-2.aws.tinybird.co/v0'
+/**
+ * Member Data Erasure Script (Tinybird Analytics Platform)
+ *
+ * Removes a member's data from every Tinybird datasource that holds it, for GDPR erasure
+ * requests. It complements the database deletion script (erase-member.ts).
+ *
+ * Run it after erase-member.ts, once Sequin and Kafka Connect have caught up: otherwise the
+ * member's last events can still arrive in Tinybird afterwards. Avoid 01:25-02:30 UTC, when the
+ * served-layer merger copies run, and run it again after the next hourly copy to confirm.
+ *
+ * It lists the workspace's datasources and erases the member from:
+ * - activity datasources (id, sourceId and body columns) by the member's activity ids
+ * - maintainersInternal by the member's identity ids
+ * - member profile datasources (id, attributes and joinedAt columns) by id
+ * - every other datasource with a memberId column by memberId
+ * Raw sources go first, so no copy pipe can rebuild the member from a source that still has it.
+ * Each delete job is awaited; afterwards every datasource is counted again and deleted once more
+ * where the member is back or the count failed. Rows where the member is only the objectMemberId
+ * of someone else's activity are kept.
+ *
+ * Uses "Delete Data Selectively":
+ * https://www.tinybird.co/docs/classic/get-data-in/data-operations/replace-and-delete-data#delete-data-selectively
+ *
+ * USAGE:
+ *   TINYBIRD_TOKEN=<token> npx tsx src/bin/erase-members-data-tinybird.ts <memberId>
+ * The token must be able to list datasources, query them and delete from them.
+ *
+ * Exit codes: 0 erased everywhere, 1 error or the member is still there, 2 erased but some
+ * datasources could not be counted afterwards (the Query API's time limit), 3 cancelled.
+ */
 
-// Raw datasources the derived ones are built from; erased first so no copy can rebuild the member
+const TINYBIRD_API = 'https://api.us-west-2.aws.tinybird.co/v0'
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// ClickHouse caps query size (256 KiB by default), so long id lists go in chunks
+const IDS_PER_CONDITION = 1000
+const JOB_DEADLINE_MS = 60 * 60 * 1000
+
+// Raw sources, in deletion order: maintainersInternal before memberIdentities, members last
 const SOURCE_TABLES = [
   'activities',
   'activityRelations',
@@ -11,78 +46,26 @@ const SOURCE_TABLES = [
   'members',
 ]
 
-/**
- * Member Data Erasure Script (Tinybird Analytics Platform)
- *
- * This script removes member data from Tinybird datasources for GDPR compliance
- * and data deletion requests. It complements the database deletion script by
- * cleaning up analytical data stored in Tinybird.
- *
- * WHAT THIS SCRIPT DOES:
- * 1. Lists the workspace's datasources and finds every one that holds the member: a `memberId`
- *    column, or a member profile copy (`id`, `attributes` and `joinedAt` columns)
- * 2. Shows how many records each of them holds for the member and asks for confirmation
- * 3. Deletes from the raw sources first, then from every derived datasource, and waits for each
- *    delete job to finish
- * 4. Counts again and deletes once more where rows reappeared (a copy pipe that ran mid-way)
- *
- * TINYBIRD INTEGRATION:
- * Uses "Delete Data Selectively" API from Tinybird:
- * https://www.tinybird.co/docs/classic/get-data-in/data-operations/replace-and-delete-data#delete-data-selectively
- *
- * RAW SOURCES (deleted first, in this order):
- * 1. activities - Activities records (deleted by activityId retrieved from activityRelations)
- * 2. activityRelations - Activity relationship records (deleted by memberId)
- * 3. maintainersInternal - Repository maintainer records (deleted by identityId from member's identities)
- * 4. memberIdentities - Member identity records (deleted by memberId)
- * 5. members - Member profile data (deleted by id)
- *
- * DERIVED DATASOURCES:
- * Served-layer buckets, bucket MVs, cleaned buckets, aggregates and other copies keep their rows
- * after the raw sources are cleaned (copies carry rows forward, MVs never revisit old rows), so
- * every datasource with a `memberId` column is erased too, by memberId. Rows where the member is
- * only the objectMemberId of someone else's activity are kept.
- *
- * FOREIGN KEY HANDLING:
- * - maintainersInternal.identityId → memberIdentities.id
- *   Solution: Use subquery in delete condition - 'identityId IN (SELECT id FROM memberIdentities WHERE memberId = ?)'
- *
- * USAGE:
- *   npm run script erase-members-data-tinybird <memberId> <tinybirdToken>
- *
- * REQUIREMENTS:
- * - Tinybird token must be provided as command line argument
- * - Token must be able to list datasources and delete from them
- *
- * SAFETY FEATURES:
- * - Shows detailed deletion summary with record counts before proceeding
- * - Requires explicit user confirmation (y/N)
- * - Verifies afterwards that no datasource still holds the member
- */
+const memberId = process.argv[2]
+const TOKEN = process.env.TINYBIRD_TOKEN
 
-const args = process.argv.slice(2)
-
-if (args.length !== 2) {
-  console.error('Usage: erase-members-data-tinybird.ts <memberId> <tinybirdToken>')
+if (process.argv.length !== 3 || !TOKEN) {
+  console.error(
+    'Usage: TINYBIRD_TOKEN=<token> npx tsx src/bin/erase-members-data-tinybird.ts <memberId>',
+  )
   process.exit(1)
 }
 
-const memberId = args[0]
-const TOKEN = args[1]
-
-if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(memberId)) {
+if (!UUID.test(memberId)) {
   console.error(`Invalid member id: ${memberId}`)
   process.exit(1)
 }
 
 interface Deletion {
   table: string
-  condition: string
+  conditions: string[]
 }
 
-/**
- * Prompts the user for Y/n confirmation via command line input
- */
 async function promptConfirmation(message: string): Promise<boolean> {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -119,35 +102,42 @@ async function runQuery<T>(query: string): Promise<T[]> {
   return data.data || []
 }
 
-/**
- * Gets all activity IDs for a given member from activityRelations table
- */
-async function getActivityIds(memberId: string): Promise<string[]> {
-  const rows = await runQuery<{ activityId: string }>(
-    `SELECT DISTINCT activityId FROM activityRelations WHERE memberId = '${memberId}'`,
-  )
-  return rows.map((row) => row.activityId)
-}
-
-// null when the count fails (large tables can hit the Query API time limit)
-async function getRecordCount(table: string, condition: string): Promise<number | null> {
-  try {
-    const rows = await runQuery<{ count: number }>(
-      `SELECT count() AS count FROM ${table} WHERE ${condition}`,
-    )
-    return Number(rows[0]?.count || 0)
-  } catch (err) {
-    console.warn(`Counting ${table} failed: ${err.message}`)
-    return null
+async function selectIds(query: string): Promise<string[]> {
+  const ids = (await runQuery<{ id: string }>(query)).map((row) => row.id)
+  const invalid = ids.find((id) => !UUID.test(id))
+  if (invalid) {
+    throw new Error(`Unexpected id ${invalid} from: ${query}`)
   }
+  return ids
 }
 
-/**
- * Lists every datasource that holds the member: a memberId column, or a member profile copy
- * (id, attributes and joinedAt columns, like members). Raw sources come first, in SOURCE_TABLES
- * order, so derived copies can't be rebuilt from a source that still has the member.
- */
-async function planDeletions(activityIds: string[]): Promise<Deletion[]> {
+function idConditions(column: string, ids: string[]): string[] {
+  const conditions: string[] = []
+  for (let i = 0; i < ids.length; i += IDS_PER_CONDITION) {
+    const chunk = ids.slice(i, i + IDS_PER_CONDITION)
+    conditions.push(`${column} IN (${chunk.map((id) => `'${id}'`).join(', ')})`)
+  }
+  return conditions
+}
+
+// null when a count fails (large tables can hit the Query API time limit)
+async function countRecords({ table, conditions }: Deletion): Promise<number | null> {
+  let total = 0
+  for (const condition of conditions) {
+    try {
+      const rows = await runQuery<{ count: number }>(
+        `SELECT count() AS count FROM ${table} WHERE ${condition}`,
+      )
+      total += Number(rows[0]?.count || 0)
+    } catch (err) {
+      console.warn(`Counting ${table} failed: ${(err as Error).message}`)
+      return null
+    }
+  }
+  return total
+}
+
+async function planDeletions(activityIds: string[], identityIds: string[]): Promise<Deletion[]> {
   const response = await tinybirdRequest('/datasources')
   if (!response.ok) {
     throw new Error(`Listing datasources failed (${response.status}): ${await response.text()}`)
@@ -157,33 +147,47 @@ async function planDeletions(activityIds: string[]): Promise<Deletion[]> {
     datasources: { name: string; columns?: { name: string }[] }[]
   }
 
-  const conditions = new Map<string, string>()
-  for (const datasource of datasources) {
-    const columns = new Set((datasource.columns || []).map((c) => c.name))
+  const byMember = `memberId = '${memberId}'`
+  const plan = new Map<string, string[]>()
+  const activityTables: string[] = []
 
-    if (datasource.name === 'activities') {
-      if (activityIds.length > 0) {
-        conditions.set('activities', `id IN (${activityIds.map((id) => `'${id}'`).join(', ')})`)
-      }
-    } else if (datasource.name === 'maintainersInternal') {
-      conditions.set(
-        'maintainersInternal',
-        `identityId IN (SELECT id FROM memberIdentities WHERE memberId = '${memberId}')`,
-      )
-    } else if (columns.has('memberId')) {
-      conditions.set(datasource.name, `memberId = '${memberId}'`)
-    } else if (columns.has('id') && columns.has('attributes') && columns.has('joinedAt')) {
-      conditions.set(datasource.name, `id = '${memberId}'`)
+  for (const { name, columns } of datasources) {
+    // shared from another workspace: not ours to delete from
+    if (name.includes('.')) {
+      continue
+    }
+
+    const names = new Set((columns || []).map((c) => c.name))
+    if (names.has('id') && names.has('sourceId') && names.has('body')) {
+      activityTables.push(name)
+      const conditions = idConditions('id', activityIds)
+      plan.set(name, names.has('memberId') ? [...conditions, byMember] : conditions)
+    } else if (name === 'maintainersInternal') {
+      plan.set(name, idConditions('identityId', identityIds))
+    } else if (names.has('memberId')) {
+      plan.set(name, [byMember])
+    } else if (names.has('id') && names.has('attributes') && names.has('joinedAt')) {
+      plan.set(name, [`id = '${memberId}'`])
     }
   }
 
-  const sources = SOURCE_TABLES.filter((table) => conditions.has(table))
-  const derived = [...conditions.keys()].filter((table) => !SOURCE_TABLES.includes(table)).sort()
+  // activity copies only derive from activities, so they go with the raw sources
+  const first = [
+    'activities',
+    ...activityTables.filter((table) => table !== 'activities').sort(),
+    ...SOURCE_TABLES.filter((table) => table !== 'activities'),
+  ]
+  const order = [...first, ...[...plan.keys()].filter((table) => !first.includes(table)).sort()]
 
-  return [...sources, ...derived].map((table) => ({ table, condition: conditions.get(table) }))
+  return order
+    .filter((table) => (plan.get(table) || []).length > 0)
+    .map((table) => ({ table, conditions: plan.get(table) as string[] }))
 }
 
-async function waitForJob(jobId: string): Promise<void> {
+async function waitForJob(jobId: string, table: string): Promise<void> {
+  const started = Date.now()
+  let lastLog = started
+
   for (;;) {
     const response = await tinybirdRequest(`/jobs/${jobId}`)
     if (!response.ok) {
@@ -195,54 +199,102 @@ async function waitForJob(jobId: string): Promise<void> {
       return
     }
     if (job.status === 'error' || job.status === 'cancelled') {
-      throw new Error(`Job ${jobId} ended with ${job.status}: ${job.error || ''}`)
+      throw new Error(
+        `Delete job ${jobId} on ${table} ended with ${job.status}: ${job.error || ''}`,
+      )
+    }
+    if (Date.now() - started > JOB_DEADLINE_MS) {
+      throw new Error(`Delete job ${jobId} on ${table} still ${job.status} after 60 minutes`)
+    }
+    if (Date.now() - lastLog > 60_000) {
+      console.log(`  ${table}: job ${jobId} ${job.status}`)
+      lastLog = Date.now()
     }
 
     await new Promise((resolve) => setTimeout(resolve, 5000))
   }
 }
 
-async function deleteFromDataSource({ table, condition }: Deletion): Promise<void> {
-  console.log(`Deleting from ${table} where ${condition}`)
+async function deleteFrom({ table, conditions }: Deletion): Promise<void> {
+  for (const condition of conditions) {
+    console.log(`Deleting from ${table} where ${condition.slice(0, 100)}`)
 
-  const response = await tinybirdRequest(`/datasources/${table}/delete`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ delete_condition: condition }),
-  })
+    const response = await tinybirdRequest(`/datasources/${encodeURIComponent(table)}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ delete_condition: condition }),
+    })
 
-  const text = await response.text()
-  if (!response.ok) {
-    throw new Error(`Delete failed for table ${table}: ${text}`)
-  }
+    const text = await response.text()
+    if (!response.ok) {
+      throw new Error(`Delete failed for table ${table}: ${text}`)
+    }
 
-  const { job_id: jobId } = JSON.parse(text) as { job_id?: string }
-  if (jobId) {
-    await waitForJob(jobId)
+    const { job_id: jobId } = JSON.parse(text) as { job_id?: string }
+    if (!jobId) {
+      throw new Error(`Delete on ${table} returned no job: ${text}`)
+    }
+    await waitForJob(jobId, table)
   }
   console.log(`Deleted from ${table}`)
 }
 
-async function countRemaining(deletions: Deletion[]): Promise<Map<string, number | null>> {
+async function countAll(deletions: Deletion[]): Promise<Map<string, number | null>> {
   const counts = new Map<string, number | null>()
   for (const deletion of deletions) {
-    counts.set(deletion.table, await getRecordCount(deletion.table, deletion.condition))
+    counts.set(deletion.table, await countRecords(deletion))
   }
   return counts
 }
 
-async function main() {
-  console.log('Getting activity IDs for member...')
-  const activityIds = await getActivityIds(memberId)
-  console.log(`Found ${activityIds.length} activities`)
+// Only activities whose newest relation version still belongs to the member: an older version of
+// an activity a merge moved to another member must not take that member's activity along
+async function currentActivityIds(): Promise<string[]> {
+  const rows = await runQuery<{ activityId: string; segmentId: string; timestamp: string }>(
+    `SELECT DISTINCT activityId, segmentId, toString(timestamp) AS timestamp
+     FROM activityRelations WHERE memberId = '${memberId}'`,
+  )
+  const latest = new Map<string, { memberId: string; updatedAt: string }>()
 
-  const deletions = await planDeletions(activityIds)
-  const counts = await countRemaining(deletions)
+  for (let i = 0; i < rows.length; i += IDS_PER_CONDITION) {
+    const chunk = rows.slice(i, i + IDS_PER_CONDITION)
+    for (const row of chunk) {
+      if (!UUID.test(row.activityId) || !UUID.test(row.segmentId)) {
+        throw new Error(`Unexpected relation ${JSON.stringify(row)}`)
+      }
+    }
+    const segments = [...new Set(chunk.map((row) => `'${row.segmentId}'`))].join(', ')
+    const timestamps = [...new Set(chunk.map((row) => `'${row.timestamp}'`))].join(', ')
+    const ids = chunk.map((row) => `'${row.activityId}'`).join(', ')
+
+    const versions = await runQuery<{ activityId: string; memberId: string; updatedAt: string }>(
+      `SELECT activityId, memberId, toString(updatedAt) AS updatedAt FROM activityRelations
+       WHERE segmentId IN (${segments}) AND timestamp IN (${timestamps}) AND activityId IN (${ids})`,
+    )
+    for (const version of versions) {
+      const current = latest.get(version.activityId)
+      if (!current || version.updatedAt > current.updatedAt) {
+        latest.set(version.activityId, version)
+      }
+    }
+  }
+
+  return [...latest].filter(([, version]) => version.memberId === memberId).map(([id]) => id)
+}
+
+async function main() {
+  const activityIds = await currentActivityIds()
+  const identityIds = await selectIds(
+    `SELECT DISTINCT id FROM memberIdentities WHERE memberId = '${memberId}'`,
+  )
+  console.log(`Found ${activityIds.length} activities and ${identityIds.length} identities`)
+
+  const deletions = await planDeletions(activityIds, identityIds)
+  const counts = await countAll(deletions)
 
   console.log(`\n=== TINYBIRD DELETION SUMMARY FOR MEMBER ${memberId} ===`)
-  for (const { table, condition } of deletions) {
-    const count = counts.get(table)
-    console.log(`- ${count ?? 'unknown'} records from ${table} (${condition.slice(0, 80)})`)
+  for (const { table } of deletions) {
+    console.log(`- ${counts.get(table) ?? 'unknown'} records from ${table}`)
   }
 
   const toDelete = deletions.filter(({ table }) => counts.get(table) !== 0)
@@ -256,33 +308,37 @@ async function main() {
   )
   if (!proceed) {
     console.log('Deletion cancelled by user')
-    process.exit(0)
+    process.exit(3)
   }
 
   for (const deletion of toDelete) {
-    await deleteFromDataSource(deletion)
+    await deleteFrom(deletion)
   }
 
-  const remaining = [...(await countRemaining(deletions))].filter(([, count]) => count > 0)
-  for (const [table] of remaining) {
-    console.log(`${table} holds the member again, deleting once more`)
-    await deleteFromDataSource(deletions.find((deletion) => deletion.table === table))
+  const afterFirstPass = await countAll(deletions)
+  for (const deletion of deletions.filter(({ table }) => afterFirstPass.get(table) !== 0)) {
+    console.log(
+      `${deletion.table}: deleting once more (count ${afterFirstPass.get(deletion.table) ?? 'unknown'})`,
+    )
+    await deleteFrom(deletion)
   }
 
-  const final = await countRemaining(deletions)
-  const left = [...final].filter(([, count]) => count > 0)
+  const final = await countAll(deletions)
+  const left = [...final].filter(([, count]) => count !== null && count > 0)
   const unverified = [...final].filter(([, count]) => count === null).map(([table]) => table)
+
   for (const [table, count] of left) {
     console.error(`${table} still holds ${count} records of the member`)
-  }
-  if (unverified.length > 0) {
-    console.warn(`Deleted but could not count afterwards: ${unverified.join(', ')}`)
   }
   if (left.length > 0) {
     process.exit(1)
   }
+  if (unverified.length > 0) {
+    console.warn(`Deleted twice but could not count afterwards: ${unverified.join(', ')}`)
+    process.exit(2)
+  }
 
-  console.log(`\nMember ${memberId} is gone from every datasource that could be counted`)
+  console.log(`\nMember ${memberId} is gone from every Tinybird datasource`)
 }
 
 main().catch((err) => {
