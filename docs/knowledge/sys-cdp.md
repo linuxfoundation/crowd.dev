@@ -69,12 +69,12 @@ Background on the data model is in [`member-identity.md`](member-identity.md).
 
 ## Signals and scoring
 
-| Service                          | Kind     | Role                                                                                                                                                                                                                      |
-| -------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages_worker`                | Temporal | Package ecosystem data. One package, many entry points under `src/bin/`: npm, PyPI, Maven, Cargo, Go, NuGet, RubyGems, Packagist, OSV, Docker Hub, BigQuery ingest, criticality, blast radius, security contacts and more |
-| `security_best_practices_worker` | Temporal | OSPS Baseline security checks. Insights starts `upsertOSPSBaselineSecurityInsights` here                                                                                                                                  |
-| `docs_readiness_worker`          | Temporal | Documentation readiness scoring. Insights starts `processProjectDocsReadiness` here                                                                                                                                       |
-| `star_snapshot_worker`           | Temporal | Captures and backfills repository star history                                                                                                                                                                            |
+| Service                          | Kind     | Role                                                                                                                                                                                                                                                                |
+| -------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages_worker`                | Temporal | Package ecosystem data. One package, many entry points under `src/bin/`: npm, PyPI, Maven, Cargo, Go, NuGet, RubyGems, Packagist, OSV, Docker Hub, BigQuery ingest, criticality, blast radius, security contacts and more See [`sys-packages.md`](sys-packages.md). |
+| `security_best_practices_worker` | Temporal | OSPS Baseline security checks. Insights starts `upsertOSPSBaselineSecurityInsights` here                                                                                                                                                                            |
+| `docs_readiness_worker`          | Temporal | Documentation readiness scoring. Insights starts `processProjectDocsReadiness` here                                                                                                                                                                                 |
+| `star_snapshot_worker`           | Temporal | Captures and backfills repository star history                                                                                                                                                                                                                      |
 
 The two workflows Insights starts are part of the cross-repo contract; see the
 [downstream consumer section in `AGENTS.md`](../../AGENTS.md#downstream-consumer-lfx-insights).
