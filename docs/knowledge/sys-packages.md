@@ -84,8 +84,10 @@ Temporal namespace, so the API starts these workflows with a separate client
   advisory and dependency datasources (security); `project_insights_impact_breakdown_copy` uses
   `packageRepos` and `ossPackages_enriched_ds`. `packageRepos` is what ties a package to a
   repository an Insights project tracks.
-- Member contributor reports resolve contributors' organizations with CDP's affiliation data
-  (`identity_affiliations`), and `osspckgs/akritesMembers.ts` holds the hard-coded list of Akrites
+- Member contributor reports work out each contributor's organization from CDP's affiliations
+  (read from the CDP database), the email domain and the GitHub company field, keep the best match,
+  and cache it per identity in `packages-db` (`identity_affiliations`, a derived cache, not CDP
+  data). `osspckgs/akritesMembers.ts` holds the hard-coded list of Akrites
   member organizations, by CDP organization ID, that those reports filter on.
 
 ## Decisions
