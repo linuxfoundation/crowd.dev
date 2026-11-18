@@ -3,6 +3,8 @@ DESCRIPTION >
     replacing it. Unlike cdp_member_segment_aggregates_MV, which counts every write of a relation,
     this counts each activity once and follows moves and merges. Relations deleted in Postgres stay in
     the served layer, so they are still counted.
+    Don't run it in production until member erasure covers the served layer and this datasource
+    (linuxfoundation/lfx-cdp-insights-ops#1178).
 
 NODE cdp_member_segment_aggregates_v2_copy_0
 SQL >
