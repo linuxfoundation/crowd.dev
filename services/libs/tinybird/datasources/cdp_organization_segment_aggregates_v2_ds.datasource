@@ -1,0 +1,16 @@
+SCHEMA >
+    `segmentId` String,
+    `organizationId` String,
+    `tenantId` String,
+    `joinedAtState` AggregateFunction(min, DateTime64(3)),
+    `lastActiveState` AggregateFunction(max, DateTime64(3)),
+    `activeOnState` AggregateFunction(groupArrayDistinct, String),
+    `activityCountState` AggregateFunction(count, String),
+    `memberCountState` AggregateFunction(countDistinct, String),
+    `avgContributorEngagement` AggregateFunction(avg, Int8),
+    `lastActivityUpdatedAtState` AggregateFunction(max, DateTime64(3)),
+    `updatedAt` DateTime64(3)
+
+ENGINE AggregatingMergeTree
+ENGINE_PARTITION_KEY toYear(updatedAt)
+ENGINE_SORTING_KEY segmentId, organizationId

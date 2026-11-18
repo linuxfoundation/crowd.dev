@@ -1,0 +1,28 @@
+DESCRIPTION >
+    Recomputes the member segment aggregates from the deduplicated served layer into cdp_member_segment_aggregates_v2_ds,
+    replacing it. Unlike cdp_member_segment_aggregates_MV, which counts every write of a relation,
+    this counts each activity once and follows moves and merges. Relations deleted in Postgres stay in
+    the served layer, so they are still counted.
+    Don't run it in production until member erasure covers the served layer and this datasource
+    (linuxfoundation/lfx-cdp-insights-ops#1178).
+
+NODE cdp_member_segment_aggregates_v2_copy_0
+SQL >
+    SELECT
+        segmentId,
+        memberId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        countState(activityId) AS activityCountState,
+        maxState(timestamp) AS lastActiveState,
+        groupArrayDistinctState(type) AS activityTypesState,
+        groupArrayDistinctState(platform) AS activeOnState,
+        avgState(sentimentScore) AS averageSentimentState,
+        maxState(act.updatedAt) as lastActivityUpdatedAtState,
+        max(act.updatedAt) as updatedAt
+    FROM activityRelations_enriched_deduplicated_bucket_union act
+    GROUP BY segmentId, memberId
+
+TYPE COPY
+TARGET_DATASOURCE cdp_member_segment_aggregates_v2_ds
+COPY_MODE replace
+COPY_SCHEDULE @on-demand
