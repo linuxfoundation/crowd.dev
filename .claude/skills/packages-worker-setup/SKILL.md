@@ -23,8 +23,8 @@ pnpm --version
 
 ## Step 1 — Start packages-db and Temporal
 
-No-op if already running. Temporal-backed entry points (all except `github-repos-enricher`
-and `dockerhub-sync`) fail to start until Temporal accepts connections; give it a few seconds
+No-op if already running. Temporal-backed entry points (all except `github-repos-enricher`,
+`dockerhub-sync` and `criticality-worker`) fail to start until Temporal accepts connections; give it a few seconds
 after the first start.
 
 ```bash
