@@ -101,7 +101,7 @@ docker ps --filter name=<entry-point>-dev
 
 ## Troubleshooting
 
-| Symptom                             | Likely cause       | Fix                                                      |
-| ----------------------------------- | ------------------ | -------------------------------------------------------- |
+| Symptom                             | Likely cause       | Fix                         |
+| ----------------------------------- | ------------------ | --------------------------- |
 | `Connection refused` on packages-db | Docker not running | `./scripts/cli scaffold up` |
-| `permission denied: scripts/cli`    | CLI not executable | `chmod +x scripts/cli`                                   |
+| `permission denied: scripts/cli`    | CLI not executable | `chmod +x scripts/cli`      |
