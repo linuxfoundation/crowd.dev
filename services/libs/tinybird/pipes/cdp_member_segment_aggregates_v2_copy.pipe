@@ -17,7 +17,7 @@ SQL >
         maxState(timestamp) AS lastActiveState,
         groupArrayDistinctState(concat(platform, ':', type)) AS activityTypesState,
         groupArrayDistinctState(platform) AS activeOnState,
-        avgStateIf(sentimentScore, sentimentScore >= 0) AS averageSentimentState,
+        avgStateIf(sentimentScore, sentimentScore != -1) AS averageSentimentState,
         maxState(act.updatedAt) as lastActivityUpdatedAtState,
         max(act.updatedAt) as updatedAt
     FROM activityRelations_enriched_deduplicated_bucket_union act
