@@ -80,9 +80,12 @@ also connect to the CDP database. Each registry worker keeps its own progress in
    those files set. Workers connect with `CROWD_TEMPORAL_SERVER_URL` and
    `CROWD_TEMPORAL_NAMESPACE`; the API starts on-demand jobs with
    `CROWD_PACKAGES_TEMPORAL_SERVER_URL` and `CROWD_PACKAGES_TEMPORAL_NAMESPACE`. For those jobs to
-   reach a worker started this way, set the two `CROWD_PACKAGES_TEMPORAL_*` values in
-   `backend/.env.override.local` to the same server and namespace. Do not change the
-   `CROWD_TEMPORAL_*` values there: every local CDP service reads them. `pnpm trigger-bootstrap:local`
+   reach a worker started this way, point the API at the same Temporal instance and namespace:
+   set `CROWD_PACKAGES_TEMPORAL_NAMESPACE` in `backend/.env.override.local`, and set
+   `CROWD_PACKAGES_TEMPORAL_SERVER_URL` to the address the API can reach, `localhost:7233` when
+   the API runs on the host or `temporal:7233` in `backend/.env.override.composed` when it runs in
+   Docker (the Docker API loads that file last). Do not change the `CROWD_TEMPORAL_*` values: every
+   local CDP service reads them. `pnpm trigger-bootstrap:local`
    connects through `CROWD_TEMPORAL_*`, like the workers, so it needs no change.
 
 Use the `packages-worker-add-entrypoint` skill to add a new entry point. Useful scripts:
