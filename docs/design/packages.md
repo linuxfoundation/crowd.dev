@@ -141,4 +141,6 @@ fails to start marks its job failed (`submitMemberContributorsJob.ts`).
 One exception to the read path above: for member contributor jobs that resolve repositories with
 an LLM (`collectionPath` `llm_repo_resolution`), polling returns the Temporal workflow result
 instead of reading `packages-db`, so a completed job can fail as expired once its workflow history
-is gone (`getMemberContributorsJob.ts`).
+is gone (`getMemberContributorsJob.ts`). For the same reason, resubmitting such a package returns 409 with the earlier job's ID while
+that job's workflow result is still readable, and is accepted again once it has expired
+(`submitMemberContributorsJob.ts`).
