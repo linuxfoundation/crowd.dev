@@ -79,7 +79,8 @@ Temporal namespace, so the API starts these workflows with a separate client
 ## Links to the rest of CDP
 
 - Insights reads packages data through Tinybird: the v2 health score pipes use `packageRepos`
-  (lifecycle, development), `packageDownloads` and `ossPackages_enriched_ds` (impact), and the
+  (lifecycle, development), `ossPackages_enriched_ds`
+  joined through `packageRepos` (impact), and the
   advisory and dependency datasources (security); `project_insights_impact_breakdown_copy` uses
   `packageRepos` and `ossPackages_enriched_ds`. `packageRepos` is what ties a package to a
   repository an Insights project tracks.
