@@ -20,6 +20,9 @@ migration), so when resuming use the lighter command in Step 1.
 ```bash
 docker info --format '{{.ServerVersion}}'
 pnpm --version
+python3 --version   # scaffold up installs the Tinybird CLI in a venv
+jq --version        # scaffold up reads the local Tinybird token with jq
+curl --version
 ```
 
 ## Step 1 — Start packages-db and Temporal
@@ -32,8 +35,11 @@ a no-op on a running stack: it also builds missing images and runs every pending
 under another project name.
 
 When resuming on a machine where `scaffold up` has run before, start only what this worker needs
-instead: `docker compose -p crowd -f scripts/scaffold.yaml up -d packages temporal db`. `db` is the
-CDP database, which `bq-dataset-ingest` (Scorecard jobs) and `security-contacts-worker` read.
+instead: `docker compose --compatibility -p crowd -f scripts/scaffold.yaml up -d packages temporal db`.
+`db` is the CDP database, which `bq-dataset-ingest` (Scorecard jobs) and `security-contacts-worker`
+read. Keep `--compatibility`: the CLI starts the stack with it and later finds containers by
+those names (`crowd_packages_1`, `crowd_db_1`), so containers created without it make
+`scaffold up` migrations fail.
 
 ```bash
 ./scripts/cli scaffold up
