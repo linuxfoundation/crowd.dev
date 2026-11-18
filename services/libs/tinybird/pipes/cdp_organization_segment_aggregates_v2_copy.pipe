@@ -1,0 +1,26 @@
+DESCRIPTION >
+    Recomputes the organization segment aggregates from the deduplicated served layer into cdp_organization_segment_aggregates_v2_ds,
+    replacing it. Unlike cdp_organization_segment_aggregates_MV, which counts every write of a relation,
+    this counts each activity once and reflects moves, merges and deletes.
+
+NODE cdp_organization_segment_aggregates_v2_copy_0
+SQL >
+    SELECT
+        segmentId,
+        organizationId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        minState(timestamp) as joinedAtState,
+        maxState(timestamp) AS lastActiveState,
+        groupArrayDistinctState(platform) AS activeOnState,
+        countState(activityId) AS activityCountState,
+        countDistinctState(memberId) as memberCountState,
+        avgState(score) AS avgContributorEngagement,
+        maxState(act.updatedAt) as lastActivityUpdatedAtState,
+        max(act.updatedAt) as updatedAt
+    FROM activityRelations_enriched_deduplicated_bucket_union act
+    GROUP BY segmentId, organizationId
+
+TYPE COPY
+TARGET_DATASOURCE cdp_organization_segment_aggregates_v2_ds
+COPY_MODE replace
+COPY_SCHEDULE @on-demand
