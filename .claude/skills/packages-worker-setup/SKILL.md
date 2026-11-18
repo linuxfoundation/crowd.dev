@@ -27,8 +27,11 @@ pnpm --version
 infrastructure, including `packages` and `temporal`, under the `crowd` Compose project. It is not
 a no-op on a running stack: it also builds missing images and runs every pending local migration
 (CDP Postgres, product DB, `packages-db` and Tinybird) plus the Nango setup. Running
-`docker compose -f scripts/scaffold.yaml` directly would start a second stack under another
-project name.
+`docker compose -f scripts/scaffold.yaml` directly, without `-p crowd`, would start a second stack
+under another project name.
+
+When resuming on a machine where `scaffold up` has run before, start only what this worker needs
+instead: `docker compose -p crowd -f scripts/scaffold.yaml up -d packages temporal`.
 
 ```bash
 ./scripts/cli scaffold up
