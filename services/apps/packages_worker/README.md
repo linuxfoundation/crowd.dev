@@ -18,7 +18,7 @@ Each script below is `pnpm start:<name>` (production) or `pnpm dev:<name>:local`
 `backend/.env.*.local`). A Temporal entry point registers its schedules on start and then serves
 its task queue. These workers use their own Temporal namespace, separate from the rest of CDP:
 each one reads `CROWD_TEMPORAL_NAMESPACE`, which the service files in `scripts/services/` set to
-`CROWD_PACKAGES_TEMPORAL_NAMESPACE`. The public API starts jobs in
+`CROWD_PACKAGES_TEMPORAL_NAMESPACE` from the shell that runs the CLI (`default` when unset). The public API starts jobs in
 `CROWD_PACKAGES_TEMPORAL_NAMESPACE` through `backend/src/db/packagesTemporal.ts`, so the two must
 match or the jobs are never picked up.
 
