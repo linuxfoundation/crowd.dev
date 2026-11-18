@@ -2,7 +2,8 @@ DESCRIPTION >
     Recomputes the member segment aggregates from the deduplicated served layer into cdp_member_segment_aggregates_v2_ds,
     replacing it. Unlike cdp_member_segment_aggregates_MV, which counts every write of a relation,
     this counts each activity once and follows moves and merges. Relations deleted in Postgres stay in
-    the served layer, so they are still counted.
+    the served layer, so they are still counted. Activity types are platform-qualified (platform:type),
+    as the member filter sends them, and -1 (no score) is left out of the sentiment average.
     Don't run it in production until member erasure covers the served layer and this datasource
     (linuxfoundation/lfx-cdp-insights-ops#1178).
 
@@ -14,9 +15,9 @@ SQL >
         '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
         countState(activityId) AS activityCountState,
         maxState(timestamp) AS lastActiveState,
-        groupArrayDistinctState(type) AS activityTypesState,
+        groupArrayDistinctState(concat(platform, ':', type)) AS activityTypesState,
         groupArrayDistinctState(platform) AS activeOnState,
-        avgState(sentimentScore) AS averageSentimentState,
+        avgStateIf(sentimentScore, sentimentScore != -1) AS averageSentimentState,
         maxState(act.updatedAt) as lastActivityUpdatedAtState,
         max(act.updatedAt) as updatedAt
     FROM activityRelations_enriched_deduplicated_bucket_union act
