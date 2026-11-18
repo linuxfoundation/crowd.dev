@@ -21,12 +21,14 @@ docker info --format '{{.ServerVersion}}'
 pnpm --version
 ```
 
-## Step 1 — Start packages-db
+## Step 1 — Start packages-db and Temporal
 
-No-op if already running.
+No-op if already running. Temporal-backed entry points (all except `github-repos-enricher`
+and `dockerhub-sync`) fail to start until Temporal accepts connections; give it a few seconds
+after the first start.
 
 ```bash
-docker compose -f scripts/scaffold.yaml up -d packages
+docker compose -f scripts/scaffold.yaml up -d packages temporal
 until docker compose -f scripts/scaffold.yaml exec packages pg_isready -U postgres; do sleep 1; done
 echo "packages-db is ready"
 ```

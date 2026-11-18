@@ -67,8 +67,9 @@ also connect to the CDP database. Each registry worker keeps its own progress in
 
 ## Running locally
 
-1. Start `packages-db` (port 5434) with the rest of the local infrastructure:
-   `./scripts/cli scaffold up`.
+1. Start `packages-db` (port 5434) and Temporal with the rest of the local infrastructure:
+   `./scripts/cli scaffold up`. Every entry point except `github-repos-enricher` and
+   `dockerhub-sync` needs Temporal.
 2. Apply the `packages-db` migrations with the Flyway image in `backend/src/osspckgs/`; the
    `packages-worker-setup` skill has the exact commands.
 3. Start an entry point, either in Docker with `DEV=1 ./scripts/cli service <entry-point> up`
@@ -76,9 +77,13 @@ also connect to the CDP database. Each registry worker keeps its own progress in
    with `pnpm dev:<entry-point>:local` from this folder. The `pnpm` scripts load
    `backend/.env.dist.local` and `backend/.env.override.local` after your shell, so a
    `CROWD_TEMPORAL_NAMESPACE` set in the shell is overwritten and the worker polls the namespace
-   those files set. For the API's on-demand jobs to reach a worker started this way, set
-   `CROWD_PACKAGES_TEMPORAL_NAMESPACE` in `backend/.env.override.local` to that same namespace.
-   Do not change `CROWD_TEMPORAL_NAMESPACE` there: every local CDP service reads it.
+   those files set. Workers connect with `CROWD_TEMPORAL_SERVER_URL` and
+   `CROWD_TEMPORAL_NAMESPACE`; the API starts on-demand jobs with
+   `CROWD_PACKAGES_TEMPORAL_SERVER_URL` and `CROWD_PACKAGES_TEMPORAL_NAMESPACE`. For those jobs to
+   reach a worker started this way, set the two `CROWD_PACKAGES_TEMPORAL_*` values in
+   `backend/.env.override.local` to the same server and namespace. Do not change the
+   `CROWD_TEMPORAL_*` values there: every local CDP service reads them. `pnpm trigger-bootstrap:local`
+   connects through `CROWD_TEMPORAL_*`, like the workers, so it needs no change.
 
 Use the `packages-worker-add-entrypoint` skill to add a new entry point. Useful scripts:
 
