@@ -72,18 +72,21 @@ Dev mode uses hot reload — edits to `services/apps/packages_worker/src/` and
 
 ## Day-to-day commands
 
+A worker started with `DEV=1` runs as the `<entry-point>-dev` container, so keep `DEV=1` on
+the commands that act on it:
+
 ```bash
 # Follow logs
-./scripts/cli service <entry-point> logs
+DEV=1 ./scripts/cli service <entry-point> logs
 
-# Stop
+# Stop (removes both the dev and non-dev containers)
 ./scripts/cli service <entry-point> down
 
 # Restart
-./scripts/cli service <entry-point> restart
+DEV=1 ./scripts/cli service <entry-point> restart
 
-# Check status
-./scripts/cli service <entry-point> status
+# Check status: `status` only looks at the non-dev container, so for a dev worker use
+docker ps --filter name=<entry-point>-dev
 ```
 
 ## Going further
