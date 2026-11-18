@@ -15,6 +15,8 @@ import * as readline from 'readline'
  * - maintainersInternal by the member's identity ids
  * - member profile datasources (id, attributes and joinedAt columns) by id
  * - every other datasource with a memberId column by memberId
+ * ai_code_tracker_commits_ds keeps commit content without any id, so it is rebuilt afterwards from
+ * the already cleaned activities_deduplicated_ds by running its copy pipe.
  * Raw sources go first, so no copy pipe can rebuild the member from a source that still has it.
  * Each delete job is awaited; afterwards every datasource is counted again and deleted once more
  * where the member is back or the count failed. Rows where the member is only the objectMemberId
@@ -36,6 +38,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // ClickHouse caps query size (256 KiB by default), so long id lists go in chunks
 const IDS_PER_CONDITION = 1000
 const JOB_DEADLINE_MS = 60 * 60 * 1000
+
+// Copies with activity content but no id to delete by: rebuilt from their cleaned source instead
+const REBUILT_COPIES = [
+  { pipe: 'ai_code_tracker_commits_copy', target: 'ai_code_tracker_commits_ds' },
+]
 
 // Raw sources, in deletion order: maintainersInternal before memberIdentities, members last
 const SOURCE_TABLES = [
@@ -239,6 +246,25 @@ async function deleteFrom({ table, conditions }: Deletion): Promise<void> {
   console.log(`Deleted from ${table}`)
 }
 
+async function rebuildCopy({ pipe, target }: { pipe: string; target: string }): Promise<void> {
+  console.log(`Rebuilding ${target} with ${pipe}`)
+  const response = await tinybirdRequest(`/pipes/${encodeURIComponent(pipe)}/copy`, {
+    method: 'POST',
+  })
+
+  const text = await response.text()
+  if (!response.ok) {
+    throw new Error(`Running ${pipe} failed: ${text}`)
+  }
+
+  const { job_id: jobId, id } = JSON.parse(text) as { job_id?: string; id?: string }
+  if (!jobId && !id) {
+    throw new Error(`Running ${pipe} returned no job: ${text}`)
+  }
+  await waitForJob(jobId || id, target)
+  console.log(`Rebuilt ${target}`)
+}
+
 async function countAll(deletions: Deletion[]): Promise<Map<string, number | null>> {
   const counts = new Map<string, number | null>()
   for (const deletion of deletions) {
@@ -297,6 +323,12 @@ async function main() {
     console.log(`- ${counts.get(table) ?? 'unknown'} records from ${table}`)
   }
 
+  if (activityIds.length > 0) {
+    for (const { target, pipe } of REBUILT_COPIES) {
+      console.log(`- ${target} is rebuilt with ${pipe} afterwards`)
+    }
+  }
+
   const toDelete = deletions.filter(({ table }) => counts.get(table) !== 0)
   if (toDelete.length === 0) {
     console.log('\nNo Tinybird datasource holds this member')
@@ -313,6 +345,12 @@ async function main() {
 
   for (const deletion of toDelete) {
     await deleteFrom(deletion)
+  }
+
+  if (activityIds.length > 0) {
+    for (const copy of REBUILT_COPIES) {
+      await rebuildCopy(copy)
+    }
   }
 
   const afterFirstPass = await countAll(deletions)
