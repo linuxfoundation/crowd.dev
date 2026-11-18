@@ -16,8 +16,11 @@ listed there. Terms are defined in [`CONTEXT.md`](CONTEXT.md).
 
 Each script below is `pnpm start:<name>` (production) or `pnpm dev:<name>:local` (local, loads
 `backend/.env.*.local`). A Temporal entry point registers its schedules on start and then serves
-its task queue. These workers use their own Temporal namespace, separate from the rest of CDP;
-the public API reaches it through `backend/src/db/packagesTemporal.ts`.
+its task queue. These workers use their own Temporal namespace, separate from the rest of CDP:
+each one reads `CROWD_TEMPORAL_NAMESPACE`, which the service files in `scripts/services/` set to
+`CROWD_PACKAGES_TEMPORAL_NAMESPACE`. The public API starts jobs in
+`CROWD_PACKAGES_TEMPORAL_NAMESPACE` through `backend/src/db/packagesTemporal.ts`, so the two must
+match or the jobs are never picked up.
 
 | Entry point                | Task queue                 | Code                                         | Schedules it registers (UTC)                                                                                                                                                                                                       |
 | -------------------------- | -------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -51,6 +54,7 @@ One-off backfills, run by hand: `maven-backfill`, `maven-repo-url-backfill` and
 | GitHub (App)               | `github-repos-enricher`, `dockerhub-sync` (finds Dockerfiles), `security-contacts-worker`                                                                             |
 | Docker Hub                 | `dockerhub-sync`                                                                                                                                                      |
 | An LLM on Amazon Bedrock   | security contacts, member contributors and blast radius                                                                                                               |
+| Tinybird                   | the git activity contributor sync in `security-contacts-worker` (commit contributor snapshot, `CROWD_PACKAGES_TB_TOKEN`)                                              |
 
 ## State
 
@@ -69,7 +73,9 @@ also connect to the CDP database. Each registry worker keeps its own progress in
    `packages-worker-setup` skill has the exact commands.
 3. Start an entry point, either in Docker with `DEV=1 ./scripts/cli service <entry-point> up`
    (each one has `scripts/services/<entry-point>.yaml`, except `criticality-worker`), or directly
-   with `pnpm dev:<entry-point>:local` from this folder.
+   with `pnpm dev:<entry-point>:local` from this folder. The `pnpm` scripts do not set
+   `CROWD_TEMPORAL_NAMESPACE`; set it to the value of `CROWD_PACKAGES_TEMPORAL_NAMESPACE` so the
+   worker polls the namespace the API starts jobs in.
 
 Use the `packages-worker-add-entrypoint` skill to add a new entry point. Useful scripts:
 
