@@ -26,9 +26,12 @@ run the workers is in
 ## Components
 
 Every worker writes to `packages-db`, a Postgres instance separate from the CDP database. Two
-workers also read the CDP database: member contributors (to resolve contributors' organizations)
-and security contacts. The public API reads `packages-db` directly and starts the on-demand jobs
-in the packages Temporal namespace. Tinybird gets a replica of the main tables.
+entry points also read the CDP database: `bq-dataset-ingest`, whose Scorecard job reads CDP's
+GitHub repositories and integrations, and `security-contacts-worker`, which runs the security
+contacts jobs and resolves contributors' organizations for member contributors. The public API
+reads `packages-db` directly and starts the on-demand jobs in the packages Temporal namespace.
+Tinybird gets a replica of the main tables, derives `ossPackages_enriched_ds` from them, and
+sends its enrichment fields back to `packages` through Kafka.
 
 ```mermaid
 flowchart LR
@@ -78,6 +81,7 @@ flowchart LR
     crit --> pdb
     br --> pdb
     cdpdb --> scw
+    cdpdb --> ingest
 
     tmp --> ingest
     tmp --> regw
@@ -89,6 +93,7 @@ flowchart LR
     api --> pdb
     api -->|"start jobs"| tmp
     pdb -.->|replication| tb
+    tb -.->|"enrichment, via Kafka"| pdb
     tb --> ins
 ```
 
@@ -126,3 +131,8 @@ Blast radius jobs run `analyzeBlastRadius` on the `blast-radius-worker` task que
 contributor jobs follow the same pattern under
 `/akrites-external/packages/member-contributors/jobs` and run on the `security-contacts-worker`
 task queue.
+
+One exception to the read path above: for member contributor jobs that resolve repositories with
+an LLM (`collectionPath` `llm_repo_resolution`), polling returns the Temporal workflow result
+instead of reading `packages-db`, so a completed job can fail as expired once its workflow history
+is gone (`getMemberContributorsJob.ts`).
