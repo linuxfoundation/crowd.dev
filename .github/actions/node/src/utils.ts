@@ -6,6 +6,12 @@ import { IBuilderDefinition } from './types'
 
 let definitions: IBuilderDefinition[] | undefined
 
+const parseList = (value: string | undefined): string[] =>
+  (value ?? '')
+    .split(' ')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+
 export const getBuilderDefinitions = async (): Promise<IBuilderDefinition[]> => {
   if (definitions !== undefined) {
     return definitions
@@ -21,25 +27,13 @@ export const getBuilderDefinitions = async (): Promise<IBuilderDefinition[]> => 
 
       const imageName = result.split('.env')[0]
       const dockerRepository = parsed.REPO
-      let services: string[] = []
-      if (parsed.SERVICES !== undefined) {
-        services = parsed.SERVICES.split(' ')
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0)
-      }
-
-      let prioritizedServices: string[] = []
-      if (parsed.PRIORITIZED !== undefined) {
-        prioritizedServices = parsed.PRIORITIZED.split(' ')
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0)
-      }
 
       results.push({
         imageName,
         dockerRepository,
-        services,
-        prioritizedServices,
+        services: parseList(parsed.SERVICES),
+        prioritizedServices: parseList(parsed.PRIORITIZED),
+        cronJobs: parseList(parsed.CRONJOBS),
       })
     }
   }
