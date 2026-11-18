@@ -16,6 +16,8 @@ import { parsePccRow } from '../parser'
 import type { CdpHierarchyTarget, ParsedPccProject } from '../parser'
 import { findExistingProjectCandidates, loadCdpSubprojectIndex } from './existingProjects'
 import type { CdpSubprojectIndex } from './existingProjects'
+import { isAlreadyReviewed, loadPccProjectReviews } from './reviewDecisions'
+import type { PccProjectReviews } from './reviewDecisions'
 import { resolveSyncErrorsNotReportedByExport } from './syncErrors'
 
 const log = getServiceChildLogger('pccProjectConsumer')
@@ -111,6 +113,7 @@ export class PccProjectConsumer {
     let schemaMismatchMatchedCount = 0 // SCHEMA_MISMATCH rows that still have a CDP segment match
     let missingProjectIdCount = 0
     let possibleExistingCount = 0
+    let alreadyReviewedCount = 0
 
     try {
       // Stream all rows and group by PROJECT_ID before processing.
@@ -148,7 +151,11 @@ export class PccProjectConsumer {
         })
       }
 
-      const cdpSubprojects = await loadCdpSubprojectIndex(pgpQx(this.db))
+      const qx = pgpQx(this.db)
+      const [cdpSubprojects, reviews] = await Promise.all([
+        loadCdpSubprojectIndex(qx),
+        loadPccProjectReviews(qx),
+      ])
 
       await this.db.tx(async (tx) => {
         for (const [, rows] of groups) {
@@ -195,7 +202,7 @@ export class PccProjectConsumer {
           }
 
           const { project } = parsed
-          const result = await this.processRow(tx, project, cdpSubprojects)
+          const result = await this.processRow(tx, project, cdpSubprojects, reviews)
 
           switch (result.action) {
             case 'UPSERTED':
@@ -205,6 +212,7 @@ export class PccProjectConsumer {
             case 'SKIPPED':
               skippedCount++
               if (result.possibleExisting) possibleExistingCount++
+              if (result.alreadyReviewed) alreadyReviewedCount++
               break
           }
         }
@@ -220,6 +228,7 @@ export class PccProjectConsumer {
           upserted: upsertedCount,
           skipped: skippedCount,
           possibleExistingProject: possibleExistingCount,
+          alreadyReviewedProject: alreadyReviewedCount,
           hierarchyMismatch: mismatchCount,
           schemaMismatch: schemaMismatchCount,
           schemaMismatchWithCdpMatch: schemaMismatchMatchedCount,
@@ -302,9 +311,10 @@ export class PccProjectConsumer {
     tx: DbConnOrTx,
     project: ParsedPccProject,
     cdpSubprojects: CdpSubprojectIndex,
+    reviews: PccProjectReviews,
   ): Promise<
     | { action: 'UPSERTED'; hierarchyMismatch: boolean }
-    | { action: 'SKIPPED'; possibleExisting: boolean }
+    | { action: 'SKIPPED'; possibleExisting: boolean; alreadyReviewed?: boolean }
   > {
     // Step 1: segment_id from Snowflake ACTIVE_SEGMENTS JOIN
     const exportedSegmentIds = project.segmentIdsFromSnowflake
@@ -345,6 +355,9 @@ export class PccProjectConsumer {
         project.name,
       )
       if (candidates.length === 0) return { action: 'SKIPPED', possibleExisting: false }
+      if (isAlreadyReviewed(reviews.get(project.pccProjectId), candidates)) {
+        return { action: 'SKIPPED', possibleExisting: false, alreadyReviewed: true }
+      }
 
       log.warn(
         { pccProjectId: project.pccProjectId, pccSlug: project.pccSlug, candidates },
