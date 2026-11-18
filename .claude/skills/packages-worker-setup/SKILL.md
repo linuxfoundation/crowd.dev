@@ -23,13 +23,16 @@ pnpm --version
 
 ## Step 1 — Start packages-db and Temporal
 
-No-op if already running. Temporal-backed entry points (all except `github-repos-enricher`,
+`./scripts/cli scaffold up` creates the `crowd-bridge` network and starts the local
+infrastructure, including `packages` and `temporal`, under the `crowd` Compose project. Running
+`docker compose -f scripts/scaffold.yaml` directly would start a second stack under another
+project name. No-op if already running. Temporal-backed entry points (all except `github-repos-enricher`,
 `dockerhub-sync` and `criticality-worker`) fail to start until Temporal accepts connections; give it a few seconds
 after the first start.
 
 ```bash
-docker compose -f scripts/scaffold.yaml up -d packages temporal
-until docker compose -f scripts/scaffold.yaml exec packages pg_isready -U postgres; do sleep 1; done
+./scripts/cli scaffold up
+until docker compose -p crowd -f scripts/scaffold.yaml exec packages pg_isready -U postgres; do sleep 1; done
 echo "packages-db is ready"
 ```
 
@@ -100,5 +103,5 @@ docker ps --filter name=<entry-point>-dev
 
 | Symptom                             | Likely cause       | Fix                                                      |
 | ----------------------------------- | ------------------ | -------------------------------------------------------- |
-| `Connection refused` on packages-db | Docker not running | `docker compose -f scripts/scaffold.yaml up -d packages` |
+| `Connection refused` on packages-db | Docker not running | `./scripts/cli scaffold up` |
 | `permission denied: scripts/cli`    | CLI not executable | `chmod +x scripts/cli`                                   |
