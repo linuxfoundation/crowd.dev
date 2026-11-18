@@ -67,9 +67,10 @@ also connect to the CDP database. npm, PyPI and Packagist keep progress in their
 `npm_worker_state`, `npm_package_universe_state`, `pypi_package_state`,
 `packagist_package_state`). Go and Cargo stamp `last_synced_at` on the rows they update. Go pages
 through packages with a cursor kept in the workflow, so each scheduled run starts from the first
-package. NuGet, RubyGems and Maven keep no separate progress table. The
-contributor syncs use `repo_contributors_sync_state`, and bootstrap runs are tracked in
-`osspckgs_ingest_jobs`.
+package. NuGet, RubyGems and Maven keep no separate progress table. Of the contributor syncs, the git activity sync keeps
+progress in `repo_contributors_sync_state`, the GitHub sync records `github_contributors_checked_at`
+on `repos`, and the governance file sync keeps no progress and rescans on each run. Bootstrap runs
+are tracked in `osspckgs_ingest_jobs`.
 
 ## Running locally
 
