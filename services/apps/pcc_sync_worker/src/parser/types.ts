@@ -26,6 +26,7 @@ export interface PccParquetRow {
   MAPPED_PROJECT_NAME: string | null
   /** Slug of the ancestor at this hierarchy level. */
   MAPPED_PROJECT_SLUG: string | null
+  MAPPED_PROJECT_MODEL: string | null
   /** 1 = leaf, N = topmost ancestor. */
   HIERARCHY_LEVEL: number
   SEGMENT_ID: string | null

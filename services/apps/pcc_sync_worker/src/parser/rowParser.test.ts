@@ -4,16 +4,34 @@ import { SegmentStatus } from '@crowd/types'
 
 import { parsePccRow } from './rowParser'
 
-function spineRowsFromTop(path: string[]): Record<string, unknown>[] {
-  const leafName = path[path.length - 1]
-  return path.map((ancestorName, index) => ({
+interface Ancestor {
+  name: string
+  id?: string
+  model?: string | null
+}
+
+const LINUX_FOUNDATION: Ancestor = {
+  name: 'The Linux Foundation',
+  id: 'a0941000002wBz9AAE',
+  model: 'Membership',
+}
+
+function spineRowsWithModelsFromTop(path: Ancestor[]): Record<string, unknown>[] {
+  const leafName = path[path.length - 1].name
+  return path.map((ancestor, index) => ({
     PROJECT_ID: 'pcc-leaf',
     NAME: leafName,
     PROJECT_STATUS: 'Active',
-    MAPPED_PROJECT_NAME: ancestorName,
-    MAPPED_PROJECT_SLUG: ancestorName.toLowerCase().replaceAll(' ', '-'),
+    MAPPED_PROJECT_ID: ancestor.id ?? `pcc-${index}`,
+    MAPPED_PROJECT_NAME: ancestor.name,
+    MAPPED_PROJECT_SLUG: ancestor.name.toLowerCase().replaceAll(' ', '-'),
+    MAPPED_PROJECT_MODEL: ancestor.model,
     HIERARCHY_LEVEL: path.length - index,
   }))
+}
+
+function spineRowsFromTop(path: string[]): Record<string, unknown>[] {
+  return spineRowsWithModelsFromTop(path.map((name) => ({ name })))
 }
 
 describe('parsePccRow', () => {
@@ -237,6 +255,113 @@ describe('parsePccRow', () => {
       ok: false,
       errorType: 'SCHEMA_MISMATCH',
       details: { reason: 'missing required fields', missingFields: ['NAME'] },
+    })
+  })
+})
+
+describe('parsePccRow under The Linux Foundation', () => {
+  it('gives a Membership project its own group', () => {
+    const result = parsePccRow(
+      spineRowsWithModelsFromTop([
+        LINUX_FOUNDATION,
+        { name: 'Spack Fund', model: 'Membership' },
+        { name: 'Spack' },
+      ]),
+    )
+
+    expect(result).toMatchObject({
+      ok: true,
+      project: { cdpTarget: { group: 'Spack Fund', project: 'Spack', subproject: 'Spack' } },
+    })
+  })
+
+  it('maps a Membership project without children to all three CDP levels', () => {
+    const result = parsePccRow(
+      spineRowsWithModelsFromTop([
+        LINUX_FOUNDATION,
+        { name: 'The FAIR Web Foundation', model: 'Membership' },
+      ]),
+    )
+
+    expect(result).toMatchObject({
+      ok: true,
+      project: {
+        cdpTarget: {
+          group: 'The FAIR Web Foundation',
+          project: 'The FAIR Web Foundation',
+          subproject: 'The FAIR Web Foundation',
+        },
+      },
+    })
+  })
+
+  it('keeps the level below a Membership project as the CDP project', () => {
+    const result = parsePccRow(
+      spineRowsWithModelsFromTop([
+        LINUX_FOUNDATION,
+        { name: 'Kokkos Fund', model: 'Membership' },
+        { name: 'Kokkos' },
+        { name: 'Kokkos Kernels' },
+      ]),
+    )
+
+    expect(result).toMatchObject({
+      ok: true,
+      project: {
+        cdpTarget: { group: 'Kokkos Fund', project: 'Kokkos', subproject: 'Kokkos Kernels' },
+      },
+    })
+  })
+
+  it('treats a model that combines Membership with another one as Membership', () => {
+    const result = parsePccRow(
+      spineRowsWithModelsFromTop([
+        LINUX_FOUNDATION,
+        { name: 'AI Infrastructure Alliance', model: 'Membership;Crowdfunding' },
+        { name: 'AIIA Landscape' },
+      ]),
+    )
+
+    expect(result).toMatchObject({
+      ok: true,
+      project: { cdpTarget: { group: 'AI Infrastructure Alliance' } },
+    })
+  })
+
+  it.each(['Alternate Funding', 'Crowdfunding', null, undefined])(
+    'keeps a project with model %s under The Linux Foundation group',
+    (model) => {
+      const result = parsePccRow(
+        spineRowsWithModelsFromTop([LINUX_FOUNDATION, { name: 'Open Quantum Safe', model }]),
+      )
+
+      expect(result).toMatchObject({
+        ok: true,
+        project: {
+          cdpTarget: {
+            group: 'The Linux Foundation',
+            project: 'Open Quantum Safe',
+            subproject: 'Open Quantum Safe',
+          },
+        },
+      })
+    },
+  )
+
+  it('leaves a Membership project under another foundation where it is', () => {
+    const result = parsePccRow(
+      spineRowsWithModelsFromTop([
+        { name: 'LF Networking (LFN)', model: 'Membership' },
+        { name: 'Anuket', model: 'Membership' },
+        { name: 'RC1' },
+      ]),
+    )
+
+    expect(result).toMatchObject({
+      ok: true,
+      project: {
+        cdpTarget: { group: 'LF Networking (LFN)', project: 'Anuket', subproject: 'RC1' },
+      },
     })
   })
 })
