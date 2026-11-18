@@ -14,18 +14,22 @@
     "script:dry-run-credly-badge-poll": "tsx src/bin/dry-run-credly-badge-poll.ts",
     "script:resolve-credly-templates": "tsx src/bin/resolve-credly-templates.ts",
     "script:migrate-credly-mapped-templates": "tsx src/bin/migrate-credly-mapped-templates.ts",
-    "script:backfill-stale-credly-templates": "tsx src/bin/backfill-stale-credly-templates.ts"
+    "script:backfill-stale-credly-templates": "tsx src/bin/backfill-stale-credly-templates.ts",
+    "script:import-sched": "tsx src/bin/import-sched.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",
     "@crowd/archetype-worker": "workspace:*",
     "@crowd/common": "workspace:*",
+    "@crowd/common_services": "workspace:*",
     "@crowd/connectors": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/database": "workspace:*",
+    "@crowd/integrations": "workspace:*",
     "@crowd/logging": "workspace:*",
     "@crowd/nango": "workspace:*",
     "@crowd/project-onboarding": "workspace:*",
+    "@crowd/queue": "workspace:*",
     "@crowd/redis": "workspace:*",
     "@crowd/slack": "workspace:*",
     "@crowd/snowflake": "workspace:*",
@@ -35,6 +39,7 @@
     "@temporalio/client": "~1.17.2",
     "@temporalio/workflow": "~1.17.2",
     "axios": "catalog:",
+    "moment-timezone": "^0.5.34",
     "tsx": "^4.7.1"
   },
   "devDependencies": {
