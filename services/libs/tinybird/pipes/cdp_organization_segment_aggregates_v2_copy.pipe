@@ -1,7 +1,8 @@
 DESCRIPTION >
     Recomputes the organization segment aggregates from the deduplicated served layer into cdp_organization_segment_aggregates_v2_ds,
     replacing it. Unlike cdp_organization_segment_aggregates_MV, which counts every write of a relation,
-    this counts each activity once and reflects moves, merges and deletes.
+    this counts each activity once and follows moves and merges. Relations deleted in Postgres stay in
+    the served layer, so they are still counted.
 
 NODE cdp_organization_segment_aggregates_v2_copy_0
 SQL >
