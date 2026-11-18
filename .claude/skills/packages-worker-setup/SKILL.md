@@ -78,6 +78,31 @@ DEV=1 ./scripts/cli service <entry-point> up
 Dev mode uses hot reload — edits to `services/apps/packages_worker/src/` and
 `services/libs/*/src/` are picked up immediately without restarting.
 
+`criticality-worker` has no service file; run it with `pnpm dev:criticality-worker:local`.
+
+### Without Docker
+
+Any entry point can also run directly with `pnpm dev:<entry-point>:local` from
+`services/apps/packages_worker`. These scripts load `backend/.env.dist.local` and
+`backend/.env.override.local` after your shell, so a `CROWD_TEMPORAL_NAMESPACE` set in the shell
+is overwritten and the worker polls the namespace those files set.
+
+### On-demand jobs from a local API
+
+Workers connect with `CROWD_TEMPORAL_SERVER_URL` and `CROWD_TEMPORAL_NAMESPACE`; the API starts
+blast radius and member contributor jobs with `CROWD_PACKAGES_TEMPORAL_SERVER_URL` and
+`CROWD_PACKAGES_TEMPORAL_NAMESPACE`. For those jobs to reach a local worker, point the API at the
+same Temporal instance and namespace:
+
+- set `CROWD_PACKAGES_TEMPORAL_NAMESPACE` in `backend/.env.override.local`;
+- set `CROWD_PACKAGES_TEMPORAL_SERVER_URL` to the address the API can reach: `localhost:7233`
+  when the API runs on the host, or `temporal:7233` in `backend/.env.override.composed` when it
+  runs in Docker (the Docker API loads that file last).
+
+Do not change the `CROWD_TEMPORAL_*` values: every local CDP service reads them.
+`pnpm trigger-bootstrap:local` connects through `CROWD_TEMPORAL_*`, like the workers, so it needs
+no change.
+
 ## Day-to-day commands
 
 A worker started with `DEV=1` runs as the `<entry-point>-dev` container, so keep `DEV=1` on
