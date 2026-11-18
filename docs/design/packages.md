@@ -133,7 +133,10 @@ sequenceDiagram
 Blast radius jobs run `analyzeBlastRadius` on the `blast-radius-worker` task queue. Member
 contributor jobs follow the same pattern under
 `/akrites-external/packages/member-contributors/jobs` and run on the `security-contacts-worker`
-task queue.
+task queue. Unlike blast radius, a member contributor submission does not always
+create a job: a package that already has contributors is rejected with 409 unless its last job
+failed, a submission while a job is active for the package returns that job, and a workflow that
+fails to start marks its job failed (`submitMemberContributorsJob.ts`).
 
 One exception to the read path above: for member contributor jobs that resolve repositories with
 an LLM (`collectionPath` `llm_repo_resolution`), polling returns the Temporal workflow result
