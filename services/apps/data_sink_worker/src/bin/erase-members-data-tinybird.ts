@@ -1,37 +1,7 @@
 import * as readline from 'readline'
 
-/**
- * Member Data Erasure Script (Tinybird Analytics Platform)
- *
- * Removes a member's data from every Tinybird datasource that holds it, for GDPR erasure
- * requests. It complements the database deletion script (erase-member.ts).
- *
- * Run it after erase-member.ts, once Sequin and Kafka Connect have caught up: otherwise the
- * member's last events can still arrive in Tinybird afterwards. Avoid 01:25-02:30 UTC, when the
- * served-layer merger copies run, and run it again after the next hourly copy to confirm.
- *
- * It lists the workspace's datasources and erases the member from:
- * - activity datasources (id, sourceId and body columns) by the member's activity ids
- * - maintainersInternal by the member's identity ids
- * - member profile datasources (id, attributes and joinedAt columns) by id
- * - every other datasource with a memberId column by memberId
- * ai_code_tracker_commits_ds keeps commit content without any id, so it is rebuilt afterwards from
- * the already cleaned activities_deduplicated_ds by running its copy pipe.
- * Raw sources go first, so no copy pipe can rebuild the member from a source that still has it.
- * Each delete job is awaited; afterwards every datasource is counted again and deleted once more
- * where the member is back or the count failed. Rows where the member is only the objectMemberId
- * of someone else's activity are kept.
- *
- * Uses "Delete Data Selectively":
- * https://www.tinybird.co/docs/classic/get-data-in/data-operations/replace-and-delete-data#delete-data-selectively
- *
- * USAGE:
- *   TINYBIRD_TOKEN=<token> npx tsx src/bin/erase-members-data-tinybird.ts <memberId>
- * The token must be able to list datasources, query them and delete from them.
- *
- * Exit codes: 0 erased everywhere, 1 error or the member is still there, 2 erased but some
- * datasources could not be counted afterwards (the Query API's time limit), 3 cancelled.
- */
+// GDPR erasure from every Tinybird datasource. Run after erase-member.ts once Kafka Connect has
+// caught up, and not between 01:25 and 02:30 UTC while the served-layer merger copies run.
 
 const TINYBIRD_API = 'https://api.us-west-2.aws.tinybird.co/v0'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -44,16 +14,11 @@ const REBUILT_COPIES = [
   { pipe: 'ai_code_tracker_commits_copy', target: 'ai_code_tracker_commits_ds' },
 ]
 
-// Raw sources, in deletion order: maintainersInternal before memberIdentities, members last
-const SOURCE_TABLES = [
-  'activities',
-  'activityRelations',
-  'maintainersInternal',
-  'memberIdentities',
-  'members',
-]
+// maintainersInternal before memberIdentities, and activityRelations after everything else: a
+// rerun after a failure reads the identity and activity ids from them
+const SOURCE_TABLES = ['activities', 'maintainersInternal', 'memberIdentities', 'members']
 
-const memberId = process.argv[2]
+const memberId = process.argv[2]?.toLowerCase()
 const TOKEN = process.env.TINYBIRD_TOKEN
 
 if (process.argv.length !== 3 || !TOKEN) {
@@ -184,7 +149,10 @@ async function planDeletions(activityIds: string[], identityIds: string[]): Prom
     ...activityTables.filter((table) => table !== 'activities').sort(),
     ...SOURCE_TABLES.filter((table) => table !== 'activities'),
   ]
-  const order = [...first, ...[...plan.keys()].filter((table) => !first.includes(table)).sort()]
+  const derived = [...plan.keys()]
+    .filter((table) => !first.includes(table) && table !== 'activityRelations')
+    .sort()
+  const order = [...first, ...derived, 'activityRelations']
 
   return order
     .filter((table) => (plan.get(table) || []).length > 0)
@@ -323,20 +291,15 @@ async function main() {
     console.log(`- ${counts.get(table) ?? 'unknown'} records from ${table}`)
   }
 
-  if (activityIds.length > 0) {
-    for (const { target, pipe } of REBUILT_COPIES) {
-      console.log(`- ${target} is rebuilt with ${pipe} afterwards`)
-    }
+  for (const { target, pipe } of REBUILT_COPIES) {
+    console.log(`- ${target} is rebuilt with ${pipe} afterwards (it has no key to count by)`)
   }
 
   const toDelete = deletions.filter(({ table }) => counts.get(table) !== 0)
-  if (toDelete.length === 0) {
-    console.log('\nNo Tinybird datasource holds this member')
-    return
-  }
-
   const proceed = await promptConfirmation(
-    `\nDelete the member from these ${toDelete.length} datasources?`,
+    toDelete.length > 0
+      ? `\nDelete the member from these ${toDelete.length} datasources and rebuild the copies?`
+      : '\nNo datasource holds this member. Rebuild the copies anyway?',
   )
   if (!proceed) {
     console.log('Deletion cancelled by user')
@@ -347,18 +310,16 @@ async function main() {
     await deleteFrom(deletion)
   }
 
-  if (activityIds.length > 0) {
-    for (const copy of REBUILT_COPIES) {
-      await rebuildCopy(copy)
-    }
-  }
-
   const afterFirstPass = await countAll(deletions)
   for (const deletion of deletions.filter(({ table }) => afterFirstPass.get(table) !== 0)) {
     console.log(
       `${deletion.table}: deleting once more (count ${afterFirstPass.get(deletion.table) ?? 'unknown'})`,
     )
     await deleteFrom(deletion)
+  }
+
+  for (const copy of REBUILT_COPIES) {
+    await rebuildCopy(copy)
   }
 
   const final = await countAll(deletions)
@@ -376,7 +337,11 @@ async function main() {
     process.exit(2)
   }
 
-  console.log(`\nMember ${memberId} is gone from every Tinybird datasource`)
+  console.log(
+    `\nMember ${memberId} is gone from every counted Tinybird datasource, and ${REBUILT_COPIES.map(
+      ({ target }) => target,
+    ).join(', ')} was rebuilt from them`,
+  )
 }
 
 main().catch((err) => {
