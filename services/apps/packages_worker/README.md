@@ -63,8 +63,8 @@ All entry points write to `packages-db`, a dedicated Postgres instance whose sch
 `backend/src/osspckgs/migrations` (Flyway). Connection settings come from `CROWD_PACKAGES_DB_WRITE_HOST`, `CROWD_PACKAGES_DB_PORT`,
 `CROWD_PACKAGES_DB_DATABASE`, `CROWD_PACKAGES_DB_USERNAME` and `CROWD_PACKAGES_DB_PASSWORD`
 (`getPackagesDbConfig()` in `src/config.ts`). `bq-dataset-ingest` and `security-contacts-worker`
-also connect to the CDP database. npm, PyPI and Packagist keep progress in their own state tables (`npm_package_state`,
-`npm_worker_state`, `npm_package_universe_state`, `pypi_package_state`,
+also connect to the CDP database. npm, PyPI and Packagist keep progress in their own state tables (`npm_package_state`, which also holds the npm
+30-day download watermarks, `npm_worker_state`, `pypi_package_state` and
 `packagist_package_state`). Go and Cargo stamp `last_synced_at` on the rows they update. Go pages
 through packages with a cursor kept in the workflow, so each scheduled run starts from the first
 package. NuGet, RubyGems and Maven keep no separate progress table. Of the contributor syncs, the git activity sync keeps
