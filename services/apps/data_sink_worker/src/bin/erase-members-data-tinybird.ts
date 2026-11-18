@@ -1,3 +1,4 @@
+import * as fs from 'fs'
 import * as readline from 'readline'
 
 // GDPR erasure from every Tinybird datasource. Run after erase-member.ts once Kafka Connect has
@@ -20,6 +21,8 @@ const SOURCE_TABLES = ['activities', 'maintainersInternal', 'memberIdentities', 
 
 const memberId = process.argv[2]?.toLowerCase()
 const TOKEN = process.env.TINYBIRD_TOKEN
+// the first run deletes the sources of these ids, so a rerun reads them from here
+const SAVED_IDS_FILE = `tinybird-erasure-${memberId}.json`
 
 if (process.argv.length !== 3 || !TOKEN) {
   console.error(
@@ -276,11 +279,36 @@ async function currentActivityIds(): Promise<string[]> {
   return [...latest].filter(([, version]) => version.memberId === memberId).map(([id]) => id)
 }
 
+interface SavedIds {
+  activityIds: string[]
+  identityIds: string[]
+}
+
+function loadSavedIds(): SavedIds {
+  if (!fs.existsSync(SAVED_IDS_FILE)) {
+    return { activityIds: [], identityIds: [] }
+  }
+
+  const saved = JSON.parse(fs.readFileSync(SAVED_IDS_FILE, 'utf8')) as SavedIds
+  const invalid = [...saved.activityIds, ...saved.identityIds].find((id) => !UUID.test(id))
+  if (invalid) {
+    throw new Error(`Unexpected id ${invalid} in ${SAVED_IDS_FILE}`)
+  }
+  console.log(`Read the ids saved by an earlier run from ${SAVED_IDS_FILE}`)
+  return saved
+}
+
 async function main() {
-  const activityIds = await currentActivityIds()
-  const identityIds = await selectIds(
-    `SELECT DISTINCT id FROM memberIdentities WHERE memberId = '${memberId}'`,
-  )
+  const saved = loadSavedIds()
+  const activityIds = [...new Set([...saved.activityIds, ...(await currentActivityIds())])]
+  const identityIds = [
+    ...new Set([
+      ...saved.identityIds,
+      ...(await selectIds(
+        `SELECT DISTINCT id FROM memberIdentities WHERE memberId = '${memberId}'`,
+      )),
+    ]),
+  ]
   console.log(`Found ${activityIds.length} activities and ${identityIds.length} identities`)
 
   const deletions = await planDeletions(activityIds, identityIds)
@@ -305,6 +333,9 @@ async function main() {
     console.log('Deletion cancelled by user')
     process.exit(3)
   }
+
+  fs.writeFileSync(SAVED_IDS_FILE, JSON.stringify({ activityIds, identityIds }))
+  console.log(`Saved the ids to ${SAVED_IDS_FILE} for a rerun`)
 
   for (const deletion of toDelete) {
     await deleteFrom(deletion)
@@ -334,8 +365,11 @@ async function main() {
   }
   if (unverified.length > 0) {
     console.warn(`Deleted twice but could not count afterwards: ${unverified.join(', ')}`)
+    console.warn(`Run it again to retry them; it reads the ids from ${SAVED_IDS_FILE}`)
     process.exit(2)
   }
+
+  fs.rmSync(SAVED_IDS_FILE)
 
   console.log(
     `\nMember ${memberId} is gone from every counted Tinybird datasource, and ${REBUILT_COPIES.map(
