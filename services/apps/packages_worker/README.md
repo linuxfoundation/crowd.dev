@@ -70,7 +70,8 @@ also connect to the CDP database. Each registry worker keeps its own progress in
 1. Start `packages-db` (port 5434) and Temporal with the rest of the local infrastructure:
    `./scripts/cli scaffold up`. Every entry point except `github-repos-enricher`, `dockerhub-sync` and
    `criticality-worker` needs Temporal.
-2. Apply the `packages-db` migrations with the Flyway image in `backend/src/osspckgs/`; the
+2. `scaffold up` also runs every pending local migration, `packages-db` included. To apply a
+   `packages-db` migration added later, run the Flyway image in `backend/src/osspckgs/`; the
    `packages-worker-setup` skill has the exact commands.
 3. Start an entry point, either in Docker with `DEV=1 ./scripts/cli service <entry-point> up`
    (each one has `scripts/services/<entry-point>.yaml`, except `criticality-worker`), or directly

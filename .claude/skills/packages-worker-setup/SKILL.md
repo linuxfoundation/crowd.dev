@@ -24,11 +24,11 @@ pnpm --version
 ## Step 1 — Start packages-db and Temporal
 
 `./scripts/cli scaffold up` creates the `crowd-bridge` network and starts the local
-infrastructure, including `packages` and `temporal`, under the `crowd` Compose project. Running
+infrastructure, including `packages` and `temporal`, under the `crowd` Compose project. It is not
+a no-op on a running stack: it also builds missing images and runs every pending local migration
+(CDP Postgres, product DB, `packages-db` and Tinybird) plus the Nango setup. Running
 `docker compose -f scripts/scaffold.yaml` directly would start a second stack under another
-project name. No-op if already running. Temporal-backed entry points (all except `github-repos-enricher`,
-`dockerhub-sync` and `criticality-worker`) fail to start until Temporal accepts connections; give it a few seconds
-after the first start.
+project name.
 
 ```bash
 ./scripts/cli scaffold up
@@ -36,9 +36,11 @@ until docker compose -p crowd -f scripts/scaffold.yaml exec packages pg_isready 
 echo "packages-db is ready"
 ```
 
-## Step 2 — Apply pending migrations
+## Step 2 — Apply pending migrations (only if needed)
 
-Flyway skips already-applied migrations, so this is safe to re-run.
+`scaffold up` already applies the `packages-db` migrations, so skip this step after it succeeds.
+Run it to apply a migration you added later without re-running `scaffold up`. Flyway skips
+already-applied migrations, so it is safe to re-run.
 
 ```bash
 arch=$(uname -m)
