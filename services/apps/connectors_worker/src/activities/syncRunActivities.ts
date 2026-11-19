@@ -183,6 +183,7 @@ export async function executeSync(unitId: string): Promise<void> {
       acquireToken: () => pool.acquire(preferredEntryId),
       parkToken: pool.park,
       invalidateToken: pool.invalidate,
+      applyToken: manifest.applyToken,
       interpretResponse: manifest.interpretResponse,
       log,
     })
