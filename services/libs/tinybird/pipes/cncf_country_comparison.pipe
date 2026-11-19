@@ -1,6 +1,6 @@
 DESCRIPTION >
     - `cncf_country_comparison.pipe` serves the "in context" widget of the CNCF country report: one country compared with a region (e.g. Europe) and the world.
-    - Contributors and contributions are placed by the contributor's profile country, else location; organizations by their country, else location. Names are matched by containment, as in `contributors_geo_distribution.pipe`, and only records with a known location count, so every count is "with a known location".
+    - Contributors and contributions are placed by the contributor's profile country; organizations by their country. Names are matched exactly against `country_mapping`, as in `contributors_geo_distribution.pipe`, and only records with a known country count, so every count is "with a known country".
     - Skips organizations blocked from affiliations and the "Individual - No Account" placeholder records, as `cncf_country_top_organizations.pipe` does.
     - Reads only `cncf_collection_activities_ds`, so it covers the CNCF collection only; the places it matches on are copied there daily by `cncf_collection_activities_copy.pipe`.
     - **When `granularity` is NOT provided, returns one row of totals** for the period.
@@ -23,7 +23,7 @@ SQL >
     %
     SELECT
         (
-            SELECT upper(country)
+            SELECT country
             FROM country_mapping
             WHERE
                 country_code
@@ -37,7 +37,7 @@ SQL >
             LIMIT 1
         ) AS countryName,
         (
-            SELECT groupArray(upper(country))
+            SELECT groupArray(country)
             FROM country_mapping
             WHERE
                 country_code
@@ -59,20 +59,16 @@ SQL >
         memberId,
         organizationId,
         memberPlace != '' AS memberLocated,
-        position(memberPlace, nullIf((SELECT countryName FROM cncf_country_comparison_names), ''))
-        > 0 AS memberInCountry,
-        multiSearchAny(
-            memberPlace, (SELECT regionNames FROM cncf_country_comparison_names)
-        ) AS memberInRegion,
+        memberPlace
+        = nullIf((SELECT countryName FROM cncf_country_comparison_names), '') AS memberInCountry,
+        has((SELECT regionNames FROM cncf_country_comparison_names), memberPlace) AS memberInRegion,
         organizationListed = 1 AND organizationPlace != '' AS organizationLocated,
         organizationListed = 1
-        AND position(
-            organizationPlace, nullIf((SELECT countryName FROM cncf_country_comparison_names), '')
-        )
-        > 0 AS organizationInCountry,
+        AND organizationPlace
+        = nullIf((SELECT countryName FROM cncf_country_comparison_names), '') AS organizationInCountry,
         organizationListed = 1
-        AND multiSearchAny(
-            organizationPlace, (SELECT regionNames FROM cncf_country_comparison_names)
+        AND has(
+            (SELECT regionNames FROM cncf_country_comparison_names), organizationPlace
         ) AS organizationInRegion
     FROM cncf_collection_activities_ds
     WHERE

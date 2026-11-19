@@ -6,12 +6,11 @@ SQL >
 NODE members_with_location_information
 SQL >
     WITH
-        upperUTF8(coalesce(nullIf(m.country, ''), m.location)) AS search_u,
-        (SELECT arrayMap(x -> upperUTF8(x .1), country_data) FROM country_mapping_array) AS names_u,
+        (SELECT arrayMap(x -> x .1, country_data) FROM country_mapping_array) AS names,
         (SELECT country_data FROM country_mapping_array) AS mapping,
-        multiSearchFirstIndexUTF8(search_u, names_u) AS idx,
+        indexOf(names, m.country) AS idx,
         if(idx = 0, ('Unknown', 'XX', 0), mapping[idx]) AS country_data
-    SELECT m.id, m.location, m.country, country_data
+    SELECT m.id, m.country, country_data
     FROM members_sorted AS m
     WHERE idx != 0
 
