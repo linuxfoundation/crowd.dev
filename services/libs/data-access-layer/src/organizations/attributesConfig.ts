@@ -66,6 +66,11 @@ export const ORG_DB_ATTRIBUTES: OrgAttributeDef[] = [
     defaultColumn: 'type',
   },
   {
+    name: 'category',
+    incomingType: OrganizationAttributeType.STRING,
+    type: OrganizationAttributeType.STRING,
+  },
+  {
     name: 'employees',
     incomingType: OrganizationAttributeType.INTEGER,
     type: OrganizationAttributeType.INTEGER,
