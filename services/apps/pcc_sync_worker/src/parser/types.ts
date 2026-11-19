@@ -49,10 +49,7 @@ export interface PccHierarchyNode {
   slug: string
 }
 
-/**
- * What CDP needs to create the project when it is missing: one node per CDP segment.
- * `subprojects` goes from the project's own sub-project down to the leaf.
- */
+/** `subprojects` goes from the project's own sub-project down to the leaf. */
 export interface CdpCreationTarget {
   group: PccHierarchyNode
   project: PccHierarchyNode
