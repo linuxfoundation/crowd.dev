@@ -20,6 +20,7 @@ import {
   RawQueryParser,
   firstIdentityValue,
   normalizeCountryName,
+  toGeo,
 } from '@crowd/common'
 import { queryActivities, queryActivityRelations } from '@crowd/data-access-layer'
 import { findManyLfxMemberships } from '@crowd/data-access-layer/src/lfx_memberships'
@@ -60,6 +61,7 @@ import {
   IOrganizationIdentity,
   MergeActionState,
   MergeActionType,
+  OrganizationAttributeType,
   OrganizationIdentityType,
   SegmentData,
 } from '@crowd/types'
@@ -255,6 +257,7 @@ class OrganizationRepository {
     'tags',
     'location',
     'country',
+    'geo',
     'employees',
     'revenueRange',
     'employeeChurnRate',
@@ -281,7 +284,7 @@ class OrganizationRepository {
     for (const [name, attribute] of Object.entries(data.attributes)) {
       const attributeDefinition = findAttribute(name)
 
-      if (!(attribute as any).custom) {
+      if (!(attribute as any).custom || name === 'geo') {
         continue // eslint-disable-line no-continue
       }
 
@@ -305,6 +308,23 @@ class OrganizationRepository {
         if (isDefault && attributeDefinition.defaultColumn) {
           defaultColumns[attributeDefinition.defaultColumn] = value
         }
+      }
+    }
+
+    for (const { source, default: isDefault, value } of orgAttributes.filter(
+      ({ name }) => name === 'country',
+    )) {
+      const geo = toGeo(value)
+      orgAttributes.push({
+        type: OrganizationAttributeType.OBJECT,
+        name: 'geo',
+        source,
+        default: isDefault,
+        value: JSON.stringify(geo),
+      })
+
+      if (isDefault) {
+        defaultColumns['geo'] = geo
       }
     }
 

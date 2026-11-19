@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { omitUrlValues } from './member'
+import { omitUrlValues, setAttributesDefaultValues } from './member'
 
 describe('omitUrlValues', () => {
   it('drops values that are URLs, including leading whitespace and any casing', () => {
@@ -21,5 +21,44 @@ describe('omitUrlValues', () => {
 
   it('returns an empty object when there is no attribute', () => {
     expect(omitUrlValues(undefined)).toEqual({})
+  })
+})
+
+describe('setAttributesDefaultValues', () => {
+  it('picks the default country and geo from the same source', async () => {
+    const attributes = await setAttributesDefaultValues(
+      {
+        country: { github: 'Germany', enrichment: 'France' },
+        geo: { enrichment: { countryCode: 'FR', region: 'Île-de-France', city: 'Paris' } },
+      },
+      ['enrichment', 'github'],
+    )
+
+    expect(attributes).toEqual({
+      country: { github: 'Germany', enrichment: 'France', default: 'France' },
+      geo: {
+        github: { countryCode: 'DE' },
+        enrichment: { countryCode: 'FR', region: 'Île-de-France', city: 'Paris' },
+        default: { countryCode: 'FR', region: 'Île-de-France', city: 'Paris' },
+      },
+    })
+  })
+
+  it('replaces a stale geo when the same source sends a new country', async () => {
+    const attributes = await setAttributesDefaultValues(
+      {
+        country: { enrichment: 'Spain', default: 'Germany' },
+        geo: {
+          enrichment: { countryCode: 'DE', city: 'Berlin' },
+          default: { countryCode: 'DE', city: 'Berlin' },
+        },
+      },
+      ['enrichment'],
+    )
+
+    expect(attributes.geo).toEqual({
+      enrichment: { countryCode: 'ES' },
+      default: { countryCode: 'ES' },
+    })
   })
 })

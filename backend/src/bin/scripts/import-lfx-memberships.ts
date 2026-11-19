@@ -16,7 +16,7 @@ import { REDIS_CONFIG } from '@/conf'
 import { databaseInit } from '@/database/databaseConnection'
 import { IRepositoryOptions } from '@/database/repositories/IRepositoryOptions'
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { getCountryName } from '@crowd/common'
+import { getCountryName, toCountryCode } from '@crowd/common'
 import { markOrganizationsChanged } from '@crowd/common_services'
 import { QueryExecutor } from '@crowd/data-access-layer'
 import { LfxMembership, insertLfxMembership } from '@crowd/data-access-layer/src/lfx_memberships'
@@ -138,25 +138,36 @@ async function fetchSalesforceCountryCodes(): Promise<Map<string, string>> {
   }
 }
 
-async function setSalesforceCountry(qx: QueryExecutor, organizationId: string, country: string) {
+async function setSalesforceCountry(
+  qx: QueryExecutor,
+  organizationId: string,
+  countryCode: string,
+) {
+  const values = {
+    country: getCountryName(countryCode),
+    geo: JSON.stringify({ countryCode }),
+  }
+
   await qx.tx(async (tx) => {
-    const staleCountries = (await findOrgAttributes(tx, organizationId)).filter(
+    const staleAttributes = (await findOrgAttributes(tx, organizationId)).filter(
       (attribute) =>
-        attribute.name === 'country' &&
+        attribute.name in values &&
         attribute.source === OrganizationAttributeSource.SALESFORCE &&
-        attribute.value !== country,
+        attribute.value !== values[attribute.name],
     )
 
-    await deleteOrgAttributes(tx, organizationId, staleCountries)
-    await upsertOrgAttributes(tx, organizationId, [
-      {
-        name: 'country',
+    await deleteOrgAttributes(tx, organizationId, staleAttributes)
+    await upsertOrgAttributes(
+      tx,
+      organizationId,
+      Object.entries(values).map(([name, value]) => ({
+        name,
         source: OrganizationAttributeSource.SALESFORCE,
         default: false,
-        value: country,
-      },
-    ])
-    await recalculateOrgAttributeDefaults(tx, organizationId, ['country'])
+        value,
+      })),
+    )
+    await recalculateOrgAttributeDefaults(tx, organizationId, Object.keys(values))
   })
 }
 
@@ -259,8 +270,8 @@ if (parameters.help || !parameters.file || !parameters.tenantId) {
     let orgsWithCountry = 0
 
     for (const [organizationId, countryCodes] of countryCodesByOrgId) {
-      const country = countryCodes.size === 1 ? getCountryName([...countryCodes][0]) : undefined
-      if (!country) {
+      const countryCode = countryCodes.size === 1 ? toCountryCode([...countryCodes][0]) : undefined
+      if (!countryCode) {
         console.log(
           'Skipped organization with conflicting or invalid Salesforce countries:',
           organizationId,
@@ -269,7 +280,7 @@ if (parameters.help || !parameters.file || !parameters.tenantId) {
         continue
       }
 
-      await setSalesforceCountry(qx, organizationId, country)
+      await setSalesforceCountry(qx, organizationId, countryCode)
       await markOrganizationsChanged(redis, [organizationId], getServiceLogger())
       orgsWithCountry++
     }

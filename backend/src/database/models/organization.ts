@@ -49,6 +49,10 @@ export default (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      geo: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+      },
       description: {
         type: DataTypes.TEXT,
         allowNull: true,

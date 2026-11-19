@@ -12,7 +12,7 @@ export interface ICountryCandidate {
 export interface ICountryUpdate {
   id: string
   source: string
-  country: string
+  countryCode: string
 }
 
 export interface IMemberCountryHints {

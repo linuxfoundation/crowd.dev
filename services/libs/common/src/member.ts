@@ -9,8 +9,8 @@ import {
   OrganizationSource,
 } from '@crowd/types'
 
-import { normalizeCountryAttribute } from './country'
 import { isValidEmail } from './email'
+import { normalizeGeoAttributes } from './geo'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -121,13 +121,19 @@ export async function setAttributesDefaultValues(
       // we try to fix it
       attributes[attributeName] = JSON.parse(attributes[attributeName] as string)
     }
+  }
 
-    if (attributeName === MemberAttributeName.COUNTRY) {
-      attributes[attributeName] = normalizeCountryAttribute(
-        attributes[attributeName] as Record<string, unknown>,
-      )
-    }
+  if (attributes[MemberAttributeName.COUNTRY] || attributes[MemberAttributeName.GEO]) {
+    Object.assign(
+      attributes,
+      normalizeGeoAttributes(
+        attributes[MemberAttributeName.COUNTRY] as Record<string, unknown>,
+        attributes[MemberAttributeName.GEO] as Record<string, unknown>,
+      ),
+    )
+  }
 
+  for (const attributeName of Object.keys(attributes)) {
     const nonEmptyPlatform = Object.keys(attributes[attributeName]).filter((p) => {
       if (p === 'default') return false
       const value = attributes[attributeName][p]
