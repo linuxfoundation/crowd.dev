@@ -28,10 +28,20 @@ export interface CredlyOAuthClientCredentialData {
   organizationId: string
 }
 
+export interface SessionizeOrganizerAccountCredentialData {
+  username: string
+  password: string
+}
+
 export type Credential =
   | { platform: 'github'; kind: 'github-app'; data: GithubAppCredentialData }
   | { platform: 'octolens'; kind: 'octolens-token'; data: OctolensTokenCredentialData }
   | { platform: 'credly'; kind: 'credly-oauth-client'; data: CredlyOAuthClientCredentialData }
+  | {
+      platform: 'sessionize'
+      kind: 'sessionize-organizer-account'
+      data: SessionizeOrganizerAccountCredentialData
+    }
 
 export function assertCredentialKind<K extends Credential['kind']>(
   credential: Credential,
