@@ -6,10 +6,8 @@ function toText(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-/**
- * A country, when given, decides the code; region and city are only kept when the geo
- * agrees with it, so a stored geo never overrides a newer country from the same source.
- */
+// A given country decides the code; region and city are kept only when geo agrees,
+// so a stored geo never overrides a newer country from the same source.
 export function toGeo(country: unknown, geo?: unknown): IGeo | undefined {
   const details = (geo && typeof geo === 'object' ? geo : {}) as Partial<
     Record<keyof IGeo, unknown>
