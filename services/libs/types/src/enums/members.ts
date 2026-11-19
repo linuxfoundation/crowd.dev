@@ -34,6 +34,7 @@ export enum MemberAttributeName {
   EMAILS = 'emails',
   SKILLS = 'skills',
   COUNTRY = 'country',
+  GEO = 'geo',
   YEARS_OF_EXPERIENCE = 'yearsOfExperience',
   EDUCATION = 'education',
   SCHOOLS = 'schools',

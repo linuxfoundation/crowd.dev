@@ -2,7 +2,13 @@ import commandLineArgs from 'command-line-args'
 import { z } from 'zod'
 
 import { DB_CONFIG } from '@/conf'
-import { IS_LLM_ENABLED, getCountryName, parseLlmJson, partition } from '@crowd/common'
+import {
+  IS_LLM_ENABLED,
+  getCountryName,
+  parseLlmJson,
+  partition,
+  toCountryCode,
+} from '@crowd/common'
 import { LlmService } from '@crowd/common_services'
 import {
   IDbOrgAttributeInput,
@@ -171,8 +177,10 @@ function toAttributes(answer: Answer): IDbOrgAttributeInput[] {
   const values: Record<string, string | undefined> = { category: answer.category }
 
   if (REAL_ORGANIZATION_CATEGORIES.includes(answer.category)) {
-    const country = answer.country ? getCountryName(answer.country) : undefined
+    const countryCode = toCountryCode(answer.country)
+    const country = countryCode && getCountryName(countryCode)
     values.country = country
+    values.geo = countryCode && JSON.stringify({ countryCode })
     values.location = country && answer.city ? `${answer.city}, ${country}` : undefined
   }
 
