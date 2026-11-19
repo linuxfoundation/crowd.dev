@@ -15,7 +15,13 @@
  */
 import { SegmentStatus } from '@crowd/types'
 
-import type { CdpHierarchyTarget, ParseResult, PccParquetRow } from './types'
+import type {
+  CdpCreationTarget,
+  CdpHierarchyTarget,
+  ParseResult,
+  PccHierarchyNode,
+  PccParquetRow,
+} from './types'
 
 /**
  * PCC PROJECT_STATUS → CDP SegmentStatus enum.
@@ -141,7 +147,8 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
   }
 
   const groupLevel = isMembershipUnderLinuxFoundation(levelRows) ? maxLevel - 1 : maxLevel
-  const cdpTargetResult = buildCdpTarget(groupLevel, nameAt)
+  const projectLevel = Math.max(groupLevel - 1, 1)
+  const cdpTargetResult = buildCdpTarget(groupLevel, projectLevel, nameAt)
   if (cdpTargetResult.ok === false) {
     return {
       ok: false,
@@ -167,6 +174,7 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
       logoUrl: trimOrNull(firstRaw.PROJECT_LOGO),
       segmentIdsFromSnowflake: distinctSegmentIds(rawRows),
       cdpTarget: cdpTargetResult.target,
+      creationTarget: buildCreationTarget(groupLevel, projectLevel, levelRows),
     },
   }
 }
@@ -182,9 +190,9 @@ function isMembershipUnderLinuxFoundation(
 
 function buildCdpTarget(
   groupLevel: number,
+  projectLevel: number,
   nameAt: Record<number, string | null>,
 ): { ok: true; target: CdpHierarchyTarget } | { ok: false; reason: string } {
-  const projectLevel = Math.max(groupLevel - 1, 1)
   const group = nameAt[groupLevel]
   const project = nameAt[projectLevel]
   const subproject = nameAt[1]
@@ -194,6 +202,32 @@ function buildCdpTarget(
   if (!subproject) return missingNameAt(1)
 
   return { ok: true, target: { group, project, subproject } }
+}
+
+function buildCreationTarget(
+  groupLevel: number,
+  projectLevel: number,
+  levelRows: { level: number; id: string | null; name: string | null; slug: string | null }[],
+): CdpCreationTarget | null {
+  const nodeAt = new Map<number, PccHierarchyNode>()
+  for (const row of levelRows) {
+    if (row.id && row.name && row.slug) {
+      nodeAt.set(row.level, { pccProjectId: row.id, name: row.name, slug: row.slug })
+    }
+  }
+
+  const group = nodeAt.get(groupLevel)
+  const project = nodeAt.get(projectLevel)
+  if (!group || !project) return null
+
+  const subprojects: PccHierarchyNode[] = []
+  for (let level = projectLevel; level >= 1; level--) {
+    const node = nodeAt.get(level)
+    if (!node) return null
+    subprojects.push(node)
+  }
+
+  return { group, project, subprojects }
 }
 
 function missingNameAt(level: number): { ok: false; reason: string } {

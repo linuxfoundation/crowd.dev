@@ -43,6 +43,19 @@ export interface CdpHierarchyTarget {
   subproject: string
 }
 
+export interface PccHierarchyNode {
+  pccProjectId: string
+  name: string
+  slug: string
+}
+
+/** `subprojects` goes from the project's own sub-project down to the leaf. */
+export interface CdpCreationTarget {
+  group: PccHierarchyNode
+  project: PccHierarchyNode
+  subprojects: PccHierarchyNode[]
+}
+
 /** Structured result after parsing and transforming a single Parquet row. */
 export interface ParsedPccProject {
   pccProjectId: string
@@ -57,6 +70,8 @@ export interface ParsedPccProject {
   /** Distinct segment_ids from the Snowflake ACTIVE_SEGMENTS JOIN — step-1 matching needs exactly one. */
   segmentIdsFromSnowflake: string[]
   cdpTarget: CdpHierarchyTarget
+  /** Null when a level the creation needs has no PCC id or slug in the export. */
+  creationTarget: CdpCreationTarget | null
 }
 
 export type ParseResult =
