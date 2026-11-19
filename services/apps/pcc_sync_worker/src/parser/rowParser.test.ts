@@ -167,6 +167,7 @@ describe('parsePccRow', () => {
           project: 'Kubescape',
           subproject: 'Kubescape',
         },
+        creationTarget: null,
       },
     })
   })
@@ -363,5 +364,130 @@ describe('parsePccRow under The Linux Foundation', () => {
         cdpTarget: { group: 'LF Networking (LFN)', project: 'Anuket', subproject: 'RC1' },
       },
     })
+  })
+})
+
+describe('parsePccRow creation target', () => {
+  it('uses one PCC project for the three CDP levels of a standalone project', () => {
+    const result = parsePccRow(spineRowsFromTop(['Zephyr Project']))
+
+    const zephyr = { pccProjectId: 'pcc-0', name: 'Zephyr Project', slug: 'zephyr-project' }
+    expect(result).toMatchObject({
+      ok: true,
+      project: { creationTarget: { group: zephyr, project: zephyr, subprojects: [zephyr] } },
+    })
+  })
+
+  it('gives a project under a foundation its own sub-project', () => {
+    const result = parsePccRow(spineRowsFromTop(['LF AI & Data', 'AIRSEAI']))
+
+    const airseai = { pccProjectId: 'pcc-1', name: 'AIRSEAI', slug: 'airseai' }
+    expect(result).toMatchObject({
+      ok: true,
+      project: {
+        creationTarget: {
+          group: { pccProjectId: 'pcc-0', name: 'LF AI & Data', slug: 'lf-ai-&-data' },
+          project: airseai,
+          subprojects: [airseai],
+        },
+      },
+    })
+  })
+
+  it('lists the project sub-project before the leaf of a three-level tree', () => {
+    const result = parsePccRow(spineRowsFromTop(['LF Networking (LFN)', 'Anuket', 'RC1']))
+
+    const anuket = { pccProjectId: 'pcc-1', name: 'Anuket', slug: 'anuket' }
+    expect(result).toMatchObject({
+      ok: true,
+      project: {
+        creationTarget: {
+          project: anuket,
+          subprojects: [anuket, { pccProjectId: 'pcc-2', name: 'RC1', slug: 'rc1' }],
+        },
+      },
+    })
+  })
+
+  it('turns the levels between the project and the leaf into sub-projects', () => {
+    const result = parsePccRow(
+      spineRowsFromTop(['Foundation', 'Umbrella', 'Working Group', 'Task Force', 'Plugin']),
+    )
+
+    expect(result).toMatchObject({
+      ok: true,
+      project: {
+        creationTarget: {
+          group: { name: 'Foundation' },
+          project: { name: 'Umbrella' },
+          subprojects: [
+            { pccProjectId: 'pcc-1', name: 'Umbrella' },
+            { pccProjectId: 'pcc-2', name: 'Working Group' },
+            { pccProjectId: 'pcc-3', name: 'Task Force' },
+            { pccProjectId: 'pcc-4', name: 'Plugin' },
+          ],
+        },
+      },
+    })
+  })
+
+  it('keeps a Community Project under The Linux Foundation group', () => {
+    const result = parsePccRow(
+      spineRowsWithModelsFromTop([LINUX_FOUNDATION, { name: 'Open Quantum Safe' }]),
+    )
+
+    expect(result).toMatchObject({
+      ok: true,
+      project: {
+        creationTarget: {
+          group: { pccProjectId: LINUX_FOUNDATION.id, name: 'The Linux Foundation' },
+          project: { name: 'Open Quantum Safe' },
+          subprojects: [{ name: 'Open Quantum Safe' }],
+        },
+      },
+    })
+  })
+
+  it('leaves The Linux Foundation out when a Membership project is the group', () => {
+    const result = parsePccRow(
+      spineRowsWithModelsFromTop([
+        LINUX_FOUNDATION,
+        { name: 'The FAIR Web Foundation', model: 'Membership' },
+        { name: 'FAIR Package Manager' },
+      ]),
+    )
+
+    expect(result).toMatchObject({
+      ok: true,
+      project: {
+        creationTarget: {
+          group: { pccProjectId: 'pcc-1', name: 'The FAIR Web Foundation' },
+          project: { pccProjectId: 'pcc-2', name: 'FAIR Package Manager' },
+          subprojects: [{ pccProjectId: 'pcc-2', name: 'FAIR Package Manager' }],
+        },
+      },
+    })
+  })
+
+  it('has no creation target when a level it needs has no slug', () => {
+    const [top, middle, leaf] = spineRowsFromTop(['LF Networking (LFN)', 'Anuket', 'RC1'])
+
+    const result = parsePccRow([top, { ...middle, MAPPED_PROJECT_SLUG: ' ' }, leaf])
+
+    expect(result).toMatchObject({
+      ok: true,
+      project: {
+        cdpTarget: { group: 'LF Networking (LFN)', project: 'Anuket', subproject: 'RC1' },
+        creationTarget: null,
+      },
+    })
+  })
+
+  it('has no creation target when a level between the project and the leaf has no PCC id', () => {
+    const rows = spineRowsFromTop(['Foundation', 'Umbrella', 'Working Group', 'Plugin'])
+
+    const result = parsePccRow([rows[0], rows[1], { ...rows[2], MAPPED_PROJECT_ID: null }, rows[3]])
+
+    expect(result).toMatchObject({ ok: true, project: { creationTarget: null } })
   })
 })
