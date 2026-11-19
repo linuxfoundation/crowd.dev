@@ -81,8 +81,8 @@ interface CleanupResult {
   endTime?: string
   filters: CleanupFilters
   counts: {
-    tinybirdActivities: number
-    tinybirdActivityRelations: number
+    tinybirdActivities: number | null
+    tinybirdActivityRelations: number | null
   }
   postgresDeleted: number
   postgresFailedBatches: number
@@ -158,7 +158,7 @@ async function countTinybirdRows(
   const whereClause = buildTinybirdFilterClause(filters)
   const query = `SELECT count() AS c FROM ${datasource} WHERE ${whereClause} FORMAT JSON`
   const result = await tinybird.executeSql<{ data: Array<{ c: number }> }>(query)
-  return result.data[0]?.c ?? 0
+  return Number(result.data[0]?.c ?? 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -230,52 +230,98 @@ async function deletePostgresInChunks(
   return { deleted: total, failedBatches }
 }
 
+async function postgresHasMatchingRows(
+  postgres: QueryExecutor,
+  filters: CleanupFilters,
+): Promise<boolean> {
+  const { where, values } = buildPostgresFilter(filters)
+  const rows = await postgres.select(
+    `SELECT 1 FROM "activityRelations" WHERE ${where} LIMIT 1`,
+    values,
+  )
+  return rows.length > 0
+}
+
 // ---------------------------------------------------------------------------
 // Tinybird delete jobs
 // ---------------------------------------------------------------------------
 
-// Deleting from a raw datasource doesn't reach its MVs and copies, so each copy is deleted from too
 const TINYBIRD_RAW_SOURCES = ['activities', 'activityRelations']
 
-function isActivityOrRelationCopy(columns: Set<string>): boolean {
-  return (
-    columns.has('activityId') ||
-    (columns.has('id') && columns.has('sourceId') && columns.has('body'))
-  )
+interface SkippedDatasource {
+  name: string
+  reason: string
 }
 
+function isSharedFromAnotherWorkspace(datasource: string): boolean {
+  return datasource.includes('.')
+}
+
+function isRelationCopy(columns: Set<string>): boolean {
+  return columns.has('activityId')
+}
+
+function isActivityCopy(columns: Set<string>): boolean {
+  return columns.has('id') && columns.has('sourceId') && columns.has('body')
+}
+
+// copies are filled from these: raw sources, then MVs, then copies, and copies of copies last
+function deletionRank(datasource: string): number {
+  if (TINYBIRD_RAW_SOURCES.includes(datasource)) return 0
+  if (datasource.includes('_MV_')) return 1
+  if (datasource.includes('_by_member')) return 3
+  return 2
+}
+
+// Deletes on a raw datasource don't reach its MVs and copies, so every copy is deleted from:
+// https://www.tinybird.co/docs/classic/get-data-in/data-operations/replace-and-delete-data#delete-data-selectively
 async function planTinybirdDatasources(
   tinybird: TinybirdClient,
   filters: CleanupFilters,
-): Promise<{ datasources: string[]; skipped: { name: string; missing: string[] }[] }> {
+): Promise<{ datasources: string[]; skipped: SkippedDatasource[] }> {
   const filterColumns = ['platform', 'type']
   if (filters.segmentId) filterColumns.push('segmentId')
   if (filters.before) filterColumns.push('updatedAt')
 
-  const datasources: string[] = []
-  const skipped: { name: string; missing: string[] }[] = []
+  const listed = await tinybird.listDatasources()
+  const missingSources = TINYBIRD_RAW_SOURCES.filter(
+    (source) => !listed.some(({ name }) => name === source),
+  )
+  if (missingSources.length > 0) {
+    throw new Error(
+      `Tinybird did not list ${missingSources.join(', ')}: the token must read every datasource`,
+    )
+  }
 
-  for (const { name, columns } of await tinybird.listDatasources()) {
-    // shared from another workspace: not ours to delete from
-    if (name.includes('.')) continue
+  const datasources: string[] = []
+  const skipped: SkippedDatasource[] = []
+
+  for (const { name, columns } of listed) {
+    if (isSharedFromAnotherWorkspace(name)) continue
 
     const columnNames = new Set(columns.map((c) => c.name))
-    if (!isActivityOrRelationCopy(columnNames)) continue
+    const relationCopy = isRelationCopy(columnNames)
+    if (!relationCopy && !isActivityCopy(columnNames)) continue
 
     const missing = filterColumns.filter((column) => !columnNames.has(column))
     if (missing.length > 0) {
-      skipped.push({ name, missing })
+      skipped.push({ name, reason: `no ${missing.join(', ')} column to filter by` })
+    } else if (filters.before && !relationCopy) {
+      skipped.push({ name, reason: "its updatedAt is the activity's, not the relation's" })
     } else {
       datasources.push(name)
     }
   }
 
-  const derived = datasources.filter((name) => !TINYBIRD_RAW_SOURCES.includes(name)).sort()
-  const raw = TINYBIRD_RAW_SOURCES.filter((name) => datasources.includes(name))
-  return { datasources: [...raw, ...derived], skipped }
+  datasources.sort((a, b) => deletionRank(a) - deletionRank(b) || a.localeCompare(b))
+  return { datasources, skipped }
 }
 
-// null when the count fails: large datasources can hit the Query API time limit
+function formatCount(count: number | null | undefined): string {
+  return count === null || count === undefined ? 'unknown' : count.toLocaleString()
+}
+
+// large datasources can hit the Query API time limit
 async function countTinybirdRowsOrNull(
   tinybird: TinybirdClient,
   datasource: string,
@@ -337,18 +383,27 @@ async function runTinybirdCleanup(
   skipConfirm: boolean,
   tbToken?: string,
 ): Promise<void> {
+  const postgres = await initPostgresClient()
+  if (await postgresHasMatchingRows(postgres, filters)) {
+    const message =
+      'PostgreSQL still has matching rows: run the cleanup without --tinybird-only first, ' +
+      'with --before if new matching activities keep arriving'
+    if (!dryRun) throw new Error(message)
+    log.warn(message)
+  }
+
   const tinybird = new TinybirdClient(tbToken)
   const { datasources, skipped } = await planTinybirdDatasources(tinybird, filters)
 
-  for (const { name, missing } of skipped) {
-    log.warn(`  Skipping ${name}: no ${missing.join(', ')} column to filter by, its rows stay`)
+  for (const { name, reason } of skipped) {
+    log.warn(`  Skipping ${name}: ${reason}, its matching rows stay`)
   }
 
   log.info('Counting affected rows in Tinybird...')
   const counts = await countAllTinybird(tinybird, datasources, filters)
   for (const datasource of datasources) {
     const count = counts.get(datasource)
-    log.info(`  ${datasource}: ${count === null ? 'unknown' : count.toLocaleString()} rows`)
+    log.info(`  ${datasource}: ${formatCount(count)} rows`)
   }
 
   const toDelete = datasources.filter((datasource) => counts.get(datasource) !== 0)
@@ -358,6 +413,7 @@ async function runTinybirdCleanup(
   }
   if (toDelete.length === 0) {
     log.info('No matching rows found in Tinybird. Nothing to delete.')
+    if (skipped.length > 0) process.exit(2)
     return
   }
 
@@ -391,6 +447,15 @@ async function runTinybirdCleanup(
   }
   if (unverified.length > 0) {
     log.warn(`Deleted twice but could not count afterwards: ${unverified.join(', ')}`)
+  }
+  if (skipped.length > 0) {
+    log.warn(`Skipped, matching rows may remain: ${skipped.map(({ name }) => name).join(', ')}`)
+  }
+  log.info(
+    'Not adjusted: segment aggregates, and pull_requests_analyzed until ' +
+      'pull_request_analysis_initial_snapshot runs again',
+  )
+  if (unverified.length > 0 || skipped.length > 0) {
     process.exit(2)
   }
 
@@ -443,12 +508,12 @@ async function runPostgresCleanup(
 
   log.info('Counting affected rows in Tinybird...')
   const [tbActivitiesCount, tbRelationsCount] = await Promise.all([
-    countTinybirdRows(tinybird, 'activities', filters),
-    countTinybirdRows(tinybird, 'activityRelations', filters),
+    countTinybirdRowsOrNull(tinybird, 'activities', filters),
+    countTinybirdRowsOrNull(tinybird, 'activityRelations', filters),
   ])
 
-  log.info(`  Tinybird   activities        : ${tbActivitiesCount.toLocaleString()} rows`)
-  log.info(`  Tinybird   activityRelations : ${tbRelationsCount.toLocaleString()} rows`)
+  log.info(`  Tinybird   activities        : ${formatCount(tbActivitiesCount)} rows`)
+  log.info(`  Tinybird   activityRelations : ${formatCount(tbRelationsCount)} rows`)
   log.info(`  PostgreSQL activityRelations : will be deleted by streaming batches (no pre-count)`)
 
   if (dryRun) {
@@ -461,14 +526,9 @@ async function runPostgresCleanup(
     return
   }
 
-  if (tbActivitiesCount === 0 && tbRelationsCount === 0) {
-    log.info('No matching rows found in Tinybird. Nothing to delete.')
-    return
-  }
-
   if (!skipConfirm) {
     await confirmOrAbort(
-      `\nAbout to permanently delete the matching PostgreSQL rows. Tinybird (${tbActivitiesCount.toLocaleString()} activities, ${tbRelationsCount.toLocaleString()} activityRelations) is cleaned by the --tinybird-only run afterwards.`,
+      `\nAbout to permanently delete the matching PostgreSQL rows. Tinybird (${formatCount(tbActivitiesCount)} activities, ${formatCount(tbRelationsCount)} activityRelations) is cleaned by the --tinybird-only run afterwards.`,
     )
   }
 
