@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { replaceDoubleQuotes, toCountryCode } from '@crowd/common'
+import { getCountryName, replaceDoubleQuotes, toCountryCode } from '@crowd/common'
 import { Logger, LoggerBase } from '@crowd/logging'
 import {
   MemberAttributeName,
@@ -43,7 +43,8 @@ export default class EnrichmentServiceClearbit extends LoggerBase implements IEn
       fields: ['location'],
     },
     [MemberAttributeName.COUNTRY]: {
-      fields: ['geo.country'],
+      fields: ['geo.countryCode'],
+      transform: (countryCode: string) => getCountryName(countryCode),
     },
     [MemberAttributeName.GEO]: {
       fields: ['geo'],

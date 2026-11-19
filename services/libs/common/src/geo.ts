@@ -33,7 +33,7 @@ export function normalizeGeoAttributes(
 ): { country: Record<string, string>; geo: Record<string, IGeo> } {
   const normalized = { country: {}, geo: {} }
 
-  for (const source of new Set([...Object.keys(country), ...Object.keys(geo)])) {
+  for (const source of Object.keys(country)) {
     const value = toGeo(country[source], geo[source])
     if (value) {
       normalized.geo[source] = value

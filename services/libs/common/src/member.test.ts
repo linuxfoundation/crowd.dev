@@ -61,4 +61,19 @@ describe('setAttributesDefaultValues', () => {
       default: { countryCode: 'ES' },
     })
   })
+
+  it('drops geo sources that a replaced country no longer has', async () => {
+    const attributes = await setAttributesDefaultValues(
+      {
+        country: { default: 'France' },
+        geo: { github: { countryCode: 'DE' }, default: { countryCode: 'DE' } },
+      },
+      ['github'],
+    )
+
+    expect(attributes).toEqual({
+      country: { default: 'France' },
+      geo: { default: { countryCode: 'FR' } },
+    })
+  })
 })
