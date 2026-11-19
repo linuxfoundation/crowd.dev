@@ -192,6 +192,14 @@ export const LLM_SETTINGS: Record<LlmQueryType, ILlmSettings> = {
       thinking: { type: 'between_tools' },
     },
   },
+  [LlmQueryType.ORGANIZATION_CLASSIFICATION]: {
+    modelId: LlmModelType.CLAUDE_SONNET_5_5,
+    arguments: {
+      max_tokens: 2000,
+      anthropic_version: 'bedrock-2023-05-31',
+      thinking: { type: 'between_tools' },
+    },
+  },
 }
 
 export interface LlmIdentity {
