@@ -454,6 +454,9 @@ async function runTinybirdCleanup(
   }
 
   log.info(`✓ No matching rows left in ${datasources.length} Tinybird datasources`)
+  log.info(
+    'A copy job that was already running can still write rows back: run it again after the next hourly copies to confirm',
+  )
 }
 
 // ---------------------------------------------------------------------------
