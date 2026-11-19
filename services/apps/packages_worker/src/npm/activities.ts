@@ -297,9 +297,6 @@ export async function getNpmLastPublishedDay(): Promise<{ day: string } | { bloc
   }
 }
 
-// Each scoped package costs a request, so scoped packages run weekly; unscoped ones share bulk
-// requests and run every day.
-const SCOPED_MIN_AGE_DAYS = 6
 // Rewriting the newest stored week corrects counts stored before npm had published them.
 const TRAILING_REFETCH_DAYS = 7
 
@@ -369,7 +366,6 @@ export async function backfillDailyLane(
     batchSize,
     laneIndex,
     lanes,
-    refetchFrom ? 0 : SCOPED_MIN_AGE_DAYS,
   )
   if (candidates.length === 0) return { fetched: 0 }
 
