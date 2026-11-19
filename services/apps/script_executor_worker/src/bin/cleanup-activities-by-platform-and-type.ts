@@ -1,17 +1,15 @@
 /**
  * Activities Cleanup Script (by platform + type)
  *
- * Deletes activities from PostgreSQL (`activityRelations`) and Tinybird
- * (`activities` and `activityRelations` datasources) for a given platform and
- * one or more activity types, optionally bounded by a date cutoff.
+ * Deletes activities for a given platform and one or more activity types,
+ * optionally bounded by a date cutoff, in two runs:
  *
- * Before any deletion, the script prints the affected row counts from Tinybird
- * and prompts for confirmation (skip with --yes).
- *
- * NOTE: This script only purges the raw Tinybird datasources (`activities` and
- * `activityRelations`). Derived materialized views (activities_backup,
- * activities_deduplicated_ds, activityRelations_bucket_MV_ds_*, etc.) are NOT
- * affected because Tinybird/ClickHouse MV deletes do not cascade.
+ * 1. Without --tinybird-only: deletes from PostgreSQL (`activityRelations`).
+ *    Sequin sends every deleted row to Tinybird, so Tinybird is not touched yet.
+ * 2. With --tinybird-only, once Kafka Connect has caught up: deletes from every
+ *    Tinybird copy of activities and relations (raw datasources, MV buckets,
+ *    cleaned and served buckets), then counts again and deletes once more where
+ *    rows are back. Segment aggregates are not adjusted.
  *
  * Usage:
  *   pnpm run cleanup-activities-by-platform-and-type -- \
@@ -19,6 +17,7 @@
  *     --types <type1,type2,...> \
  *     [--segment-id <uuid>] \
  *     [--before <YYYY-MM-DD>] \
+ *     [--tinybird-only] \
  *     [--dry-run] \
  *     [--yes|-y] \
  *     [--tb-token <token>]
@@ -30,6 +29,7 @@
  * Optional:
  *   --segment-id Restrict deletion to a single segment (UUID)
  *   --before     Only delete rows with "updatedAt" < this date (YYYY-MM-DD)
+ *   --tinybird-only  Second run: delete from Tinybird only
  *   --dry-run    Report what would be deleted without deleting
  *   --yes / -y   Skip the interactive confirmation prompt
  *   --tb-token   Override CROWD_TINYBIRD_ACTIVITIES_TOKEN
@@ -86,13 +86,8 @@ interface CleanupResult {
   }
   postgresDeleted: number
   postgresFailedBatches: number
-  tinybirdJobIds: string[]
   deletions: {
     postgres: DeletionStatus
-    tinybird: {
-      activities: DeletionStatus
-      activityRelations: DeletionStatus
-    }
   }
 }
 
@@ -239,44 +234,167 @@ async function deletePostgresInChunks(
 // Tinybird delete jobs
 // ---------------------------------------------------------------------------
 
-async function deleteActivitiesFromTinybird(
+// Deleting from a raw datasource doesn't reach its MVs and copies, so each copy is deleted from too
+const TINYBIRD_RAW_SOURCES = ['activities', 'activityRelations']
+
+function isActivityOrRelationCopy(columns: Set<string>): boolean {
+  return (
+    columns.has('activityId') ||
+    (columns.has('id') && columns.has('sourceId') && columns.has('body'))
+  )
+}
+
+async function planTinybirdDatasources(
   tinybird: TinybirdClient,
   filters: CleanupFilters,
-): Promise<{
-  activities: DeletionStatus
-  activityRelations: DeletionStatus
-  jobIds: string[]
-}> {
-  const deleteCondition = buildTinybirdFilterClause(filters)
-  const results = {
-    activities: { success: false } as DeletionStatus,
-    activityRelations: { success: false } as DeletionStatus,
-  }
-  const triggeredJobIds: string[] = []
+): Promise<{ datasources: string[]; skipped: { name: string; missing: string[] }[] }> {
+  const filterColumns = ['platform', 'type']
+  if (filters.segmentId) filterColumns.push('segmentId')
+  if (filters.before) filterColumns.push('updatedAt')
 
-  log.info('Triggering deletion job for Tinybird activities datasource...')
+  const datasources: string[] = []
+  const skipped: { name: string; missing: string[] }[] = []
+
+  for (const { name, columns } of await tinybird.listDatasources()) {
+    // shared from another workspace: not ours to delete from
+    if (name.includes('.')) continue
+
+    const columnNames = new Set(columns.map((c) => c.name))
+    if (!isActivityOrRelationCopy(columnNames)) continue
+
+    const missing = filterColumns.filter((column) => !columnNames.has(column))
+    if (missing.length > 0) {
+      skipped.push({ name, missing })
+    } else {
+      datasources.push(name)
+    }
+  }
+
+  const derived = datasources.filter((name) => !TINYBIRD_RAW_SOURCES.includes(name)).sort()
+  const raw = TINYBIRD_RAW_SOURCES.filter((name) => datasources.includes(name))
+  return { datasources: [...raw, ...derived], skipped }
+}
+
+// null when the count fails: large datasources can hit the Query API time limit
+async function countTinybirdRowsOrNull(
+  tinybird: TinybirdClient,
+  datasource: string,
+  filters: CleanupFilters,
+): Promise<number | null> {
   try {
-    const resp = await tinybird.deleteDatasource('activities', deleteCondition, true, false)
-    log.info(`✓ Triggered activities deletion job (job_id: ${resp.job_id})`)
-    triggeredJobIds.push(resp.job_id)
-    results.activities = { success: true, jobId: resp.job_id }
+    return await countTinybirdRows(tinybird, datasource, filters)
   } catch (error) {
-    log.error(`Failed to trigger deletion job for activities: ${error.message}`)
-    results.activities = { success: false, error: error.message }
+    log.warn(`  Counting ${datasource} failed: ${error.message}`)
+    return null
+  }
+}
+
+async function countAllTinybird(
+  tinybird: TinybirdClient,
+  datasources: string[],
+  filters: CleanupFilters,
+): Promise<Map<string, number | null>> {
+  const counts = new Map<string, number | null>()
+  for (const datasource of datasources) {
+    counts.set(datasource, await countTinybirdRowsOrNull(tinybird, datasource, filters))
+  }
+  return counts
+}
+
+async function deleteFromTinybird(
+  tinybird: TinybirdClient,
+  datasource: string,
+  filters: CleanupFilters,
+): Promise<void> {
+  log.info(`  Deleting from ${datasource}...`)
+  const resp = await tinybird.deleteDatasource(
+    datasource,
+    buildTinybirdFilterClause(filters),
+    true,
+    false,
+  )
+  if (!resp.job_id) {
+    throw new Error(`Delete on ${datasource} returned no job`)
+  }
+  await tinybird.waitForJobs([resp.job_id], TINYBIRD_JOB_POLL_INTERVAL_MS, TINYBIRD_JOB_TIMEOUT_MS)
+}
+
+function tinybirdOnlyCommand(filters: CleanupFilters): string {
+  const parts = [
+    'pnpm run cleanup-activities-by-platform-and-type --',
+    '--tinybird-only',
+    `--platform ${filters.platform}`,
+    `--types ${filters.types.join(',')}`,
+  ]
+  if (filters.segmentId) parts.push(`--segment-id ${filters.segmentId}`)
+  if (filters.before) parts.push(`--before ${filters.before}`)
+  return parts.join(' ')
+}
+
+async function runTinybirdCleanup(
+  filters: CleanupFilters,
+  dryRun: boolean,
+  skipConfirm: boolean,
+  tbToken?: string,
+): Promise<void> {
+  const tinybird = new TinybirdClient(tbToken)
+  const { datasources, skipped } = await planTinybirdDatasources(tinybird, filters)
+
+  for (const { name, missing } of skipped) {
+    log.warn(`  Skipping ${name}: no ${missing.join(', ')} column to filter by, its rows stay`)
   }
 
-  log.info('Triggering deletion job for Tinybird activityRelations datasource...')
-  try {
-    const resp = await tinybird.deleteDatasource('activityRelations', deleteCondition, true, false)
-    log.info(`✓ Triggered activityRelations deletion job (job_id: ${resp.job_id})`)
-    triggeredJobIds.push(resp.job_id)
-    results.activityRelations = { success: true, jobId: resp.job_id }
-  } catch (error) {
-    log.error(`Failed to trigger deletion job for activityRelations: ${error.message}`)
-    results.activityRelations = { success: false, error: error.message }
+  log.info('Counting affected rows in Tinybird...')
+  const counts = await countAllTinybird(tinybird, datasources, filters)
+  for (const datasource of datasources) {
+    const count = counts.get(datasource)
+    log.info(`  ${datasource}: ${count === null ? 'unknown' : count.toLocaleString()} rows`)
   }
 
-  return { ...results, jobIds: triggeredJobIds }
+  const toDelete = datasources.filter((datasource) => counts.get(datasource) !== 0)
+  if (dryRun) {
+    log.info(`[DRY RUN] Would delete from ${toDelete.length} datasources. No data was deleted.`)
+    return
+  }
+  if (toDelete.length === 0) {
+    log.info('No matching rows found in Tinybird. Nothing to delete.')
+    return
+  }
+
+  if (!skipConfirm) {
+    await confirmOrAbort(
+      `\nAbout to permanently delete the matching rows from ${toDelete.length} Tinybird datasources.`,
+    )
+  }
+
+  for (const datasource of toDelete) {
+    await deleteFromTinybird(tinybird, datasource, filters)
+  }
+
+  const afterFirstPass = await countAllTinybird(tinybird, datasources, filters)
+  for (const datasource of datasources.filter((ds) => afterFirstPass.get(ds) !== 0)) {
+    log.info(
+      `  ${datasource}: deleting once more (count ${afterFirstPass.get(datasource) ?? 'unknown'})`,
+    )
+    await deleteFromTinybird(tinybird, datasource, filters)
+  }
+
+  const final = await countAllTinybird(tinybird, datasources, filters)
+  const left = datasources.filter((ds) => (final.get(ds) ?? 0) > 0)
+  const unverified = datasources.filter((ds) => final.get(ds) === null)
+
+  for (const datasource of left) {
+    log.error(`✗ ${datasource} still holds ${final.get(datasource)} matching rows`)
+  }
+  if (left.length > 0) {
+    process.exit(1)
+  }
+  if (unverified.length > 0) {
+    log.warn(`Deleted twice but could not count afterwards: ${unverified.join(', ')}`)
+    process.exit(2)
+  }
+
+  log.info(`✓ No matching rows left in ${datasources.length} Tinybird datasources`)
 }
 
 // ---------------------------------------------------------------------------
@@ -307,7 +425,7 @@ function writeResult(filePath: string, result: CleanupResult): void {
 // Main orchestration
 // ---------------------------------------------------------------------------
 
-async function runCleanup(
+async function runPostgresCleanup(
   filters: CleanupFilters,
   dryRun: boolean,
   skipConfirm: boolean,
@@ -338,8 +456,7 @@ async function runCleanup(
     log.info(
       `  PostgreSQL activityRelations matching filter (actual count reported during real execution)`,
     )
-    log.info(`  ${tbActivitiesCount.toLocaleString()} rows from Tinybird activities`)
-    log.info(`  ${tbRelationsCount.toLocaleString()} rows from Tinybird activityRelations`)
+    log.info(`  Tinybird: nothing in this run, see --tinybird-only`)
     log.info('[DRY RUN] No data was deleted.')
     return
   }
@@ -351,7 +468,7 @@ async function runCleanup(
 
   if (!skipConfirm) {
     await confirmOrAbort(
-      `\nAbout to permanently delete PG rows matching filter, ${tbActivitiesCount.toLocaleString()} TB activities, ${tbRelationsCount.toLocaleString()} TB activityRelations.`,
+      `\nAbout to permanently delete the matching PostgreSQL rows. Tinybird (${tbActivitiesCount.toLocaleString()} activities, ${tbRelationsCount.toLocaleString()} activityRelations) is cleaned by the --tinybird-only run afterwards.`,
     )
   }
 
@@ -365,18 +482,13 @@ async function runCleanup(
     },
     postgresDeleted: 0,
     postgresFailedBatches: 0,
-    tinybirdJobIds: [],
     deletions: {
       postgres: { success: true },
-      tinybird: {
-        activities: { success: true },
-        activityRelations: { success: true },
-      },
     },
   }
   const jsonFilePath = resultJsonPath(filters, startTime)
 
-  log.info(`\nStep 1: Deleting matching rows from PostgreSQL in ${POSTGRES_BATCH_SIZE} batches...`)
+  log.info(`\nDeleting matching rows from PostgreSQL in ${POSTGRES_BATCH_SIZE} batches...`)
   try {
     const pgResult = await deletePostgresInChunks(postgres, filters)
     result.postgresDeleted = pgResult.deleted
@@ -397,39 +509,8 @@ async function runCleanup(
     result.deletions.postgres = { success: false, error: error.message }
   }
 
-  log.info('\nStep 2: Triggering Tinybird deletions...')
-  const tinybirdStatuses = await deleteActivitiesFromTinybird(tinybird, filters)
-  result.deletions.tinybird.activities = tinybirdStatuses.activities
-  result.deletions.tinybird.activityRelations = tinybirdStatuses.activityRelations
-  result.tinybirdJobIds = tinybirdStatuses.jobIds
-
-  // Persist result BEFORE waiting on TB jobs so the job IDs survive a timeout.
-  writeResult(jsonFilePath, result)
-
-  if (tinybirdStatuses.jobIds.length > 0) {
-    log.info(
-      `Waiting for ${tinybirdStatuses.jobIds.length} Tinybird deletion job(s) to complete (timeout: ${TINYBIRD_JOB_TIMEOUT_MS / 1000 / 60} min)...`,
-    )
-    try {
-      await tinybird.waitForJobs(
-        tinybirdStatuses.jobIds,
-        TINYBIRD_JOB_POLL_INTERVAL_MS,
-        TINYBIRD_JOB_TIMEOUT_MS,
-      )
-      log.info(`✓ All Tinybird deletion jobs completed`)
-    } catch (error) {
-      log.error(
-        `Failed to wait for Tinybird deletion jobs: ${error.message} (jobs are still running in background; IDs persisted to ${jsonFilePath})`,
-      )
-    }
-  }
-
   result.endTime = new Date().toISOString()
-  const anyFailure =
-    !result.deletions.postgres.success ||
-    !result.deletions.tinybird.activities.success ||
-    !result.deletions.tinybird.activityRelations.success
-  result.status = anyFailure ? 'failure' : 'success'
+  result.status = result.deletions.postgres.success ? 'success' : 'failure'
   writeResult(jsonFilePath, result)
 
   log.info(`\n${'='.repeat(80)}`)
@@ -439,24 +520,13 @@ async function runCleanup(
   if (result.postgresFailedBatches > 0) {
     log.warn(`✗ PostgreSQL failed batches: ${result.postgresFailedBatches}`)
   }
-  if (tinybirdStatuses.activities.success) {
-    log.info(`✓ Tinybird activities deletion job: ${tinybirdStatuses.activities.jobId || 'N/A'}`)
-  } else {
-    log.error(`✗ Tinybird activities deletion failed: ${tinybirdStatuses.activities.error}`)
-  }
-  if (tinybirdStatuses.activityRelations.success) {
-    log.info(
-      `✓ Tinybird activityRelations deletion job: ${tinybirdStatuses.activityRelations.jobId || 'N/A'}`,
-    )
-  } else {
-    log.error(
-      `✗ Tinybird activityRelations deletion failed: ${tinybirdStatuses.activityRelations.error}`,
-    )
-  }
 
   if (result.status === 'failure') {
     process.exit(1)
   }
+
+  log.info('\nTinybird is not cleaned yet. Once Kafka Connect has caught up, run:')
+  log.info(`  ${tinybirdOnlyCommand(filters)}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -481,6 +551,7 @@ function printHelp(): void {
         --types <type1,type2,...> \\
         [--segment-id <uuid>] \\
         [--before <YYYY-MM-DD>] \\
+        [--tinybird-only] \\
         [--dry-run] \\
         [--yes|-y] \\
         [--tb-token <token>]
@@ -492,6 +563,8 @@ function printHelp(): void {
     Optional:
       --segment-id Restrict deletion to a single segment (UUID)
       --before     Only delete rows with "updatedAt" < this date (YYYY-MM-DD)
+      --tinybird-only  Second run, once Kafka Connect has caught up: delete
+                   from every Tinybird copy of activities and relations
       --dry-run    Report what would be deleted without deleting
       --yes / -y   Skip the interactive confirmation prompt
       --tb-token   Override CROWD_TINYBIRD_ACTIVITIES_TOKEN
@@ -516,6 +589,7 @@ async function main() {
   }
 
   const dryRun = args.includes('--dry-run')
+  const tinybirdOnly = args.includes('--tinybird-only')
   const skipConfirm = args.includes('--yes') || args.includes('-y')
   const tbToken = getFlagValue(args, '--tb-token')
   const platform = getFlagValue(args, '--platform')
@@ -572,7 +646,12 @@ async function main() {
   }
 
   try {
-    await runCleanup({ platform, types, segmentId, before }, dryRun, skipConfirm, tbToken)
+    const filters = { platform, types, segmentId, before }
+    if (tinybirdOnly) {
+      await runTinybirdCleanup(filters, dryRun, skipConfirm, tbToken)
+    } else {
+      await runPostgresCleanup(filters, dryRun, skipConfirm, tbToken)
+    }
   } catch (error) {
     log.error(error, 'Failed to run cleanup script')
     log.error(`\n❌ Error: ${error.message}`)

@@ -324,6 +324,17 @@ export class TinybirdClient {
     return result.data
   }
 
+  async listDatasources(): Promise<{ name: string; columns: { name: string }[] }[]> {
+    const result = await this.withRetry(async () =>
+      axios.get<{ datasources: { name: string; columns?: { name: string }[] }[] }>(
+        `${this.host}/v0/datasources`,
+        { headers: this.getHeaders(), httpsAgent: TinybirdClient.httpsAgent },
+      ),
+    )
+
+    return result.data.datasources.map(({ name, columns }) => ({ name, columns: columns ?? [] }))
+  }
+
   /**
    * Delete data from a Tinybird datasource using the delete API
    * See: https://www.tinybird.co/docs/classic/get-data-in/data-operations/replace-and-delete-data#delete-data-selectively
