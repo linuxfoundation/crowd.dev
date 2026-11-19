@@ -17,6 +17,7 @@ export const ORG_DB_FIELDS = [
   'importHash',
   'location',
   'country',
+  'geo',
   'isTeamOrganization',
   'isAffiliationBlocked',
   'type',
@@ -58,6 +59,12 @@ export const ORG_DB_ATTRIBUTES: OrgAttributeDef[] = [
     incomingType: OrganizationAttributeType.STRING,
     type: OrganizationAttributeType.STRING,
     defaultColumn: 'country',
+  },
+  {
+    name: 'geo',
+    incomingType: OrganizationAttributeType.OBJECT,
+    type: OrganizationAttributeType.OBJECT,
+    defaultColumn: 'geo',
   },
   {
     name: 'type',

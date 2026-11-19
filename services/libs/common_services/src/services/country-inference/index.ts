@@ -1,9 +1,9 @@
 import {
-  getCountry,
-  getCountryName,
+  getCountryCode,
   normalizeLocation,
   parseLlmJson,
   partition,
+  toCountryCode,
 } from '@crowd/common'
 import {
   ICountryCandidate,
@@ -51,8 +51,9 @@ async function askLlmForLocations(
     .filter(({ i }) => locations[i] !== undefined)
     .map(({ i, s, c }) => {
       const location = locations[i]
-      if (s === 'resolved' && c && getCountryName(c)) {
-        return { location, status: s, countryCode: c.toUpperCase() }
+      const countryCode = toCountryCode(c)
+      if (s === 'resolved' && countryCode) {
+        return { location, status: s, countryCode }
       }
       return { location, status: s === 'ambiguous' ? s : 'unknown', countryCode: null }
     })
@@ -68,8 +69,8 @@ async function askLlmWithHints(
   )
 
   return answers
-    .filter(({ i, o, c }) => members[i] && c && o?.includes(c) && getCountryName(c))
-    .map(({ i, c }) => ({ id: members[i].id, source: LLM_SOURCE, country: getCountryName(c) }))
+    .filter(({ i, o, c }) => members[i] && c && o?.includes(c) && toCountryCode(c))
+    .map(({ i, c }) => ({ id: members[i].id, source: LLM_SOURCE, countryCode: toCountryCode(c) }))
 }
 
 async function lookUpLocations(
@@ -119,9 +120,9 @@ export async function inferCountries(
   const unparsed: ICountryCandidate[] = []
 
   for (const { id, location } of candidates) {
-    const country = getCountry(location)
-    if (country) {
-      updates.push({ id, source: PARSER_SOURCE, country })
+    const countryCode = getCountryCode(location)
+    if (countryCode) {
+      updates.push({ id, source: PARSER_SOURCE, countryCode })
     } else {
       unparsed.push({ id, location: normalizeLocation(location) })
     }
@@ -137,7 +138,7 @@ export async function inferCountries(
       updates.push({
         id: candidate.id,
         source: LLM_SOURCE,
-        country: getCountryName(row.countryCode),
+        countryCode: row.countryCode,
       })
     } else if (row?.status === 'ambiguous') {
       ambiguous.push(candidate)

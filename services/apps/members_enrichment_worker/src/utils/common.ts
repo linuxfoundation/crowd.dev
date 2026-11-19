@@ -1,6 +1,6 @@
 import lodash from 'lodash'
 
-import { IMemberEnrichmentCache, MemberIdentityType, PlatformType } from '@crowd/types'
+import { IGeo, IMemberEnrichmentCache, MemberIdentityType, PlatformType } from '@crowd/types'
 
 import {
   IMemberEnrichmentAttributeSettings,
@@ -8,6 +8,15 @@ import {
   IMemberEnrichmentDataNormalized,
   IMemberEnrichmentSocialData,
 } from '../types'
+
+// Nulls, not undefined: attributes are deep-merged, and a missing key would keep a stale city.
+export function toEnrichmentGeo(
+  countryCode: string | undefined,
+  region: string | undefined,
+  city: string | undefined,
+): Record<keyof IGeo, string | null> {
+  return { countryCode: countryCode ?? null, region: region || null, city: city || null }
+}
 
 export function sourceHasDifferentDataComparedToCache(
   cache: IMemberEnrichmentCache<IMemberEnrichmentData>,
