@@ -280,7 +280,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
 
   // The table is read and written only when the emit is real: a shadow run must not make badges
   // look already emitted. A known badge keeps the member of its first sight.
-  const emitPage = async (pageBadges: CredlyBadge[]) => {
+  const emitPage = async (pageBadges: CredlyBadge[], { backfill = false } = {}) => {
     // A badge listed twice on one page (a state change mid-walk) is saved and emitted once, as
     // its last version.
     const badges = [...new Map(pageBadges.map((badge) => [badge.id, badge])).values()]
@@ -323,7 +323,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
       rows.push(row)
       counters.activities += batch.length
     }
-    if (activities.length > 0) await ctx.emit(activities)
+    if (activities.length > 0) await ctx.emit(activities, { backfill })
     if (ctx.emitEnabled) await ctx.deps.saveBadges(rows)
     counters.badges += badges.length
   }
@@ -480,7 +480,7 @@ export async function runBadgePoll(ctx: SyncContext<CredlyDeps>): Promise<SyncOu
 
     const badges = await withReplacements(result.page.data)
     if (!badges) break
-    await emitPage(badges)
+    await emitPage(badges, { backfill: true })
 
     if (drainedPage(window, result.page)) {
       counters.backfillWindows += 1

@@ -4,6 +4,7 @@ import type { ICredlyBadgeInput, ICredlyBadgeRow } from '@crowd/data-access-laye
 import { CredlyActivityType } from '@crowd/integrations/src/integrations/credly/types'
 import type { Logger } from '@crowd/logging'
 
+import type { EmitOverrides } from '../../../emit'
 import { ProviderContractError, ProviderUnavailableError } from '../../../http/errors'
 import type { Credential, SyncContext } from '../../../types'
 import { fetchBadge, fetchBadgesPage } from '../apiClient'
@@ -101,7 +102,7 @@ function makeCtx(
   stored: ICredlyBadgeRow[] = [],
 ) {
   const emitted: unknown[][] = []
-  const emits: { records: unknown[]; overrides: unknown }[] = []
+  const emits: { records: unknown[]; overrides?: EmitOverrides }[] = []
   const watermarks: Record<string, unknown>[] = []
   const saved: ICredlyBadgeInput[] = []
   const deps: CredlyDeps = {
@@ -183,7 +184,7 @@ describe('runBadgePoll', () => {
       CredlyActivityType.ISSUED_BADGE,
       CredlyActivityType.ACCEPTED_BADGE,
     ])
-    expect(emits[0].overrides).toBeUndefined()
+    expect(emits[0].overrides).toEqual({ backfill: false })
     expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1 })
   })
 
@@ -475,7 +476,7 @@ describe('runBadgePoll', () => {
 
     await runBadgePoll(ctx)
 
-    expect(emits.every((emit) => emit.overrides === undefined)).toBe(true)
+    expect(emits.every((emit) => emit.overrides?.backfill === false)).toBe(true)
     expect(emits).toHaveLength(1)
     expect(types(emits[0].records)).toEqual([
       CredlyActivityType.REPLACED_BADGE,
@@ -507,7 +508,7 @@ describe('runBadgePoll', () => {
       CredlyActivityType.ISSUED_BADGE,
       CredlyActivityType.ACCEPTED_BADGE,
     ])
-    expect(emits[0].overrides).toBeUndefined()
+    expect(emits[0].overrides).toEqual({ backfill: false })
   })
 
   it('builds a state activity with the member of the first sight, not the live one', async () => {
@@ -998,10 +999,13 @@ describe('runBadgePoll backfill', () => {
     expect(lastWatermark()).toEqual({ since: HORIZON, until: null, page: 1, historyFrom: earlier })
   })
 
-  it('serves the live window first and keeps the backfill cursor through it', async () => {
+  it('serves the live window first, keeps the backfill cursor through it and flags only backfill emits', async () => {
     const since = '2026-10-23T00:00:00.000Z'
-    mockedFetchBadgesPage.mockResolvedValue(page([]))
-    const { ctx, watermarks } = makeCtx({ since, backfill: { floor: FLOOR, top: TOP } })
+    mockedFetchBadgesPage
+      .mockResolvedValueOnce(page([badge({ id: 'live' })]))
+      .mockResolvedValueOnce(page([badge({ id: 'history' })]))
+      .mockResolvedValue(page([]))
+    const { ctx, watermarks, emits } = makeCtx({ since, backfill: { floor: FLOOR, top: TOP } })
 
     await runBadgePoll(ctx)
 
@@ -1016,6 +1020,7 @@ describe('runBadgePoll backfill', () => {
       page: 1,
       backfill: { floor: FLOOR, top: TOP, since: null, until: null, page: 1 },
     })
+    expect(emits.map((emit) => emit.overrides)).toEqual([{ backfill: false }, { backfill: true }])
   })
 
   it('resumes a cut backfill window from its saved page', async () => {

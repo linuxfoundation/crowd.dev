@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   parkUnit: vi.fn(),
   startWorkflow: vi.fn(),
   emittedCount: vi.fn(),
+  liveEmittedCount: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
@@ -66,7 +67,11 @@ vi.mock('@crowd/connectors', async (importOriginal) => ({
   findSync: () => ({ cadenceMinutes: 5 }),
   createTokenPool: () => ({ acquire: vi.fn(), park: vi.fn(), invalidate: vi.fn() }),
   createHttpClient: () => ({ requestCount: () => 0 }),
-  createEmit: () => ({ emit: vi.fn(), emittedCount: mocks.emittedCount }),
+  createEmit: () => ({
+    emit: vi.fn(),
+    emittedCount: mocks.emittedCount,
+    liveEmittedCount: mocks.liveEmittedCount,
+  }),
 }))
 
 vi.mock('@crowd/data-access-layer/src/connectors', () => ({
@@ -127,6 +132,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   activityCancellation.controller = new AbortController()
   mocks.emittedCount.mockReturnValue(3)
+  mocks.liveEmittedCount.mockReturnValue(2)
   mocks.getUnitById.mockResolvedValue(UNIT)
   mocks.reassertUnitClaim.mockResolvedValue(true)
 })
@@ -152,7 +158,12 @@ describe('executeSync worker shutdown', () => {
       SHORT_DEFER_RUN_AT,
     )
     expect(mocks.log.info).toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'sync_run_summary', cancellationReason: 'WORKER_SHUTDOWN' }),
+      expect.objectContaining({
+        event: 'sync_run_summary',
+        cancellationReason: 'WORKER_SHUTDOWN',
+        emittedCount: 3,
+        liveEmittedCount: 2,
+      }),
       'sync run summary',
     )
   })
