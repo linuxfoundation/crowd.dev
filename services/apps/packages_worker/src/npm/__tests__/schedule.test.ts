@@ -46,7 +46,7 @@ const cases = [
     name: 'scheduleDailyDownloadsBackfill',
     run: scheduleDailyDownloadsBackfill,
     scheduleId: 'npm-daily-downloads-backfill',
-    cron: '30 3 * * *',
+    cron: '0 12 * * *',
     workflowType: workflows.backfillDailyDownloads,
     catchupWindow: '1 hour',
   },
