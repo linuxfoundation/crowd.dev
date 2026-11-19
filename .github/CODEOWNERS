@@ -1,2 +1,2 @@
-# Frontend (CDP UI). Reviews are auto-requested from these owners.
-/frontend/ @skwowet @joanagmaia @gaspergrom
+# The team and the LFX review agent (lfx-one) own every file.
+* @linuxfoundation/community-data-platform @lfx-one
