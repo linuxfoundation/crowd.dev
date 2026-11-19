@@ -204,9 +204,15 @@ apply the fix on a new branch off main:
   to it.
 - pip direct: bump the constraint in `pyproject.toml`
   (`uv add '<pkg>>=<target>'`), then `uv lock`.
-- go (no host toolchain — run in the image the Dockerfile pins):
+- go (no host toolchain — run in the image the Dockerfile pins for that
+  module: `go-vuln-builder` for vulnerability_scanner, `go-builder` for
+  software_value):
 
   ```bash
+  # vulnerability_scanner
+  docker run --rm -v "$PWD":/w -w /w golang:1.26-alpine \
+    sh -c 'go get <pkg>@v<target> && go mod tidy'
+  # software_value
   docker run --rm -v "$PWD":/w -w /w golang:1.25-alpine \
     sh -c 'go get <pkg>@v<target> && go mod tidy'
   ```

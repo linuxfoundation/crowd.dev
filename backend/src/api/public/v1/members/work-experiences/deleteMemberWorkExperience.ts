@@ -64,7 +64,7 @@ export async function deleteMemberWorkExperience(req: Request, res: Response): P
       })
 
       // Signal after commit so the workflow sees persisted changes
-      await signalMemberUpdate(req.temporal, memberId, {
+      await signalMemberUpdate(req.temporal, memberId, 'api-work-experience', {
         memberOrganizationIds: [memberOrg.organizationId],
       })
 

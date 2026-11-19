@@ -75,7 +75,10 @@ export async function runMentionPoll(ctx: SyncContext<OctolensDeps>): Promise<Sy
 
   const emitMentions = async (
     mentions: OctolensMention[],
-    onTimestamp?: (isoTimestamp: string) => void,
+    {
+      onTimestamp,
+      backfill,
+    }: { onTimestamp?: (isoTimestamp: string) => void; backfill?: boolean } = {},
   ) => {
     const byTarget = new Map<
       string,
@@ -145,7 +148,7 @@ export async function runMentionPoll(ctx: SyncContext<OctolensDeps>): Promise<Sy
     }
 
     for (const { target, activities } of byTarget.values()) {
-      await ctx.emit(activities, target)
+      await ctx.emit(activities, { ...target, backfill })
     }
   }
 
@@ -159,10 +162,12 @@ export async function runMentionPoll(ctx: SyncContext<OctolensDeps>): Promise<Sy
     const page = await fetchMentionsPage(token, { startDate, cursor })
     pagesFetched += 1
 
-    await emitMentions(page.data, (isoTimestamp) => {
-      if (!maxTimestampSeen || isoTimestamp > maxTimestampSeen) {
-        maxTimestampSeen = isoTimestamp
-      }
+    await emitMentions(page.data, {
+      onTimestamp: (isoTimestamp) => {
+        if (!maxTimestampSeen || isoTimestamp > maxTimestampSeen) {
+          maxTimestampSeen = isoTimestamp
+        }
+      },
     })
 
     if (!page.nextCursor) {
@@ -207,7 +212,7 @@ export async function runMentionPoll(ctx: SyncContext<OctolensDeps>): Promise<Sy
     pagesFetched += 1
     backfillPages += 1
 
-    await emitMentions(page.data)
+    await emitMentions(page.data, { backfill: true })
 
     if (page.nextCursor && page.nextCursor !== item.cursor) {
       item.cursor = page.nextCursor

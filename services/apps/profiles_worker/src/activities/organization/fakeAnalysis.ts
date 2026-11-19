@@ -135,7 +135,7 @@ export async function markOrganizationAsFake(organizationId: string): Promise<vo
   const segmentOnlyMemberIds = await deleteOrganizationSegmentAffiliations(qx, organizationId)
 
   for (const memberId of segmentOnlyMemberIds) {
-    await triggerMemberAffiliationsRefresh(memberId)
+    await triggerMemberAffiliationsRefresh(memberId, [], false, 'organization-marked-fake')
   }
 
   const workflowId = `${TemporalWorkflowId.ORGANIZATION_UPDATE}/${organizationId}`

@@ -260,7 +260,7 @@ async function main() {
               log.info(
                 `Triggering memberUpdate: ${memberId} | stale orgs: [${staleOrgIds.join(', ')}] | active orgs: ${activeOrgIds.length}`,
               )
-              await signalMemberUpdate(temporal, memberId, {
+              await signalMemberUpdate(temporal, memberId, 'script', {
                 memberOrganizationIds: activeOrgIds,
                 syncToOpensearch: true,
               })

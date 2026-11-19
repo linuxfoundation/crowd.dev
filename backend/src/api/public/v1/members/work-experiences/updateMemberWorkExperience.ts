@@ -202,7 +202,7 @@ export async function updateMemberWorkExperience(req: Request, res: Response): P
           ? [oldOrganizationId, data.organizationId]
           : [data.organizationId]
 
-      await signalMemberUpdate(req.temporal, memberId, {
+      await signalMemberUpdate(req.temporal, memberId, 'api-work-experience', {
         memberOrganizationIds: orgsToSignal,
       })
 

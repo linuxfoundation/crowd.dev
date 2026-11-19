@@ -14,6 +14,16 @@ import { MetadataStore, S3Service, SnowflakeExportJob, buildPlatformFilter } fro
 
 import { parsePccRow } from '../parser'
 import type { CdpHierarchyTarget, ParsedPccProject } from '../parser'
+import {
+  addToCreationSummary,
+  creationSummaryCounts,
+  emptyCreationSummary,
+  loadCdpSegmentIndex,
+  planCreation,
+} from './creationPlan'
+import type { CdpSegmentIndex, CreationPlan } from './creationPlan'
+import { findExistingProjectCandidates, loadCdpSubprojectIndex } from './existingProjects'
+import type { CdpSubprojectIndex } from './existingProjects'
 import { resolveSyncErrorsNotReportedByExport } from './syncErrors'
 
 const log = getServiceChildLogger('pccProjectConsumer')
@@ -108,6 +118,8 @@ export class PccProjectConsumer {
     let schemaMismatchCount = 0
     let schemaMismatchMatchedCount = 0 // SCHEMA_MISMATCH rows that still have a CDP segment match
     let missingProjectIdCount = 0
+    let possibleExistingCount = 0
+    const creationSummary = emptyCreationSummary()
 
     try {
       // Stream all rows and group by PROJECT_ID before processing.
@@ -144,6 +156,12 @@ export class PccProjectConsumer {
           count: missingProjectIdCount,
         })
       }
+
+      const qx = pgpQx(this.db)
+      const [cdpSubprojects, cdpSegments] = await Promise.all([
+        loadCdpSubprojectIndex(qx),
+        loadCdpSegmentIndex(qx),
+      ])
 
       await this.db.tx(async (tx) => {
         for (const [, rows] of groups) {
@@ -190,7 +208,7 @@ export class PccProjectConsumer {
           }
 
           const { project } = parsed
-          const result = await this.processRow(tx, project)
+          const result = await this.processRow(tx, project, cdpSubprojects, cdpSegments)
 
           switch (result.action) {
             case 'UPSERTED':
@@ -199,6 +217,23 @@ export class PccProjectConsumer {
               break
             case 'SKIPPED':
               skippedCount++
+              if (result.possibleExisting) possibleExistingCount++
+              if (result.creationPlan) {
+                addToCreationSummary(creationSummary, result.creationPlan)
+                if (this.dryRun) {
+                  log.info(
+                    {
+                      pccProjectId: project.pccProjectId,
+                      pccSlug: project.pccSlug,
+                      name: project.name,
+                      status: project.status,
+                      creationTarget: project.creationTarget,
+                      creationPlan: result.creationPlan,
+                    },
+                    'PCC project missing in CDP',
+                  )
+                }
+              }
               break
           }
         }
@@ -213,11 +248,13 @@ export class PccProjectConsumer {
           total: totalCount,
           upserted: upsertedCount,
           skipped: skippedCount,
+          possibleExistingProject: possibleExistingCount,
           hierarchyMismatch: mismatchCount,
           schemaMismatch: schemaMismatchCount,
           schemaMismatchWithCdpMatch: schemaMismatchMatchedCount,
           schemaMismatchNoCdpMatch: schemaMismatchCount - schemaMismatchMatchedCount,
           missingProjectId: missingProjectIdCount,
+          creation: creationSummaryCounts(creationSummary),
         },
         'PCC job completed',
       )
@@ -294,11 +331,16 @@ export class PccProjectConsumer {
   private async processRow(
     tx: DbConnOrTx,
     project: ParsedPccProject,
-  ): Promise<{ action: 'UPSERTED'; hierarchyMismatch: boolean } | { action: 'SKIPPED' }> {
+    cdpSubprojects: CdpSubprojectIndex,
+    cdpSegments: CdpSegmentIndex,
+  ): Promise<
+    | { action: 'UPSERTED'; hierarchyMismatch: boolean }
+    | { action: 'SKIPPED'; possibleExisting: boolean; creationPlan?: CreationPlan }
+  > {
     // Step 1: segment_id from Snowflake ACTIVE_SEGMENTS JOIN
-    let segment = project.segmentIdFromSnowflake
-      ? await findSegmentById(tx, project.segmentIdFromSnowflake)
-      : null
+    const exportedSegmentIds = project.segmentIdsFromSnowflake
+    let segment =
+      exportedSegmentIds.length === 1 ? await findSegmentById(tx, exportedSegmentIds[0]) : null
 
     // Step 2: sourceId fallback
     if (!segment) {
@@ -321,14 +363,37 @@ export class PccProjectConsumer {
             candidates: fallback.candidates,
           },
         )
-        return { action: 'SKIPPED' }
+        return { action: 'SKIPPED', possibleExisting: false }
       }
       segment = fallback
     }
 
     // Step 3: no match → SKIP (Phase 1: project doesn't exist in CDP yet)
     if (!segment) {
-      return { action: 'SKIPPED' }
+      const candidates = findExistingProjectCandidates(
+        cdpSubprojects,
+        project.pccSlug,
+        project.name,
+      )
+      if (candidates.length === 0) {
+        return {
+          action: 'SKIPPED',
+          possibleExisting: false,
+          creationPlan: planCreation(project.creationTarget, cdpSegments),
+        }
+      }
+
+      log.warn(
+        { pccProjectId: project.pccProjectId, pccSlug: project.pccSlug, candidates },
+        'PCC project has no CDP match by ID but its slug or name exists in CDP',
+      )
+      await this.recordSyncError(
+        project.pccProjectId,
+        project.pccSlug,
+        'POSSIBLE_EXISTING_PROJECT',
+        { name: project.name, candidates },
+      )
+      return { action: 'SKIPPED', possibleExisting: true }
     }
 
     // Hierarchy mismatch detection: segment matched but parent/group differs.
