@@ -59,7 +59,7 @@ async function backfillMembers(qx: QueryExecutor, limit: number, afterId?: strin
   const updates = members.flatMap(({ id, country, geo }) => {
     const derived = normalizeGeoAttributes(country, geo ?? {}).geo
     return Object.keys(derived).length > 0 && !isEqual(derived, geo)
-      ? [{ id, country, geo: derived }]
+      ? [{ id, country, geo, derived }]
       : []
   })
 
@@ -67,15 +67,18 @@ async function backfillMembers(qx: QueryExecutor, limit: number, afterId?: strin
     await qx.result(
       `
         update members m
-        set attributes = jsonb_set(m.attributes, '{geo}', u.geo)
-        from unnest($(ids)::uuid[], $(countries)::jsonb[], $(geos)::jsonb[]) as u(id, country, geo)
+        set attributes = jsonb_set(m.attributes, '{geo}', u.derived)
+        from unnest($(ids)::uuid[], $(countries)::jsonb[], $(geos)::jsonb[], $(derived)::jsonb[])
+          as u(id, country, geo, derived)
         where m.id = u.id
           and m.attributes -> 'country' = u.country
+          and m.attributes -> 'geo' is not distinct from u.geo
       `,
       {
         ids: updates.map((u) => u.id),
         countries: updates.map((u) => JSON.stringify(u.country)),
-        geos: updates.map((u) => JSON.stringify(u.geo)),
+        geos: updates.map((u) => (u.geo ? JSON.stringify(u.geo) : null)),
+        derived: updates.map((u) => JSON.stringify(u.derived)),
       },
     )
   }
@@ -108,21 +111,15 @@ async function backfillOrganizations(qx: QueryExecutor, limit: number, afterId?:
           from "orgAttributes" a
           where a."organizationId" in ($(ids:csv))
             and a.name = 'country'
-            and not exists (
-              select 1
-              from "orgAttributes" g
-              where g."organizationId" = a."organizationId"
-                and g.name = 'geo'
-            )
         `,
         { ids },
       )
     : []
 
-  const geos = countries
-    .map((c) => ({ ...c, geo: toGeo(c.value) }))
-    .filter((c) => c.geo)
-    .map((c) => ({ ...c, value: JSON.stringify(c.geo) }))
+  const geos = countries.flatMap((c) => {
+    const geo = toGeo(c.value)
+    return geo ? [{ ...c, geo: JSON.stringify(geo) }] : []
+  })
   const defaults = geos.filter((g) => g.default)
 
   if (geos.length > 0) {
@@ -130,30 +127,45 @@ async function backfillOrganizations(qx: QueryExecutor, limit: number, afterId?:
       await tx.result(
         `
           insert into "orgAttributes" ("organizationId", name, source, "default", value)
-          select id, 'geo', source, "default", value
-          from unnest($(ids)::uuid[], $(sources)::text[], $(defaults)::boolean[], $(values)::text[])
-            as u(id, source, "default", value)
+          select id, 'geo', source, false, geo
+          from unnest($(ids)::uuid[], $(sources)::text[], $(geos)::text[]) as u(id, source, geo)
           on conflict ("organizationId", name, source, md5(value)) do nothing
         `,
         {
           ids: geos.map((g) => g.organizationId),
           sources: geos.map((g) => g.source),
-          defaults: geos.map((g) => g.default),
-          values: geos.map((g) => g.value),
+          geos: geos.map((g) => g.geo),
         },
       )
 
       if (defaults.length > 0) {
         await tx.result(
           `
+            with current_defaults as (
+              select u.*
+              from unnest($(ids)::uuid[], $(countries)::text[], $(sources)::text[], $(geos)::text[])
+                as u(id, country, source, geo)
+              join organizations o on o.id = u.id and o.country is not distinct from u.country
+            ),
+            flagged as (
+              update "orgAttributes" a
+              set "default" = (a.source = d.source and a.value = d.geo)
+              from current_defaults d
+              where a."organizationId" = d.id
+                and a.name = 'geo'
+                and a."default" is distinct from (a.source = d.source and a.value = d.geo)
+            )
             update organizations o
-            set geo = u.geo::jsonb
-            from unnest($(ids)::uuid[], $(geos)::text[]) as u(id, geo)
-            where o.id = u.id
+            set geo = d.geo::jsonb
+            from current_defaults d
+            where o.id = d.id
+              and o.geo is distinct from d.geo::jsonb
           `,
           {
             ids: defaults.map((g) => g.organizationId),
-            geos: defaults.map((g) => g.value),
+            countries: defaults.map((g) => g.value),
+            sources: defaults.map((g) => g.source),
+            geos: defaults.map((g) => g.geo),
           },
         )
       }

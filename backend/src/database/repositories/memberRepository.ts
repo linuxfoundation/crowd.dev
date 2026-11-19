@@ -18,6 +18,7 @@ import {
   Error409,
   RawQueryParser,
   groupBy,
+  normalizeGeoAttributes,
   normalizeMemberIdentityValue,
 } from '@crowd/common'
 import { BotDetectionService, CommonMemberService } from '@crowd/common_services'
@@ -800,6 +801,13 @@ class MemberRepository {
             } else {
               data[manuallyChangedColumn] = record[manuallyChangedColumn]
             }
+          }
+
+          if (data.attributes?.country) {
+            Object.assign(
+              data.attributes,
+              normalizeGeoAttributes(data.attributes.country, data.attributes.geo),
+            )
           }
 
           data.manuallyChangedFields = manuallyChangedFields
