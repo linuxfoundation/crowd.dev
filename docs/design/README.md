@@ -9,6 +9,7 @@ docs show the picture behind them.
 | [`activity-pipeline.md`](activity-pipeline.md) | How an activity travels from a source platform through the data sink, Kafka, Postgres and Sequin to Tinybird     |
 | [`deduplication.md`](deduplication.md)         | How merge suggestions are generated and reviewed, and how merges and unmerges run across the API and workers     |
 | [`affiliation.md`](affiliation.md)             | Where affiliation data comes from, how recalculation reaches Tinybird, how the API serves it, and the data model |
+| [`packages.md`](packages.md)                   | How the packages workers, packages-db, the public API, the packages Temporal namespace and Tinybird connect      |
 
 ## Where a doc goes
 

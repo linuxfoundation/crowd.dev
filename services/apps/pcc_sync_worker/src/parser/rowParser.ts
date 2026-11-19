@@ -8,13 +8,20 @@
  * Pure function — no DB access, no I/O.
  *
  * Mapping rules (HIERARCHY_LEVEL 1 is the leaf, the highest level is the top ancestor):
- *   group      = top ancestor (The Linux Foundation for Community Projects)
- *   project    = level just below the top ancestor, or the top ancestor when it is the leaf
+ *   group      = top ancestor (The Linux Foundation for Community Projects); a Membership
+ *                project directly under The Linux Foundation is the group instead
+ *   project    = level just below the group, or the group when it is the leaf
  *   subproject = leaf
  */
 import { SegmentStatus } from '@crowd/types'
 
-import type { CdpHierarchyTarget, ParseResult, PccParquetRow } from './types'
+import type {
+  CdpCreationTarget,
+  CdpHierarchyTarget,
+  ParseResult,
+  PccHierarchyNode,
+  PccParquetRow,
+} from './types'
 
 /**
  * PCC PROJECT_STATUS → CDP SegmentStatus enum.
@@ -28,6 +35,9 @@ const STATUS_MAP: Record<string, SegmentStatus> = {
   'Formation - On Hold': SegmentStatus.FORMATION,
   Prospect: SegmentStatus.PROSPECT,
 }
+
+const LINUX_FOUNDATION_PCC_PROJECT_ID = 'a0941000002wBz9AAE'
+const MEMBERSHIP_PROJECT_MODEL = 'membership'
 
 /**
  * Parquet serializes Snowflake NUMBER columns as fixed-width big-endian Buffers.
@@ -57,6 +67,13 @@ function trimOrNull(value: unknown): string | null {
   if (value == null) return null
   const s = String(value).trim()
   return s === '' ? null : s
+}
+
+function distinctSegmentIds(rawRows: Record<string, unknown>[]): string[] {
+  const segmentIds = rawRows
+    .map((row) => trimOrNull((row as Partial<PccParquetRow>).SEGMENT_ID))
+    .filter((segmentId): segmentId is string => segmentId !== null)
+  return [...new Set(segmentIds)]
 }
 
 /**
@@ -99,6 +116,8 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
       const row = r as Partial<PccParquetRow>
       return {
         level: parseParquetInt(row.HIERARCHY_LEVEL),
+        id: trimOrNull(row.MAPPED_PROJECT_ID),
+        model: trimOrNull(row.MAPPED_PROJECT_MODEL),
         name: trimOrNull(row.MAPPED_PROJECT_NAME),
         slug: trimOrNull(row.MAPPED_PROJECT_SLUG),
       }
@@ -127,7 +146,9 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
     nameAt[row.level] = row.name
   }
 
-  const cdpTargetResult = buildCdpTarget(maxLevel, nameAt)
+  const groupLevel = isMembershipUnderLinuxFoundation(levelRows) ? maxLevel - 1 : maxLevel
+  const projectLevel = Math.max(groupLevel - 1, 1)
+  const cdpTargetResult = buildCdpTarget(groupLevel, projectLevel, nameAt)
   if (cdpTargetResult.ok === false) {
     return {
       ok: false,
@@ -151,26 +172,62 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
       maturity: trimOrNull(firstRaw.PROJECT_ADMIN_CATEGORY),
       description: trimOrNull(firstRaw.DESCRIPTION),
       logoUrl: trimOrNull(firstRaw.PROJECT_LOGO),
-      segmentIdFromSnowflake: trimOrNull(firstRaw.SEGMENT_ID),
+      segmentIdsFromSnowflake: distinctSegmentIds(rawRows),
       cdpTarget: cdpTargetResult.target,
+      creationTarget: buildCreationTarget(groupLevel, projectLevel, levelRows),
     },
   }
 }
 
+function isMembershipUnderLinuxFoundation(
+  levelRowsFromLeaf: { level: number; id: string | null; model: string | null }[],
+): boolean {
+  const top = levelRowsFromLeaf[levelRowsFromLeaf.length - 1]
+  if (top.id !== LINUX_FOUNDATION_PCC_PROJECT_ID) return false
+  const belowTop = levelRowsFromLeaf.find((row) => row.level === top.level - 1)
+  return belowTop?.model?.toLowerCase().includes(MEMBERSHIP_PROJECT_MODEL) ?? false
+}
+
 function buildCdpTarget(
-  maxLevel: number,
+  groupLevel: number,
+  projectLevel: number,
   nameAt: Record<number, string | null>,
 ): { ok: true; target: CdpHierarchyTarget } | { ok: false; reason: string } {
-  const projectLevel = Math.max(maxLevel - 1, 1)
-  const group = nameAt[maxLevel]
+  const group = nameAt[groupLevel]
   const project = nameAt[projectLevel]
   const subproject = nameAt[1]
 
-  if (!group) return missingNameAt(maxLevel)
+  if (!group) return missingNameAt(groupLevel)
   if (!project) return missingNameAt(projectLevel)
   if (!subproject) return missingNameAt(1)
 
   return { ok: true, target: { group, project, subproject } }
+}
+
+function buildCreationTarget(
+  groupLevel: number,
+  projectLevel: number,
+  levelRows: { level: number; id: string | null; name: string | null; slug: string | null }[],
+): CdpCreationTarget | null {
+  const nodeAt = new Map<number, PccHierarchyNode>()
+  for (const row of levelRows) {
+    if (row.id && row.name && row.slug) {
+      nodeAt.set(row.level, { pccProjectId: row.id, name: row.name, slug: row.slug })
+    }
+  }
+
+  const group = nodeAt.get(groupLevel)
+  const project = nodeAt.get(projectLevel)
+  if (!group || !project) return null
+
+  const subprojects: PccHierarchyNode[] = []
+  for (let level = projectLevel; level >= 1; level--) {
+    const node = nodeAt.get(level)
+    if (!node) return null
+    subprojects.push(node)
+  }
+
+  return { group, project, subprojects }
 }
 
 function missingNameAt(level: number): { ok: false; reason: string } {

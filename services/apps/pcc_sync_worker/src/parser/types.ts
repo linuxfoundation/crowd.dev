@@ -26,6 +26,7 @@ export interface PccParquetRow {
   MAPPED_PROJECT_NAME: string | null
   /** Slug of the ancestor at this hierarchy level. */
   MAPPED_PROJECT_SLUG: string | null
+  MAPPED_PROJECT_MODEL: string | null
   /** 1 = leaf, N = topmost ancestor. */
   HIERARCHY_LEVEL: number
   SEGMENT_ID: string | null
@@ -42,6 +43,19 @@ export interface CdpHierarchyTarget {
   subproject: string
 }
 
+export interface PccHierarchyNode {
+  pccProjectId: string
+  name: string
+  slug: string
+}
+
+/** `subprojects` goes from the project's own sub-project down to the leaf. */
+export interface CdpCreationTarget {
+  group: PccHierarchyNode
+  project: PccHierarchyNode
+  subprojects: PccHierarchyNode[]
+}
+
 /** Structured result after parsing and transforming a single Parquet row. */
 export interface ParsedPccProject {
   pccProjectId: string
@@ -53,9 +67,11 @@ export interface ParsedPccProject {
   maturity: string | null
   description: string | null
   logoUrl: string | null
-  /** segment_id from Snowflake ACTIVE_SEGMENTS JOIN — used for step-1 matching. */
-  segmentIdFromSnowflake: string | null
+  /** Distinct segment_ids from the Snowflake ACTIVE_SEGMENTS JOIN — step-1 matching needs exactly one. */
+  segmentIdsFromSnowflake: string[]
   cdpTarget: CdpHierarchyTarget
+  /** Null when a level the creation needs has no PCC id or slug in the export. */
+  creationTarget: CdpCreationTarget | null
 }
 
 export type ParseResult =

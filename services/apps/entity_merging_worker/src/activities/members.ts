@@ -1,5 +1,5 @@
 import { DEFAULT_TENANT_ID } from '@crowd/common'
-import { signalMemberUpdate } from '@crowd/common_services'
+import { MemberUpdateSource, signalMemberUpdate } from '@crowd/common_services'
 import {
   moveActivityRelationsToAnotherMember,
   moveActivityRelationsWithIdentityToAnotherMember,
@@ -25,8 +25,9 @@ export async function deleteMember(memberId: string): Promise<void> {
 
 export async function recalculateActivityAffiliationsOfMemberAsync(
   memberId: string,
+  source: MemberUpdateSource,
 ): Promise<void> {
-  await signalMemberUpdate(svc.temporal, memberId)
+  await signalMemberUpdate(svc.temporal, memberId, source)
 }
 
 export async function syncMember(memberId: string): Promise<void> {

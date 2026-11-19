@@ -81,7 +81,7 @@ setImmediate(async () => {
 
   for (const { memberId, roleIds } of members) {
     await deleteMemberOrganizations(qx, memberId, { ids: roleIds, softDelete: false })
-    await signalMemberUpdate(temporal, memberId, { syncToOpensearch: true })
+    await signalMemberUpdate(temporal, memberId, 'script', { syncToOpensearch: true })
 
     log.info({ memberId, roles: roleIds.length }, 'Removed leaked roles!')
   }

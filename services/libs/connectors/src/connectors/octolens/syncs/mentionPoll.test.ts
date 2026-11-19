@@ -69,7 +69,12 @@ function makeCtx(
   emitted: { records: unknown[]; segmentId?: string; integrationId?: string }[]
   watermarks: Record<string, unknown>[]
 } {
-  const emitted: { records: unknown[]; segmentId?: string; integrationId?: string }[] = []
+  const emitted: {
+    records: unknown[]
+    segmentId?: string
+    integrationId?: string
+    backfill?: boolean
+  }[] = []
   const watermarks: Record<string, unknown>[] = []
 
   const { resolveKeywordTarget, ...ctxOverrides } = overrides
@@ -82,6 +87,7 @@ function makeCtx(
         records,
         segmentId: emitOverrides?.segmentId,
         integrationId: emitOverrides?.integrationId,
+        backfill: emitOverrides?.backfill,
       })
     },
     commitWatermark: async (watermark) => {
@@ -608,7 +614,7 @@ describe('runMentionPoll keyword backfill (queued manually)', () => {
     })
   })
 
-  it('routes a backfilled mention like a polled one, by its first mapped keyword', async () => {
+  it('routes a backfilled mention like a polled one, by its first mapped keyword, flagged as backfill', async () => {
     mockedFetchMentionsPage.mockResolvedValueOnce(page([])).mockResolvedValueOnce(
       page([
         mention({
@@ -629,7 +635,7 @@ describe('runMentionPoll keyword backfill (queued manually)', () => {
 
     await runMentionPoll(ctx)
 
-    expect(emitted).toEqual([expect.objectContaining({ segmentId: 'segment-3' })])
+    expect(emitted).toEqual([expect.objectContaining({ segmentId: 'segment-3', backfill: true })])
   })
 
   it('skips a null entry on a backfill page instead of blocking the backfill', async () => {
