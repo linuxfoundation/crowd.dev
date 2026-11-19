@@ -87,7 +87,7 @@ describe('createEmit', () => {
     expect(emitter.emittedCount()).toBe(1)
   })
 
-  it('fans out two emit() calls in one run to different segments/integrations', async () => {
+  it('fans out two emit() calls in one run to different segments/integrations, counting backfill apart', async () => {
     const deps = makeDeps()
     const emitter = createEmit({
       publishResult: deps.publishResult,
@@ -106,6 +106,7 @@ describe('createEmit', () => {
     await emitter.emit([record('b')], {
       segmentId: 'segment-2',
       integrationId: 'integration-2',
+      backfill: true,
     })
 
     expect(deps.published).toEqual([
@@ -113,6 +114,7 @@ describe('createEmit', () => {
       { integrationId: 'integration-2', segmentId: 'segment-2' },
     ])
     expect(emitter.emittedCount()).toBe(2)
+    expect(emitter.liveEmittedCount()).toBe(1)
   })
 
   it('passes the correct result type and overridden segmentId through to publishResult', async () => {
@@ -288,7 +290,7 @@ describe('createEmit', () => {
     expect(emitter.emittedCount()).toBe(1)
   })
 
-  it('persists the overridden segmentId/integrationId on shadow records', async () => {
+  it('persists the overridden segmentId/integrationId on shadow records and counts backfill apart', async () => {
     const deps = makeDeps()
     const emitter = createEmit({
       publishResult: deps.publishResult,
@@ -303,8 +305,10 @@ describe('createEmit', () => {
     await emitter.emit([record('a')], {
       segmentId: 'segment-1',
       integrationId: 'integration-1',
+      backfill: true,
     })
 
+    expect(emitter.liveEmittedCount()).toBe(0)
     expect(deps.recordShadow).toHaveBeenCalledWith([
       expect.objectContaining({
         segmentId: 'segment-1',
