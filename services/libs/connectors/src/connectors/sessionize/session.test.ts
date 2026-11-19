@@ -116,15 +116,30 @@ describe('signInToSessionize', () => {
   })
 
   it.each([
-    ['a page without the sign-in form', reply(200, '<form action="/login/classic"></form>')],
-    ['a 403 from the edge', reply(403, 'blocked')],
+    [
+      'a login page without the token',
+      reply(200, '<form action="/login/classic"></form>'),
+      null,
+      1,
+    ],
+    ['a 403 on the login page', reply(403, 'blocked'), null, 1],
+    [
+      'a 200 challenge page after posting',
+      loginPage(),
+      reply(200, '<h1>Checking your browser</h1>'),
+      2,
+    ],
   ])(
-    'keeps a broken login page transient so the pool never quarantines it: %s',
-    async (_, page) => {
-      mockedRequest.mockResolvedValue(page)
+    'keeps %s transient so the pool never quarantines the entry',
+    async (_, getPage, postPage, requestsPerAttempt) => {
+      mockedRequest.mockImplementation(async (config) =>
+        config.method === 'POST' ? postPage : getPage,
+      )
 
       await expect(signInToSessionize(CREDENTIAL)).rejects.toBeInstanceOf(ProviderUnavailableError)
-      expect(mockedRequest).toHaveBeenCalledTimes(SESSIONIZE_SIGN_IN_MAX_ATTEMPTS)
+      expect(mockedRequest).toHaveBeenCalledTimes(
+        SESSIONIZE_SIGN_IN_MAX_ATTEMPTS * requestsPerAttempt,
+      )
     },
   )
 
@@ -213,6 +228,27 @@ describe('session renewal through the http client', () => {
       '__Host-Sessionize.Auth=auth-cookie',
     )
     expect(renewed.maxRedirects).toBe(0)
+  })
+
+  it('keeps the session cookie out of the error when sessionize does not answer', async () => {
+    const http = createHttpClient({
+      acquireToken: async () => ({ id: SESSIONIZE_POOL_ENTRY_ID, value: 'live-session-cookie' }),
+      parkToken: vi.fn(),
+      invalidateToken: vi.fn(),
+      applyToken: applySessionizeCookie,
+      interpretResponse: interpretSessionizeResponse,
+      log: logMocks as never,
+    })
+    mockedRequest.mockImplementation(async (config) => {
+      throw new axios.AxiosError('timeout of 60000ms exceeded', 'ECONNABORTED', config as never)
+    })
+
+    const err = await http
+      .request({ url: 'https://sessionize.com/app/organizer/events' }, undefined, 1)
+      .catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(ProviderUnavailableError)
+    expect(JSON.stringify(err)).not.toContain('live-session-cookie')
   })
 })
 

@@ -28,6 +28,7 @@ const RETRY_BACKOFF_BASE_MS = 2_000
 const TRANSIENT_ERROR_CLASSES = new Set(['provider.unavailable', 'provider.rate_limit'])
 const ANTI_FORGERY_TOKEN_PATTERN =
   /<form[^>]*action="\/login\/classic"[^>]*>[\s\S]*?name="__RequestVerificationToken"[^>]*value="([^"]+)"/
+const SIGN_IN_FORM_PATTERN = /<form[^>]*action="\/login\/classic"/
 
 const log = getServiceChildLogger('sessionizeSession')
 
@@ -147,11 +148,10 @@ async function requestSession(
       expiresAt: new Date(Date.now() + SESSIONIZE_SESSION_LIFETIME_MS).toISOString(),
     }
   }
-  if (signIn.status < 400) {
-    throw new ProviderAuthError(
-      `sessionize sign-in refused (status ${signIn.status}, no ${SESSIONIZE_AUTH_COOKIE} cookie)`,
-      { status: signIn.status },
-    ).withContext({ request: { method: 'POST', url: SIGN_IN_PATH } })
+  if (isSignInRefusal(signIn)) {
+    throw new ProviderAuthError('sessionize refused the organizer credentials', {
+      status: signIn.status,
+    }).withContext({ request: { method: 'POST', url: SIGN_IN_PATH } })
   }
   throw failedStep('POST', SIGN_IN_PATH, signIn.status)
 }
@@ -167,11 +167,13 @@ async function send(config: AxiosRequestConfig): Promise<SessionizeResponse> {
       validateStatus: () => true,
     })
   } catch (err) {
-    const cause = axios.isAxiosError(err) ? { code: err.code, message: err.message } : undefined
+    if (!axios.isAxiosError(err)) {
+      throw err
+    }
     throw new ProviderUnavailableError(
       `sessionize ${config.method} ${config.url} got no response`,
       {
-        cause,
+        cause: { code: err.code, message: err.message },
       },
     ).withContext({ request: { method: String(config.method), url: String(config.url) } })
   }
@@ -207,6 +209,14 @@ function cookieHeader(cookies: Map<string, string>): string {
     .filter(([, value]) => value !== '')
     .map(([name, value]) => `${name}=${value}`)
     .join('; ')
+}
+
+function isSignInRefusal(response: SessionizeResponse): boolean {
+  return (
+    response.status === 200 &&
+    typeof response.data === 'string' &&
+    SIGN_IN_FORM_PATTERN.test(response.data)
+  )
 }
 
 function isLoginRedirect(status: number, location: string | undefined): boolean {
