@@ -250,8 +250,11 @@ function isSharedFromAnotherWorkspace(datasource: string): boolean {
   return datasource.includes('.')
 }
 
-function isRelationCopy(columns: Set<string>): boolean {
-  return columns.has('activityId')
+// one row per relation, but without activityId
+const RELATION_COPIES_WITHOUT_ID = ['cncf_collection_activities_ds']
+
+function isRelationCopy(datasource: string, columns: Set<string>): boolean {
+  return columns.has('activityId') || RELATION_COPIES_WITHOUT_ID.includes(datasource)
 }
 
 function isActivityCopy(columns: Set<string>): boolean {
@@ -284,7 +287,7 @@ async function planTinybirdDatasources(
     if (isSharedFromAnotherWorkspace(name)) continue
 
     const columnNames = new Set(columns.map((c) => c.name))
-    const relationCopy = isRelationCopy(columnNames)
+    const relationCopy = isRelationCopy(name, columnNames)
     if (!relationCopy && !isActivityCopy(columnNames)) continue
 
     const missing = filterColumns.filter((column) => !columnNames.has(column))
