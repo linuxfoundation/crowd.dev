@@ -14,6 +14,7 @@ DESCRIPTION >
     - `score` is the computed activity/engagement score for the member.
     - `publicName` is the denormalized public display name for efficient queries.
     - `githubHandleArray` is the member's GitHub usernames from memberIdentities (empty array if not available).
+    - `countryCode` is the ISO 3166-1 alpha-2 code of the member's country (empty string if not determined).
 
 SCHEMA >
     `id` String,
@@ -31,7 +32,8 @@ SCHEMA >
     `displayName` String,
     `score` Int32,
     `publicName` String,
-    `githubHandleArray` Array(String)
+    `githubHandleArray` Array(String),
+    `countryCode` String DEFAULT ''
 
 ENGINE MergeTree
 ENGINE_PARTITION_KEY toYear(joinedAt)
