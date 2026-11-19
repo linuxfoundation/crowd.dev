@@ -42,6 +42,9 @@ export default class EnrichmentServiceClearbit extends LoggerBase implements IEn
     [MemberAttributeName.LOCATION]: {
       fields: ['location'],
     },
+    [MemberAttributeName.COUNTRY]: {
+      fields: ['geo.country'],
+    },
     [MemberAttributeName.GEO]: {
       fields: ['geo'],
       transform: ({ countryCode, state, city }: IMemberGeoClearbit) =>

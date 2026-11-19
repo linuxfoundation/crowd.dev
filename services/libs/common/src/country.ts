@@ -67,8 +67,9 @@ export function toCountryCode(value: unknown): string | undefined {
     return undefined
   }
 
+  // isValid also accepts alpha-3 and numeric codes.
   const code = value.trim().toUpperCase()
-  return countries.isValid(code) ? code : undefined
+  return /^[A-Z]{2}$/.test(code) && countries.isValid(code) ? code : undefined
 }
 
 export function getCountryName(alpha2: string): string | undefined {
