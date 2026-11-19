@@ -15,6 +15,7 @@ are in [`docs/design/`](../design/README.md), which also explains which kind of 
 | [`flow-bot-detection.md`](flow-bot-detection.md)                       | How bot members are detected, checked by an LLM and reviewed                             |
 | [`flow-organization-enrichment.md`](flow-organization-enrichment.md)   | How organizations get attributes and identities from an enrichment source                |
 | [`runbook-performance-profiling.md`](runbook-performance-profiling.md) | How to turn on query profiling and operation timing, and read the output                 |
+| [`sys-packages.md`](sys-packages.md)                                   | The OSS packages dataset: workers, packages-db, the Akrites API and what reads it        |
 
 ## Conventions
 

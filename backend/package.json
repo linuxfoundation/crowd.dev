@@ -40,6 +40,7 @@
     "script:cleanup-url-member-locations": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/cleanup-url-member-locations.ts",
     "script:cleanup-leaked-ui-work-history": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/cleanup-leaked-ui-work-history.ts",
     "script:infer-country-from-location": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/infer-country-from-location.ts",
+    "script:classify-organizations": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/classify-organizations.ts",
     "script:onboard-default-tenant": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/onboard-default-tenant.ts",
     "script:create-api-key": "SERVICE=script TS_NODE_TRANSPILE_ONLY=true tsx src/bin/scripts/create-api-key.ts",
     "script:onboard-default-tenant:local": "set -a && . ./.env.dist.local && . ./.env.override.local && set +a && pnpm run script:onboard-default-tenant",

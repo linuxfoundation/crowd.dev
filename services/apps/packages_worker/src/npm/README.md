@@ -52,7 +52,7 @@ package fetch is a packument upsert + audit-field-change log + scan watermark.
 
 ## 2. `backfillDailyDownloads` — per-day download counts (critical slice)
 
-**Schedule:** `npm-daily-downloads-backfill`, daily at `03:30` UTC · 6h timeout.
+**Schedule:** `npm-daily-downloads-backfill`, daily at `12:00` UTC, after npm publishes the previous day (around 10:00 UTC) · 6h timeout.
 
 **What it does:** Self-healing fill of `downloads_daily` for the critical slice
 (`packages`). Each run first asks npm for its newest published day
@@ -67,19 +67,18 @@ count overwrites the stored one, so a day stored too early gets corrected.
 Until the registry ingest records a package's first release, the start is 365
 days before the bound, and a later pass fills the older days.
 
-Unscoped packages run every day and share bulk requests (up to 128 names, the
-last 365 days); older gaps and scoped (`@scope/...`) packages take one request
-per range of up to 540 days. Scoped packages are due weekly. A round where
-every lane fetches nothing means done; otherwise it continues-as-new with a
-fixed `cutoff`.
+Every critical package runs every day. Unscoped packages share bulk requests
+(up to 128 names, the last 365 days); older gaps and scoped (`@scope/...`)
+packages take one request per range of up to 540 days. A round where every
+lane fetches nothing means done; otherwise it continues-as-new with a fixed
+`cutoff`.
 
 **Repair:** start it with `refetchFrom` to refetch and upsert every day from
-that date for every critical package (the weekly scoped rule is off for that
-run). The repair and the scheduled run share the per-package watermark, so a
-package the scheduled run marks first would skip the repair: pause the schedule
-and let any open daily run finish (or terminate it) before starting, then
-unpause once the repair completes. A date within the last 365 days keeps
-unscoped packages in bulk requests.
+that date for every critical package. The repair and the scheduled run share
+the per-package watermark, so a package the scheduled run marks first would
+skip the repair: pause the schedule and let any open daily run finish (or
+terminate it) before starting, then unpause once the repair completes. A date
+within the last 365 days keeps unscoped packages in bulk requests.
 
 ```bash
 temporal schedule toggle --schedule-id npm-daily-downloads-backfill --pause \
