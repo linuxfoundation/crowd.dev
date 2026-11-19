@@ -24,7 +24,8 @@ const SOURCE_TABLES = ['activities', 'maintainersInternal', 'memberIdentities', 
 const memberId = process.argv[2]?.toLowerCase()
 const TOKEN = process.env.TINYBIRD_TOKEN
 // the first run deletes the sources of these ids, so a rerun reads them from here
-const SAVED_IDS_FILE = path.join(os.tmpdir(), `tinybird-erasure-${memberId}.json`)
+const SAVED_IDS_DIR = path.join(os.homedir(), '.tinybird-erasure')
+const SAVED_IDS_FILE = path.join(SAVED_IDS_DIR, `${memberId}.json`)
 
 if (process.argv.length !== 3 || !TOKEN) {
   console.error(
@@ -336,7 +337,8 @@ async function main() {
     process.exit(3)
   }
 
-  fs.writeFileSync(SAVED_IDS_FILE, JSON.stringify({ activityIds, identityIds }))
+  fs.mkdirSync(SAVED_IDS_DIR, { recursive: true, mode: 0o700 })
+  fs.writeFileSync(SAVED_IDS_FILE, JSON.stringify({ activityIds, identityIds }), { mode: 0o600 })
   console.log(`Saved the ids to ${SAVED_IDS_FILE} for a rerun`)
 
   for (const deletion of toDelete) {
