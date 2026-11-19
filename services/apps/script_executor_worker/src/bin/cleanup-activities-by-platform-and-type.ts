@@ -277,15 +277,6 @@ async function planTinybirdDatasources(
   if (filters.before) filterColumns.push('updatedAt')
 
   const listed = await tinybird.listDatasources()
-  const missingSources = TINYBIRD_RAW_SOURCES.filter(
-    (source) => !listed.some(({ name }) => name === source),
-  )
-  if (missingSources.length > 0) {
-    throw new Error(
-      `Tinybird did not list ${missingSources.join(', ')}: the token must read every datasource`,
-    )
-  }
-
   const datasources: string[] = []
   const skipped: SkippedDatasource[] = []
 
@@ -304,6 +295,16 @@ async function planTinybirdDatasources(
     } else {
       datasources.push(name)
     }
+  }
+
+  const unplannedSources = TINYBIRD_RAW_SOURCES.filter(
+    (source) => !datasources.includes(source) && !skipped.some(({ name }) => name === source),
+  )
+  if (unplannedSources.length > 0) {
+    throw new Error(
+      `Tinybird listed no usable columns for ${unplannedSources.join(', ')}: ` +
+        'the token must read every datasource',
+    )
   }
 
   datasources.sort((a, b) => deletionRank(a) - deletionRank(b) || a.localeCompare(b))
