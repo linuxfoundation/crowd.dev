@@ -3,11 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createHttpClient } from '../../http/client'
 import type { IPooledToken } from '../../http/client'
-import {
-  ProviderAuthError,
-  ProviderContractError,
-  ProviderUnavailableError,
-} from '../../http/errors'
+import { ProviderAuthError, ProviderUnavailableError } from '../../http/errors'
 import type { TokenPool } from '../../pool/tokenPool'
 import type { Credential } from '../../types'
 import {
@@ -119,12 +115,18 @@ describe('signInToSessionize', () => {
     expectNoSecret(err)
   })
 
-  it('fails with a contract error when the sign-in form has no anti-forgery token', async () => {
-    mockedRequest.mockResolvedValueOnce(reply(200, '<form action="/login/classic"></form>'))
+  it.each([
+    ['a page without the sign-in form', reply(200, '<form action="/login/classic"></form>')],
+    ['a 403 from the edge', reply(403, 'blocked')],
+  ])(
+    'keeps a broken login page transient so the pool never quarantines it: %s',
+    async (_, page) => {
+      mockedRequest.mockResolvedValue(page)
 
-    await expect(signInToSessionize(CREDENTIAL)).rejects.toBeInstanceOf(ProviderContractError)
-    expect(mockedRequest).toHaveBeenCalledTimes(1)
-  })
+      await expect(signInToSessionize(CREDENTIAL)).rejects.toBeInstanceOf(ProviderUnavailableError)
+      expect(mockedRequest).toHaveBeenCalledTimes(SESSIONIZE_SIGN_IN_MAX_ATTEMPTS)
+    },
+  )
 
   it('retries a transient failure, then gives up without leaking the posted password', async () => {
     const networkError = new axios.AxiosError('socket hang up', 'ECONNRESET', {

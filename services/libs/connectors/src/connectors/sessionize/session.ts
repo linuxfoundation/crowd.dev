@@ -7,9 +7,8 @@ import type { HttpResponse, IPooledToken } from '../../http/client'
 import {
   ConnectorError,
   ProviderAuthError,
-  ProviderContractError,
   ProviderUnavailableError,
-  errorFromHttpStatus,
+  RateLimitError,
 } from '../../http/errors'
 import type { TokenMinter, TokenPool } from '../../pool/tokenPool'
 import { assertCredentialKind } from '../../types'
@@ -117,9 +116,9 @@ async function requestSession(
       ? ANTI_FORGERY_TOKEN_PATTERN.exec(loginPage.data)?.[1]
       : undefined
   if (!antiForgeryToken) {
-    throw new ProviderContractError(
+    throw new ProviderUnavailableError(
       'sessionize login page has no anti-forgery token in the sign-in form',
-    ).withContext({ request: { method: 'GET', url: LOGIN_PATH } })
+    ).withContext({ request: { method: 'GET', url: LOGIN_PATH }, response: { status: 200 } })
   }
 
   const cookies = readSetCookies(loginPage.headers)
@@ -178,11 +177,15 @@ async function send(config: AxiosRequestConfig): Promise<SessionizeResponse> {
   }
 }
 
+// Only a refused sign-in may be provider.auth: the pool quarantines the single entry for good on
+// auth and contract errors, so an outage or a WAF page must stay transient.
 function failedStep(method: string, url: string, status: number): ConnectorError {
-  return errorFromHttpStatus(
-    status,
-    `sessionize ${method} ${url} failed (status ${status})`,
-  ).withContext({ request: { method, url }, response: { status } })
+  const message = `sessionize ${method} ${url} failed (status ${status})`
+  const error =
+    status === 429
+      ? new RateLimitError(message, { status })
+      : new ProviderUnavailableError(message, { status })
+  return error.withContext({ request: { method, url }, response: { status } })
 }
 
 function readSetCookies(headers: Record<string, unknown>): Map<string, string> {
