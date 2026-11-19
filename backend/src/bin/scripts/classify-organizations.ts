@@ -186,20 +186,21 @@ function toAttributes(answer: Answer): IDbOrgAttributeInput[] {
     }))
 }
 
-// Prompt history marks an organization as done, so it must be saved after its attributes.
 async function saveClassification(
   qx: QueryExecutor,
   organizationId: string,
   response: ILlmResponse,
   attributes: IDbOrgAttributeInput[],
 ): Promise<void> {
-  await upsertOrgAttributes(qx, organizationId, attributes)
-  await recalculateOrgAttributeDefaults(
-    qx,
-    organizationId,
-    attributes.map(({ name }) => name),
-  )
-  await insertPromptHistoryEntry(qx, QUERY_TYPE, response.model, response, organizationId)
+  await qx.tx(async (tx) => {
+    await upsertOrgAttributes(tx, organizationId, attributes)
+    await recalculateOrgAttributeDefaults(
+      tx,
+      organizationId,
+      attributes.map(({ name }) => name),
+    )
+    await insertPromptHistoryEntry(tx, QUERY_TYPE, response.model, response, organizationId)
+  })
 }
 
 async function classifyOrganization(
