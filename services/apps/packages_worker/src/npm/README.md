@@ -52,7 +52,7 @@ package fetch is a packument upsert + audit-field-change log + scan watermark.
 
 ## 2. `backfillDailyDownloads` — per-day download counts (critical slice)
 
-**Schedule:** `npm-daily-downloads-backfill`, daily at `03:30` UTC · 6h timeout.
+**Schedule:** `npm-daily-downloads-backfill`, daily at `12:00` UTC, after npm publishes the previous day (around 10:00 UTC) · 6h timeout.
 
 **What it does:** Self-healing fill of `downloads_daily` for the critical slice
 (`packages`). Each run first asks npm for its newest published day
