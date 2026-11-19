@@ -1,15 +1,8 @@
 /**
  * Activities Cleanup Script (by platform + type)
  *
- * Deletes activities for a given platform and one or more activity types,
- * optionally bounded by a date cutoff, in two runs:
- *
- * 1. Without --tinybird-only: deletes from PostgreSQL (`activityRelations`).
- *    Sequin sends every deleted row to Tinybird, so Tinybird is not touched yet.
- * 2. With --tinybird-only, once Kafka Connect has caught up: deletes from every
- *    Tinybird copy of activities and relations (raw datasources, MV buckets,
- *    cleaned and served buckets), then counts again and deletes once more where
- *    rows are back. Segment aggregates are not adjusted.
+ * Sequin sends each deleted row on to Tinybird, so run it without --tinybird-only first, then
+ * with it once Kafka Connect has caught up.
  *
  * Usage:
  *   pnpm run cleanup-activities-by-platform-and-type -- \
