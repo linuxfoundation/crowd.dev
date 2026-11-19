@@ -17,24 +17,20 @@ export interface CdpSubprojectIndex {
   byName: Map<string, CdpSubproject[]>
 }
 
-function slugKey(slug: string): string {
+export function slugKey(slug: string): string {
   const lowered = slug.trim().toLowerCase()
   return lowered.startsWith(NON_LF_SLUG_PREFIX) ? lowered.slice(NON_LF_SLUG_PREFIX.length) : lowered
 }
 
-function nameKey(name: string): string {
+export function nameKey(name: string): string {
   return name.trim().toLowerCase()
 }
 
-function addToIndex(
-  index: Map<string, CdpSubproject[]>,
-  key: string,
-  subproject: CdpSubproject,
-): void {
+export function addToIndex<T>(index: Map<string, T[]>, key: string, value: T): void {
   if (!key) return
-  const subprojects = index.get(key)
-  if (subprojects) subprojects.push(subproject)
-  else index.set(key, [subproject])
+  const values = index.get(key)
+  if (values) values.push(value)
+  else index.set(key, [value])
 }
 
 export function buildCdpSubprojectIndex(subprojects: CdpSubproject[]): CdpSubprojectIndex {
