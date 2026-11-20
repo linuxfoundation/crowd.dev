@@ -26376,6 +26376,8 @@ region=${deployInput.oracle.region}
         const tag = serviceDef.tag;
         const service = serviceDef.service;
         const prioritized = serviceDef.builderDef.prioritizedServices.includes(service);
+        const isCronJob = serviceDef.builderDef.cronJobs.includes(service);
+        const workloadOf = (name) => (isCronJob ? `cronjob/${name}` : `deployments/${name}-dpl`);
         const servicesToUpdate = [];
         if (prioritized) {
             switch (deployInput.cloudEnvironment) {
@@ -26402,16 +26404,16 @@ region=${deployInput.oracle.region}
         else {
             servicesToUpdate.push(service);
         }
-        core.info(`Deploying service: ${service} with image: ${serviceDef.builderDef.dockerRepository}:${tag} to deployments: ${servicesToUpdate.join(', ')}`);
+        core.info(`Deploying service: ${service} with image: ${serviceDef.builderDef.dockerRepository}:${tag} to: ${servicesToUpdate.map(workloadOf).join(', ')}`);
         for (const toDeploy of servicesToUpdate) {
             exitCode = await exec.exec('kubectl', [
                 'set',
                 'image',
-                `deployments/${toDeploy}-dpl`,
+                workloadOf(toDeploy),
                 `${toDeploy}=${serviceDef.builderDef.dockerRepository}:${tag}`,
             ]);
             if (exitCode !== 0) {
-                core.error(`Failed to deploy service: ${service} to deployment: ${toDeploy}`);
+                core.error(`Failed to deploy service: ${service} to: ${workloadOf(toDeploy)}`);
                 if (!failed.includes(service)) {
                     failed.push(service);
                 }
@@ -26467,6 +26469,10 @@ exports.getBuilderDefinitions = void 0;
 const dotenv_1 = __importDefault(__nccwpck_require__(3085));
 const fs_1 = __importDefault(__nccwpck_require__(9896));
 let definitions;
+const parseList = (value) => (value !== null && value !== void 0 ? value : '')
+    .split(' ')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 const getBuilderDefinitions = async () => {
     if (definitions !== undefined) {
         return definitions;
@@ -26479,23 +26485,12 @@ const getBuilderDefinitions = async () => {
             const parsed = dotenv_1.default.parse(content);
             const imageName = result.split('.env')[0];
             const dockerRepository = parsed.REPO;
-            let services = [];
-            if (parsed.SERVICES !== undefined) {
-                services = parsed.SERVICES.split(' ')
-                    .map((s) => s.trim())
-                    .filter((s) => s.length > 0);
-            }
-            let prioritizedServices = [];
-            if (parsed.PRIORITIZED !== undefined) {
-                prioritizedServices = parsed.PRIORITIZED.split(' ')
-                    .map((s) => s.trim())
-                    .filter((s) => s.length > 0);
-            }
             results.push({
                 imageName,
                 dockerRepository,
-                services,
-                prioritizedServices,
+                services: parseList(parsed.SERVICES),
+                prioritizedServices: parseList(parsed.PRIORITIZED),
+                cronJobs: parseList(parsed.CRONJOBS),
             });
         }
     }

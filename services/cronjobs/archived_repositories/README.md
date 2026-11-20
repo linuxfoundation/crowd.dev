@@ -150,12 +150,24 @@ pnpm dev-workers
 
 There's a Dockerfile that can be used to build a container image.
 
-The Kubernetes resource files are kept in a private infrastructure repository.
+The Kubernetes resource files are kept in a private infrastructure repository. The main process runs as the
+`archived-repositories-checker-main` CronJob and the workers as the `archived-repositories-checker-workers-dpl`
+Deployment, both from the same image.
 
 The Dockerfile doesn't contain a `CMD` instruction, so you need to specify the command to run when starting the
 container.
 
-To build the Docker image, tagged both with a local name and one for the container registry, run:
+To deploy, run the LF Oracle Production Deploy workflow with both services, so the main process and the workers always
+run the same image:
+
+```text
+archived-repositories-checker-main archived-repositories-checker-workers
+```
+
+It builds the image once from `scripts/builders/archived-repositories-checker.env` and updates the CronJob and the
+Deployment.
+
+To build the Docker image by hand, tagged both with a local name and one for the container registry, run:
 
 ```bash
 export REGISTRY=<your registry> && \

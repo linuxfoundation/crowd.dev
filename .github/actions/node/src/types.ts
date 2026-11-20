@@ -61,6 +61,7 @@ export interface IBuilderDefinition {
   dockerRepository: string
   services: string[]
   prioritizedServices: string[]
+  cronJobs: string[]
 }
 
 export type IActionInputs = {
