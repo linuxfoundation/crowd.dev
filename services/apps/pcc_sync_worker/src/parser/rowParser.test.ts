@@ -206,7 +206,7 @@ describe('parsePccRow', () => {
     expect(result).toMatchObject({ ok: true, project: { segmentIdsFromSnowflake: [] } })
   })
 
-  it('reports a leaf that has no PROJECT_SPINE rows as a schema mismatch', () => {
+  it('reports a leaf that has no hierarchy level as a schema mismatch', () => {
     const result = parsePccRow([
       {
         PROJECT_ID: 'pcc-orphan',
@@ -348,6 +348,28 @@ describe('parsePccRow under The Linux Foundation', () => {
       })
     },
   )
+
+  it('keeps the top foundation as the group of a foundation nested in it', () => {
+    const result = parsePccRow(
+      spineRowsWithModelsFromTop([
+        LINUX_FOUNDATION,
+        { name: 'LF Decentralized Trust', model: 'Membership' },
+        { name: 'Trust Over IP Project (ToIP)', model: 'Membership' },
+        { name: 'Concepts & Terminology Working Group' },
+      ]),
+    )
+
+    expect(result).toMatchObject({
+      ok: true,
+      project: {
+        cdpTarget: {
+          group: 'LF Decentralized Trust',
+          project: 'Trust Over IP Project (ToIP)',
+          subproject: 'Concepts & Terminology Working Group',
+        },
+      },
+    })
+  })
 
   it('leaves a Membership project under another foundation where it is', () => {
     const result = parsePccRow(
