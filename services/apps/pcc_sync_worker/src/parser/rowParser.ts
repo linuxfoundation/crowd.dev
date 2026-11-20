@@ -80,7 +80,7 @@ function distinctSegmentIds(rawRows: Record<string, unknown>[]): string[] {
  * Parse and validate all raw Parquet rows for a single PCC leaf project.
  *
  * Each call receives all rows that share the same PROJECT_ID (one row per
- * hierarchy level from the PROJECT_SPINE JOIN). Returns ok=false with
+ * hierarchy level of the export). Returns ok=false with
  * SCHEMA_MISMATCH if the group is malformed or has no usable hierarchy rows.
  */
 export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
@@ -109,8 +109,7 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
   }
 
   // Parse HIERARCHY_LEVEL for each row and sort ascending (level=1 is the leaf).
-  // A leaf missing from PROJECT_SPINE comes through the LEFT JOIN with a null level, which
-  // parses to 0, so levels below 1 are dropped together with non-integer ones.
+  // A null level parses to 0, so levels below 1 are dropped together with non-integer ones.
   const levelRows = rawRows
     .map((r) => {
       const row = r as Partial<PccParquetRow>

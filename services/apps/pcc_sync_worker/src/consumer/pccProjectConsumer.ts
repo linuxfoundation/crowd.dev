@@ -123,8 +123,8 @@ export class PccProjectConsumer {
 
     try {
       // Stream all rows and group by PROJECT_ID before processing.
-      // The export emits one row per (leaf, hierarchy_level) from the PROJECT_SPINE
-      // JOIN, so each leaf project produces N rows (one per ancestor level).
+      // The export emits one row per (leaf, hierarchy_level) pair, so each leaf
+      // project produces N rows (one per ancestor level).
       // PROJECT_ID is trimmed at the group-key boundary (PCC source data occasionally
       // carries surrounding whitespace) so the same logical project never splits
       // into multiple groups.
