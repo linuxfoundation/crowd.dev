@@ -18,6 +18,7 @@
     "services/apps/git_integration/**",
     "services/apps/mailing_list_integration/**",
     "**/dist/**",
+    "**/*.fixture.html",
     ".github/actions/node/builder/**"
   ]
 }
