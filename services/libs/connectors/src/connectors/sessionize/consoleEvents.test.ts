@@ -95,6 +95,12 @@ describe('parseActivatedEvents', () => {
     expect(event.cfpEnd).toBe('2027-02-02T12:00:00')
   })
 
+  it('rejects a page whose last event row is not closed', () => {
+    const lastClosing = FIXTURE.lastIndexOf('</tr>')
+    const truncated = FIXTURE.slice(0, lastClosing) + FIXTURE.slice(lastClosing + '</tr>'.length)
+    expect(() => parseActivatedEvents(truncated)).toThrow(ProviderContractError)
+  })
+
   it('decodes entities in names', () => {
     const [event] = parseActivatedEvents(pane(row({ name: ' Example_dev &amp; ML ' })))
     expect(event.eventName).toBe('Example_dev & ML')

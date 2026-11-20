@@ -22,6 +22,7 @@ interface DateParts {
 
 const ACTIVATED_PANE_PATTERN = /<div[^>]*id="tab-activated"[^>]*>([\s\S]*?)<div[^>]*id="tab-test"/
 const ROW_PATTERN = /<tr[\s>][\s\S]*?<\/tr>/g
+const ROW_OPENING_PATTERN = /<tr[\s>]/g
 const CELL_PATTERN = /<td[^>]*>([\s\S]*?)<\/td>/g
 const EVENT_LINK_PATTERN = /<a[^>]*href="\/app\/organizer\/event\/(\d+)"[^>]*>([\s\S]*?)<\/a\s*>/
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -194,7 +195,12 @@ export function parseActivatedEvents(html: string): SessionizeConsoleEvent[] {
   if (!pane) {
     throw contractError('activated events pane not found')
   }
-  const rows = (pane[1].match(ROW_PATTERN) ?? []).filter((row) => /<td[\s>]/.test(row))
+  const completeRows = pane[1].match(ROW_PATTERN) ?? []
+  const openedRows = pane[1].match(ROW_OPENING_PATTERN) ?? []
+  if (openedRows.length !== completeRows.length) {
+    throw contractError('activated events pane has a row that does not close')
+  }
+  const rows = completeRows.filter((row) => /<td[\s>]/.test(row))
   if (rows.length === 0) {
     throw contractError('activated events pane has no rows')
   }
