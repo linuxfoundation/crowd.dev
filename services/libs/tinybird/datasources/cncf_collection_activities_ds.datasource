@@ -4,7 +4,7 @@ DESCRIPTION >
     - Exists so the CNCF report pipes (`collection_contributors_geo_distribution*`, `cncf_country_*`) don't have to scan/filter the full bucket on every request.
     - Stores only the fields those report pipes need: organizationId, memberId, timestamp, platform, type, segmentId.
     - `segmentId` is the project's segment, used by the country report to break contributions down by project.
-    - `memberPlace` and `organizationPlace` are the country names (as in `country_mapping`, empty if unknown) of the contributor and the organization, copied in so the country report pipes match countries without joining `members_sorted` and `organizations` on every request.
+    - `memberCountryCode` and `organizationCountryCode` are the ISO 3166-1 alpha-2 country codes (empty if unknown) of the contributor and the organization, copied in so the country report pipes match countries without joining `members_sorted` and `organizations` on every request.
     - `organizationListed` is 1 when the organization can appear in reports: not blocked from affiliations and not the "Individual - No Account" placeholder.
 
 TAGS "Report"
@@ -16,8 +16,8 @@ SCHEMA >
     `platform` LowCardinality(String),
     `type` LowCardinality(String),
     `segmentId` String DEFAULT '',
-    `memberPlace` LowCardinality(String) DEFAULT '',
-    `organizationPlace` LowCardinality(String) DEFAULT '',
+    `memberCountryCode` LowCardinality(String) DEFAULT '',
+    `organizationCountryCode` LowCardinality(String) DEFAULT '',
     `organizationListed` UInt8 DEFAULT 0
 
 ENGINE MergeTree
