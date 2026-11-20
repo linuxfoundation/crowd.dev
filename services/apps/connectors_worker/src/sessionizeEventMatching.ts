@@ -1,3 +1,6 @@
+import type { ConnectorHttp } from '@crowd/connectors'
+import { fetchActivatedEvents } from '@crowd/connectors/src/connectors/sessionize/consoleEvents'
+import { matchSessionizeEvent } from '@crowd/connectors/src/connectors/sessionize/matching'
 import type {
   CventCatalogueEvent,
   SessionizeEventDecision,
@@ -5,6 +8,7 @@ import type {
   SubprojectLookup,
 } from '@crowd/connectors/src/connectors/sessionize/matching'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
+import { listActiveSubprojectSegmentSources } from '@crowd/data-access-layer/src/segments'
 import {
   ISessionizeEventDecisionInput,
   IStoredSessionizeEventMapping,
@@ -104,6 +108,18 @@ export function buildSubprojectLookup(
     const ids = idsBySourceId.get(projectId.toLowerCase())
     return ids?.length === 1 ? ids[0] : null
   }
+}
+
+export async function computeSessionizeDecisions(input: {
+  http: ConnectorHttp
+  catalogue: CatalogueSource
+  qx: QueryExecutor
+  log: Logger
+}): Promise<SessionizeEventDecision[]> {
+  const events = await fetchActivatedEvents(input.http)
+  const catalogue = await loadCventCatalogue(input.catalogue, input.log)
+  const subprojectFor = buildSubprojectLookup(await listActiveSubprojectSegmentSources(input.qx))
+  return events.map((event) => matchSessionizeEvent(event, catalogue, subprojectFor))
 }
 
 export interface SessionizeMatchingSummary {

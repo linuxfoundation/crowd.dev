@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ConnectorHttp } from '@crowd/connectors'
 import type { SessionizeEventDecision } from '@crowd/connectors/src/connectors/sessionize/matching'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
+import { listActiveSubprojectSegmentSources } from '@crowd/data-access-layer/src/segments'
 import {
   IStoredSessionizeEventMapping,
   SessionizeDecisionOutcome,
@@ -15,6 +17,7 @@ import type { CatalogueSource } from './credlyTemplateResolve'
 import {
   applySessionizeDecisions,
   buildSubprojectLookup,
+  computeSessionizeDecisions,
   loadCventCatalogue,
 } from './sessionizeEventMatching'
 
@@ -22,6 +25,10 @@ vi.mock('@crowd/data-access-layer/src/sessionize', () => ({
   upsertSessionizeEventDecision: vi.fn(),
   deactivateUnlistedSessionizeEvents: vi.fn(),
   listSessionizeEventMappings: vi.fn(),
+}))
+
+vi.mock('@crowd/data-access-layer/src/segments', () => ({
+  listActiveSubprojectSegmentSources: vi.fn(),
 }))
 
 function fakeLog() {
@@ -240,5 +247,77 @@ describe('applySessionizeDecisions', () => {
     await expect(applySessionizeDecisions(qx, [], fakeLog().log)).rejects.toThrow('empty listing')
 
     expect(upsert).not.toHaveBeenCalled()
+  })
+})
+
+function consoleRow(key: string, name: string, dates: string): string {
+  return `<tr><td>b</td><td><a href="/app/organizer/event/${key}">${name}</a></td><td></td><td>${dates}<div>soon</div></td><td><div>x</div></td><td></td></tr>`
+}
+
+function stubHttp(rows: string[]): ConnectorHttp {
+  const page = `<div id="tab-activated" class="tab-pane"><table><tbody>${rows.join('')}</tbody></table></div><div id="tab-test"></div>`
+  return {
+    request: vi.fn().mockResolvedValue(page),
+    requestCount: vi.fn(),
+  } as unknown as ConnectorHttp
+}
+
+describe('computeSessionizeDecisions', () => {
+  const segments = vi.mocked(listActiveSubprojectSegmentSources)
+  const qx = {} as QueryExecutor
+
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('matches every activated event against the catalogue and the subprojects', async () => {
+    segments.mockResolvedValue([{ id: 'seg-1', slug: 'fake-one', sourceId: 'proj-1' }])
+    const http = stubHttp([
+      consoleRow('101', 'Fake Summit 2027', '15 Mar 2027'),
+      consoleRow('102', 'Fake Unknown Day', '20 Mar 2027'),
+    ])
+    const catalogue = stubSource([
+      {
+        eventId: 'ev-1',
+        eventName: 'Fake Summit 2027',
+        startDate: '2027-03-16',
+        projectId: 'PROJ-1',
+      },
+    ])
+
+    const decisions = await computeSessionizeDecisions({
+      http,
+      catalogue,
+      qx,
+      log: fakeLog().log,
+    })
+
+    expect(http.request).toHaveBeenCalledTimes(1)
+    expect(catalogue.queries).toHaveLength(1)
+    expect(segments).toHaveBeenCalledWith(qx)
+    expect(
+      decisions.map(({ event, status, holdReason, cventEventId, segmentId }) => ({
+        eventKey: event.eventKey,
+        status,
+        holdReason,
+        cventEventId,
+        segmentId,
+      })),
+    ).toEqual([
+      {
+        eventKey: '101',
+        status: 'matched',
+        holdReason: null,
+        cventEventId: 'ev-1',
+        segmentId: 'seg-1',
+      },
+      {
+        eventKey: '102',
+        status: 'held',
+        holdReason: 'no_match',
+        cventEventId: null,
+        segmentId: null,
+      },
+    ])
   })
 })
