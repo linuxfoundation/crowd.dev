@@ -237,7 +237,10 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
     identities: ConsumableIdentity[],
   ): Promise<IMemberEnrichmentDataCrustdata[] | null> {
     const cached = await this.enrichLinkedinHandles('/person/enrich', identities)
-    const notCached = identities.filter((identity) => !cached.some((m) => m.identity === identity))
+    const cachedHandles = new Set(cached.map((m) => m.identity.value.toLowerCase()))
+    const notCached = identities.filter(
+      (identity) => !cachedHandles.has(identity.value.toLowerCase()),
+    )
     const live =
       notCached.length > 0
         ? await this.enrichLinkedinHandles('/person/professional_network/enrich/live', notCached)
