@@ -1,11 +1,11 @@
 DESCRIPTION >
     - `projectDocReadinessChecks` holds the per-check afdocs results behind a project's AI documentation readiness score, replicated from Postgres via Sequin.
     - One row per `projectId` + `checkId`; `projectId` joins to `insightsProjects`.id and to `projectDocReadiness`.projectId.
-    - `category` is the scoring category of the check; `status` is one of pass, warn, fail, skip, error; `message` is the human-readable result.
+    - `category` is the scoring category of the check; `status` is one of pass, warn, fail, skip, error; `message` is the human-readable result; `durationMs` is not populated yet and is always NULL.
     - `details` is the raw afdocs detail JSON as a string, cut at 32 KB in Postgres, so it may not parse as JSON; extract values with string functions.
     - Postgres deletes and re-inserts a project's checks on every scoring and those deletes are not applied here, so checks dropped by a later scoring stay in this datasource.
     - Reader rule: read with FINAL and keep only the rows whose `scoredAt` equals the max `scoredAt` of that `projectId`; every row of one scoring shares the same `scoredAt`.
-    - Postgres also clears a project's checks when a run fails on a different docs URL or with none; show checks only when the project has an `ok` run in `projectDocReadiness`, every run since its newest `ok` run has the same normalized `docsUrl`, and the latest `error` is not `no-docs-url` or `repo-only`. The gate is approximate when a project is scored more than once on one `runDate`, because `projectDocReadiness` keeps one row per project per day.
+    - Postgres also clears a project's checks when a run fails on a different docs URL or with none, and a scoring can return no checks; show checks only when the project has an `ok` run in `projectDocReadiness`, the max `scoredAt` equals the `updatedAt` of its newest `ok` run, every run since that run has the same normalized `docsUrl` (`https://` added when no scheme, lowercase host, no `#fragment`, no trailing `/` except on the root path), and the latest `error` is not `no-docs-url` or `repo-only`. The gate is approximate when a project is scored more than once on one `runDate`, because `projectDocReadiness` keeps one row per project per day.
 
 TAGS "Project metadata"
 
