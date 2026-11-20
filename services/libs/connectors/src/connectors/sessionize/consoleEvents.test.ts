@@ -38,32 +38,32 @@ describe('parseActivatedEvents', () => {
   it('parses every activated row in the fixture', () => {
     expect(parseActivatedEvents(FIXTURE)).toEqual([
       {
-        eventKey: '26341',
-        eventName: 'AGNTCon + MCPCon North America 2027',
+        eventKey: '90001',
+        eventName: 'Example Agents Summit North America 2027',
         eventStart: '2027-04-28',
         eventEnd: '2027-04-29',
         cfpStart: '2026-11-02T09:00:00',
         cfpEnd: '2027-01-18T23:59:00',
       },
       {
-        eventKey: '25448',
-        eventName: 'CNCF-Hosted Co-located Events Europe 2027',
+        eventKey: '90002',
+        eventName: 'Example Co-located Events Europe 2027',
         eventStart: '2027-03-15',
         eventEnd: '2027-03-15',
         cfpStart: '2026-10-26T00:00:00',
         cfpEnd: '2026-11-30T23:59:00',
       },
       {
-        eventKey: '25152',
-        eventName: 'KubeCon + CloudNativeCon Europe 2027',
+        eventKey: '90003',
+        eventName: 'Example Cloud Conference Europe 2027',
         eventStart: '2027-03-15',
         eventEnd: '2027-03-18',
         cfpStart: '2026-08-10T00:00:00',
         cfpEnd: '2026-09-19T23:59:00',
       },
       {
-        eventKey: '22094',
-        eventName: 'OpenSSF Community Day North America 2026',
+        eventKey: '90004',
+        eventName: 'Example Security Day North America 2026',
         eventStart: '2026-05-21',
         eventEnd: '2026-05-21',
         cfpStart: '2025-12-16T00:00:00',
@@ -96,8 +96,8 @@ describe('parseActivatedEvents', () => {
   })
 
   it('decodes entities in names', () => {
-    const [event] = parseActivatedEvents(pane(row({ name: ' AI_dev &amp; ML ' })))
-    expect(event.eventName).toBe('AI_dev & ML')
+    const [event] = parseActivatedEvents(pane(row({ name: ' Example_dev &amp; ML ' })))
+    expect(event.eventName).toBe('Example_dev & ML')
   })
 
   it('allows an empty CFP cell', () => {

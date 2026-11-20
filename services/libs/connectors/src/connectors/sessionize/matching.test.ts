@@ -23,23 +23,26 @@ function cventEvent(
   eventId: string,
   eventName: string,
   startDate: string,
-  projectSlug: string | null = 'cncf',
+  projectSlug: string | null = 'example-project',
 ): CventCatalogueEvent {
   return { eventId, eventName, startDate, projectId: `${projectSlug}-id`, projectSlug }
 }
 
 const subprojectFor = (projectSlug: string | null) =>
-  projectSlug === 'cncf' ? 'segment-cncf' : null
+  projectSlug === 'example-project' ? 'segment-example' : null
 
 describe('normalizeEventName', () => {
   it.each([
-    ['KubeCon + CloudNativeCon NA 2025', 'kubecon cloudnativecon north america 2025'],
+    ['Example Cloud + NativeCon NA 2025', 'example cloud nativecon north america 2025'],
     [
-      'AI_dev: Open Source GenAI & ML Summit Europe 2024',
-      'ai dev open source genai and ml summit europe 2024',
+      'Sample_dev: Open Source Widgets & ML Summit Europe 2024',
+      'sample dev open source widgets and ml summit europe 2024',
     ],
-    ['AGL AMM Japan 2026', 'automotive grade linux all member meeting japan 2026'],
-    ['KyvernoCon Virtual 2026', 'kyvernocon 2026'],
+    [
+      'Example AGL AMM Meetup 2030',
+      'example automotive grade linux all member meeting meetup 2030',
+    ],
+    ['SampleCon Virtual 2026', 'samplecon 2026'],
     ['Open Source Conf EU 2025', 'open source conference europe 2025'],
   ])('%s', (name, expected) => {
     expect(normalizeEventName(name)).toBe(expected)
@@ -49,9 +52,9 @@ describe('normalizeEventName', () => {
 describe('matchSessionizeEvent', () => {
   it('matches one exact-name candidate within 21 days', () => {
     const decision = matchSessionizeEvent(
-      sessionizeEvent('KubeCon + CloudNativeCon NA 2025', '2025-11-10'),
+      sessionizeEvent('Example Cloud + NativeCon NA 2025', '2025-11-10'),
       [
-        cventEvent('cv-1', 'KubeCon CloudNativeCon North America 2025', '2025-11-10'),
+        cventEvent('cv-1', 'Example Cloud NativeCon North America 2025', '2025-11-10'),
         cventEvent('cv-2', 'Other Summit 2025', '2025-11-10'),
       ],
       subprojectFor,
@@ -60,14 +63,14 @@ describe('matchSessionizeEvent', () => {
       status: 'matched',
       holdReason: null,
       cventEventId: 'cv-1',
-      segmentId: 'segment-cncf',
+      segmentId: 'segment-example',
       rule: 'exact_name',
       ruleVersion: MATCHING_RULE_VERSION,
     })
     expect(decision.evidence.candidates).toEqual([
       {
         eventId: 'cv-1',
-        eventName: 'KubeCon CloudNativeCon North America 2025',
+        eventName: 'Example Cloud NativeCon North America 2025',
         startDate: '2025-11-10',
         dayGap: 0,
       },
@@ -98,7 +101,7 @@ describe('matchSessionizeEvent', () => {
     const decision = matchSessionizeEvent(
       sessionizeEvent('Summit 2025', '2025-06-10'),
       [
-        cventEvent('cv-1', 'Summit 2025', '2025-06-10', 'cncf'),
+        cventEvent('cv-1', 'Summit 2025', '2025-06-10', 'example-project'),
         cventEvent('cv-2', 'Summit 2025', '2025-06-12', 'unknown'),
       ],
       subprojectFor,
