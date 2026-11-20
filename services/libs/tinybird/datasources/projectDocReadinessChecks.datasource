@@ -1,0 +1,27 @@
+DESCRIPTION >
+    - `projectDocReadinessChecks` holds the per-check afdocs results behind a project's AI documentation readiness score, replicated from Postgres via Sequin.
+    - One row per `projectId` + `checkId`; `projectId` joins to `insightsProjects`.id and to `projectDocReadiness`.projectId.
+    - `category` is the scoring category of the check; `status` is one of pass, warn, fail, skip, error; `message` is the human-readable result.
+    - `details` is the raw afdocs detail JSON as a string, cut at 32 KB in Postgres, so it may not parse as JSON; extract values with string functions.
+    - Postgres deletes and re-inserts a project's checks on every scoring and those deletes are not applied here, so checks dropped by a later scoring stay in this datasource.
+    - Reader rule: read with FINAL and keep only the rows whose `scoredAt` equals the max `scoredAt` of that `projectId`; every row of one scoring shares the same `scoredAt`.
+    - Postgres also clears a project's checks when a run fails on a different docs URL; check `projectDocReadiness` for the project's current state before showing checks.
+
+TAGS "Project metadata"
+
+SCHEMA >
+    `projectId` String `json:$.record.projectId`,
+    `checkId` String `json:$.record.checkId`,
+    `category` String `json:$.record.category`,
+    `status` String `json:$.record.status`,
+    `message` String `json:$.record.message` DEFAULT '',
+    `details` String `json:$.record.details` DEFAULT '',
+    `durationMs` Nullable(Int32) `json:$.record.durationMs`,
+    `scoredAt` DateTime64(3) `json:$.record.scoredAt`,
+    `createdAt` DateTime64(3) `json:$.record.createdAt`,
+    `updatedAt` DateTime64(3) `json:$.record.updatedAt`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_SORTING_KEY projectId, checkId
+ENGINE_VER updatedAt
