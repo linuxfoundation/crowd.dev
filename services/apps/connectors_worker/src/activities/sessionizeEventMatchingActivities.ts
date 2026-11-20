@@ -1,7 +1,6 @@
 import { getPlatformCredential, isSessionizeCredentialConfigured } from '@crowd/connectors'
 import { createSessionizeSessionHttp } from '@crowd/connectors/src/connectors/sessionize/sessionHttp'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
-import { listSessionizeEventMappings } from '@crowd/data-access-layer/src/sessionize'
 import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 import { SnowflakeClient } from '@crowd/snowflake'
 
@@ -11,14 +10,9 @@ import {
   applySessionizeDecisions,
   computeSessionizeDecisions,
 } from '../sessionizeEventMatching'
-import {
-  SessionizeHeldReport,
-  buildSessionizeHeldReport,
-  sendSessionizeHeldReport,
-} from '../sessionizeHeldReport'
 
 export type SessionizeEventMatchingResult =
-  | { summary: SessionizeMatchingSummary; heldReport: SessionizeHeldReport | null }
+  | SessionizeMatchingSummary
   | { skipped: 'not_configured' }
 
 export async function runSessionizeEventMatching(): Promise<SessionizeEventMatchingResult> {
@@ -30,8 +24,6 @@ export async function runSessionizeEventMatching(): Promise<SessionizeEventMatch
 
   const qx = dbStoreQx(svc.postgres.writer)
   const http = createSessionizeSessionHttp(getPlatformCredential('sessionize'))
-  const heldBefore = await listSessionizeEventMappings(qx)
-
   const snowflake = SnowflakeClient.fromEnv({ parentLog: log, maxConnections: 1 })
   let decisions: Awaited<ReturnType<typeof computeSessionizeDecisions>>
   try {
@@ -41,18 +33,11 @@ export async function runSessionizeEventMatching(): Promise<SessionizeEventMatch
   }
 
   const summary = await applySessionizeDecisions(qx, decisions, log)
-  const report = buildSessionizeHeldReport(heldBefore, await listSessionizeEventMappings(qx))
   log.info(
     { event: 'sessionize_event_matching_summary', ...summary },
     'sessionize event matching done',
   )
-  return { summary, heldReport: report.changed ? report : null }
-}
-
-export async function postSessionizeHeldReport(report: SessionizeHeldReport): Promise<void> {
-  if (!(await sendSessionizeHeldReport(report))) {
-    throw new Error('Could not post the Sessionize held events report to Slack')
-  }
+  return summary
 }
 
 export async function reportSessionizeEventMatchingFailure(message: string): Promise<void> {
