@@ -5,6 +5,7 @@ import { registerConnector } from '@crowd/connectors'
 import { credlyConnector } from '@crowd/connectors/src/connectors/credly'
 import { githubConnector } from '@crowd/connectors/src/connectors/github'
 import { octolensConnector } from '@crowd/connectors/src/connectors/octolens'
+import { sessionizeConnector } from '@crowd/connectors/src/connectors/sessionize'
 import { dummyConnector } from '@crowd/connectors/src/testing/dummyConnector'
 
 import { scheduleCompletenessBackfillSweep } from './schedules/completenessBackfillSweep'
@@ -43,6 +44,7 @@ export const svc = new ServiceWorker(config, options)
 registerConnector(githubConnector)
 registerConnector(octolensConnector)
 registerConnector(credlyConnector)
+registerConnector(sessionizeConnector)
 
 // POC only: dummy connector drives the control-plane end-to-end in dev
 if (IS_DEV_ENV) {
