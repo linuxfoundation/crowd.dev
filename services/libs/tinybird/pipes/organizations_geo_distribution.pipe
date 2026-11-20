@@ -1,7 +1,7 @@
 DESCRIPTION >
     - `organizations_geo_distribution.pipe` serves the organization geographic distribution widget showing organization counts by country.
-    - Maps each organization's country to the `country_mapping` lookup table by exact name, so each organization counts in one country.
-    - Organizations with no country, or a country not in `country_mapping`, are grouped under "Unknown" with ❓ flag and 'XX' country code.
+    - Looks up each organization's `countryCode` in the `country_mapping` lookup table, so each organization counts in one country.
+    - Organizations with no country code, or a code not in `country_mapping`, are grouped under "Unknown" with ❓ flag and 'XX' country code.
     - Calculates both absolute organization counts and percentage distribution for visualization.
     - Primary use case: displaying geographic diversity of organizations in project insights.
     - Parameters:
@@ -18,15 +18,15 @@ DESCRIPTION >
 
 NODE country_mapping_array
 SQL >
-    SELECT groupArray(country) AS names, groupArray((country, flag, country_code)) AS country_data
+    SELECT groupArray(country_code) AS codes, groupArray((country, flag, country_code)) AS country_data
     FROM country_mapping
 
 NODE parsed_country
 SQL >
     WITH
-        (SELECT names FROM country_mapping_array) AS mapping_names,
+        (SELECT codes FROM country_mapping_array) AS mapping_codes,
         (SELECT country_data FROM country_mapping_array) AS mapping,
-        indexOf(mapping_names, o.country) AS idx
+        indexOf(mapping_codes, o.countryCode) AS idx
     SELECT o.id, if(idx = 0, ('Unknown', '❓', 'XX'), mapping[idx]) AS country_data
     FROM organizations AS o final
     WHERE o.id IN (SELECT "organizationId" FROM activities_filtered)

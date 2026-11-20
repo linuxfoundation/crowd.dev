@@ -1,7 +1,7 @@
 DESCRIPTION >
     - `contributors_geo_distribution.pipe` serves the contributor geographic distribution widget showing contributor counts by country.
-    - Maps each contributor's country to the `country_mapping` lookup table by exact name, so each contributor counts in one country.
-    - Contributors with no country, or a country not in `country_mapping`, are grouped under "Unknown" with ❓ flag and 'XX' country code.
+    - Looks up each contributor's `countryCode` in the `country_mapping` lookup table, so each contributor counts in one country.
+    - Contributors with no country code, or a code not in `country_mapping`, are grouped under "Unknown" with ❓ flag and 'XX' country code.
     - Calculates both absolute contributor counts and percentage distribution for visualization.
     - Primary use case: displaying geographic diversity of contributors in project analytics and community insights.
     - Parameters:
@@ -18,15 +18,15 @@ DESCRIPTION >
 
 NODE country_mapping_array
 SQL >
-    SELECT groupArray(country) AS names, groupArray((country, flag, country_code)) AS country_data
+    SELECT groupArray(country_code) AS codes, groupArray((country, flag, country_code)) AS country_data
     FROM country_mapping
 
 NODE parsed_country
 SQL >
     WITH
-        (SELECT names FROM country_mapping_array) AS mapping_names,
+        (SELECT codes FROM country_mapping_array) AS mapping_codes,
         (SELECT country_data FROM country_mapping_array) AS mapping,
-        indexOf(mapping_names, m.country) AS idx
+        indexOf(mapping_codes, m.countryCode) AS idx
     SELECT m.id, if(idx = 0, ('Unknown', '❓', 'XX'), mapping[idx]) AS country_data
     FROM members_sorted AS m
     WHERE m.id IN (SELECT "memberId" FROM activities_filtered)

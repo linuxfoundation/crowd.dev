@@ -1,12 +1,12 @@
 DESCRIPTION >
     - `cncf_country_comparison.pipe` serves the "in context" widget of the CNCF country report: one country compared with a region (e.g. Europe) and the world.
-    - Contributors and contributions are placed by the contributor's profile country; organizations by their country. Names are matched exactly against `country_mapping`, as in `contributors_geo_distribution.pipe`, and only records with a known country count, so every count is "with a known country".
+    - Contributors and contributions are placed by the contributor's profile country code; organizations by their country code. Only records with a known country count, so every count is "with a known country".
     - Skips organizations blocked from affiliations and the "Individual - No Account" placeholder records, as `cncf_country_top_organizations.pipe` does.
-    - Reads only `cncf_collection_activities_ds`, so it covers the CNCF collection only; the places it matches on are copied there daily by `cncf_collection_activities_copy.pipe`.
+    - Reads only `cncf_collection_activities_ds`, so it covers the CNCF collection only; the country codes it matches on are copied there daily by `cncf_collection_activities_copy.pipe`.
     - **When `granularity` is NOT provided, returns one row of totals** for the period.
     - **When `granularity` is provided, returns one row per period**, built on `generate_timeseries`.
     - Parameters:
-    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR'), resolved to a country name through `country_mapping`
+    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR')
     - `regionCodes`: Required array of ISO 3166-1 alpha-2 codes making up the region (e.g., ['FR', 'DE', 'GB'])
     - `startDate`: DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00'); required with `granularity`
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
@@ -18,58 +18,39 @@ TOKEN "insights-app-token" READ
 
 TAGS "Report"
 
-NODE cncf_country_comparison_names
-SQL >
-    %
-    SELECT
-        (
-            SELECT country
-            FROM country_mapping
-            WHERE
-                country_code
-                = {{
-                    String(
-                        countryCode,
-                        description="ISO 3166-1 alpha-2 country code (e.g. 'FR')",
-                        required=True,
-                    )
-                }}
-            LIMIT 1
-        ) AS countryName,
-        (
-            SELECT groupArray(country)
-            FROM country_mapping
-            WHERE
-                country_code
-                IN {{
-                    Array(
-                        regionCodes,
-                        'String',
-                        description="ISO 3166-1 alpha-2 codes of the region's countries",
-                        required=True,
-                    )
-                }}
-        ) AS regionNames
-
 NODE cncf_country_comparison_located
 SQL >
     %
+    WITH
+        nullIf(
+            {{
+                String(
+                    countryCode,
+                    description="ISO 3166-1 alpha-2 country code (e.g. 'FR')",
+                    required=True,
+                )
+            }}, ''
+        ) AS selectedCountryCode,
+        {{
+            Array(
+                regionCodes,
+                'String',
+                description="ISO 3166-1 alpha-2 codes of the region's countries",
+                required=True,
+            )
+        }} AS selectedRegionCodes
     SELECT
         timestamp,
         memberId,
         organizationId,
-        memberPlace != '' AS memberLocated,
-        memberPlace
-        = nullIf((SELECT countryName FROM cncf_country_comparison_names), '') AS memberInCountry,
-        has((SELECT regionNames FROM cncf_country_comparison_names), memberPlace) AS memberInRegion,
-        organizationListed = 1 AND organizationPlace != '' AS organizationLocated,
+        memberCountryCode != '' AS memberLocated,
+        memberCountryCode = selectedCountryCode AS memberInCountry,
+        has(selectedRegionCodes, memberCountryCode) AS memberInRegion,
+        organizationListed = 1 AND organizationCountryCode != '' AS organizationLocated,
         organizationListed = 1
-        AND organizationPlace
-        = nullIf((SELECT countryName FROM cncf_country_comparison_names), '') AS organizationInCountry,
+        AND organizationCountryCode = selectedCountryCode AS organizationInCountry,
         organizationListed = 1
-        AND has(
-            (SELECT regionNames FROM cncf_country_comparison_names), organizationPlace
-        ) AS organizationInRegion
+        AND has(selectedRegionCodes, organizationCountryCode) AS organizationInRegion
     FROM cncf_collection_activities_ds
     WHERE
         memberId != ''
