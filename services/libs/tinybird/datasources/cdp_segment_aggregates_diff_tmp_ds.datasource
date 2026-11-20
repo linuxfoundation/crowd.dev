@@ -1,7 +1,8 @@
 DESCRIPTION >
-    Temporary: output of cdp_segment_aggregates_diff_tmp_copy, used to measure the change detection
-    for the daily aggregate sinks before they are switched to v2. To be deleted after the measurement
-    (linuxfoundation/lfx-cdp-insights-ops#1146).
+    Temporary: output of cdp_segment_aggregates_diff_tmp_copy (leaf keys that changed since the
+    fingerprint) and cdp_segment_aggregates_rollup_tmp_copy (the parent and grandparent keys above
+    them, recomputed from v2). Used to measure the change detection for the daily aggregate sinks;
+    to be deleted afterwards (linuxfoundation/lfx-cdp-insights-ops#1146).
 
 SCHEMA >
     `kind` LowCardinality(String),
@@ -9,6 +10,10 @@ SCHEMA >
     `reason` LowCardinality(String),
     `segmentId` String,
     `entityId` String,
+    `currentParent` String,
+    `sentParent` String,
+    `currentGrandparent` String,
+    `sentGrandparent` String,
     `activityCount` UInt64,
     `memberCount` UInt64,
     `lastActive` DateTime64(3),
