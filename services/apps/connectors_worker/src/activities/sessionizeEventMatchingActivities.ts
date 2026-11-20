@@ -63,6 +63,6 @@ export async function reportSessionizeEventMatchingFailure(message: string): Pro
     message,
   )
   if (!sent) {
-    svc.log.error({ message }, 'sessionize event matching: could not post the failure to Slack')
+    throw new Error('Could not post the Sessionize event matching failure to Slack')
   }
 }

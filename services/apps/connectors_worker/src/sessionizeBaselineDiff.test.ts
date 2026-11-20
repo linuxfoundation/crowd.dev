@@ -17,7 +17,9 @@ function decision(
   status: 'matched' | 'held',
   cventEventId: string | null,
   holdReason: SessionizeEventDecision['holdReason'] = null,
+  projectId: string | null = 'P',
 ): SessionizeEventDecision {
+  const candidates = cventEventId ? [{ eventId: cventEventId, projectId }] : []
   return {
     event: { eventKey: key, eventName: `Event ${key}` },
     status,
@@ -26,7 +28,7 @@ function decision(
     segmentId: null,
     rule: null,
     ruleVersion: 1,
-    evidence: { candidates: [] },
+    evidence: { candidates },
   } as unknown as SessionizeEventDecision
 }
 
@@ -48,10 +50,11 @@ describe('diffAgainstBaseline', () => {
       'best,r,k3,Gamma,2027-01-01,c3,x,x,s,p',
       'unresolved,r,k4,Delta,2027-01-01,,,,,',
       'direct,r,k5,Gone,2027-01-01,c5,x,x,s,p',
+      'direct,r,k7,Eta,2027-01-01,c7,x,x,s,p',
     ].join('\n'),
   )
 
-  it('reports flips, changed Cvent ids, missing and new keys and ignores agreement', () => {
+  it('reports flips, changed Cvent ids and projects, missing and new keys and ignores agreement', () => {
     const diff = diffAgainstBaseline(
       [
         decision('k1', 'matched', 'c1'),
@@ -59,14 +62,18 @@ describe('diffAgainstBaseline', () => {
         decision('k3', 'matched', 'c3'),
         decision('k4', 'held', null, 'no_match'),
         decision('k6', 'held', null, 'ambiguous'),
+        decision('k7', 'matched', 'c7', null, 'q'),
       ],
       baseline,
     )
-    expect(diff.differences.map((d) => d.key)).toEqual(['k2', 'k3'])
+    expect(diff.differences.map((d) => d.key)).toEqual(['k2', 'k3', 'k7'])
     expect(diff.missingNow).toEqual(['k5'])
     expect(diff.newNow).toEqual(['k6'])
     expect(formatDifference(diff.differences[1])).toBe(
       'k3 | Event k3 | baseline best/c3 | now matched/-/c3',
+    )
+    expect(formatDifference(diff.differences[2])).toBe(
+      'k7 | Event k7 | baseline direct/c7 | now matched/-/c7 project q (baseline p)',
     )
   })
 

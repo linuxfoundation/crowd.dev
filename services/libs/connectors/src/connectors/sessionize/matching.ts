@@ -33,6 +33,7 @@ export interface SessionizeMatchCandidate {
   eventId: string
   eventName: string
   startDate: string
+  projectId: string | null
   dayGap: number
 }
 
@@ -83,6 +84,7 @@ function findCandidates(
         eventId: entry.eventId,
         eventName: entry.eventName,
         startDate: entry.startDate,
+        projectId: entry.projectId,
         dayGap: dayGap(entry.startDate, event.eventStart),
       },
     }))

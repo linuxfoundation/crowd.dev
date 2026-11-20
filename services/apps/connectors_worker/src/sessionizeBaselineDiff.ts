@@ -5,6 +5,7 @@ export interface BaselineRow {
   sessionizeKey: string
   sessionizeName: string
   cventEventId: string
+  cdpSourceId: string
 }
 
 export interface BaselineDifference {
@@ -81,14 +82,28 @@ export function parseBaseline(text: string): BaselineRow[] {
     sessionizeKey: record[2],
     sessionizeName: record[3],
     cventEventId: record[5] ?? '',
+    cdpSourceId: record[9] ?? '',
   }))
+}
+
+function matchedProjectId(decision: SessionizeEventDecision): string {
+  const candidate = decision.evidence.candidates.find(
+    ({ eventId }) => eventId === decision.cventEventId,
+  )
+  return candidate?.projectId ?? ''
+}
+
+function projectDiffers(baseline: BaselineRow, decision: SessionizeEventDecision): boolean {
+  return baseline.cdpSourceId.toLowerCase() !== matchedProjectId(decision).toLowerCase()
 }
 
 function differs(baseline: BaselineRow, decision: SessionizeEventDecision): boolean {
   const baselineMatched = baseline.class === 'direct'
   const nowMatched = decision.status === 'matched'
   if (baselineMatched !== nowMatched) return true
-  return nowMatched && baseline.cventEventId !== (decision.cventEventId ?? '')
+  if (!nowMatched) return false
+  if (baseline.cventEventId !== (decision.cventEventId ?? '')) return true
+  return projectDiffers(baseline, decision)
 }
 
 export function diffAgainstBaseline(
@@ -115,5 +130,7 @@ export function diffAgainstBaseline(
 
 export function formatDifference({ key, name, baseline, decision }: BaselineDifference): string {
   const now = [decision.status, decision.holdReason ?? '-', decision.cventEventId ?? '-'].join('/')
-  return `${key} | ${name} | baseline ${baseline.class}/${baseline.cventEventId || '-'} | now ${now}`
+  const line = `${key} | ${name} | baseline ${baseline.class}/${baseline.cventEventId || '-'} | now ${now}`
+  if (decision.status !== 'matched' || !projectDiffers(baseline, decision)) return line
+  return `${line} project ${matchedProjectId(decision) || '-'} (baseline ${baseline.cdpSourceId || '-'})`
 }

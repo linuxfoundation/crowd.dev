@@ -80,6 +80,7 @@ describe('matchSessionizeEvent', () => {
         eventId: 'cv-1',
         eventName: 'Example Cloud NativeCon North America 2025',
         startDate: '2025-11-10',
+        projectId: 'example-project-id',
         dayGap: 0,
       },
     ])

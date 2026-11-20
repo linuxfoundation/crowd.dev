@@ -12,7 +12,17 @@ const matching = proxyActivities<typeof activities>({
   },
 })
 
-const reporting = proxyActivities<typeof activities>({
+const heldReporting = proxyActivities<typeof activities>({
+  startToCloseTimeout: '1 minute',
+  retry: {
+    initialInterval: '30 seconds',
+    backoffCoefficient: 2,
+    maximumInterval: '2 minutes',
+    maximumAttempts: 4,
+  },
+})
+
+const failureReporting = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 minute',
   retry: {
     initialInterval: '10 seconds',
@@ -34,7 +44,7 @@ async function runAndReport(): Promise<void> {
   }
   log.info('sessionize event matching run complete', { ...result.summary })
   if (result.heldReport) {
-    await reporting.postSessionizeHeldReport(result.heldReport)
+    await heldReporting.postSessionizeHeldReport(result.heldReport)
   }
 }
 
@@ -43,7 +53,7 @@ export async function sessionizeEventMatching(): Promise<void> {
     await runAndReport()
   } catch (err) {
     try {
-      await reporting.reportSessionizeEventMatchingFailure(failureMessage(err))
+      await failureReporting.reportSessionizeEventMatchingFailure(failureMessage(err))
     } catch (reportErr) {
       log.error('sessionize event matching: the failure report failed', {
         error: failureMessage(reportErr),
