@@ -1,14 +1,15 @@
-import { test as base, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 import type { SessionizeEventDecision } from '@crowd/connectors/src/connectors/sessionize/matching'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import {
+  IStoredSessionizeEventMapping,
+  SessionizeDecisionOutcome,
+  deactivateUnlistedSessionizeEvents,
   listSessionizeEventMappings,
   upsertSessionizeEventDecision,
 } from '@crowd/data-access-layer/src/sessionize'
 import type { Logger } from '@crowd/logging'
-import { withQx } from '@crowd/test-kit/db'
 
 import type { CatalogueSource } from './credlyTemplateResolve'
 import {
@@ -17,7 +18,16 @@ import {
   loadCventCatalogue,
 } from './sessionizeEventMatching'
 
-const test = withQx(base)
+vi.mock('@crowd/data-access-layer/src/sessionize', () => ({
+  upsertSessionizeEventDecision: vi.fn(),
+  deactivateUnlistedSessionizeEvents: vi.fn(),
+  listSessionizeEventMappings: vi.fn(),
+}))
+
+function fakeLog() {
+  const warn = vi.fn()
+  return { warn, log: { warn, info: vi.fn() } as unknown as Logger }
+}
 
 function stubSource(rows: Record<string, unknown>[]): CatalogueSource & { queries: string[] } {
   const queries: string[] = []
@@ -37,7 +47,7 @@ describe('loadCventCatalogue', () => {
       { eventId: 'ev-2', eventName: 'Fake Day', startDate: '2027-02-28', projectId: null },
     ])
 
-    expect(await loadCventCatalogue(source)).toEqual([
+    expect(await loadCventCatalogue(source, fakeLog().log)).toEqual([
       {
         eventId: 'ev-1',
         eventName: 'Fake Summit',
@@ -60,7 +70,24 @@ describe('loadCventCatalogue', () => {
   })
 
   it('fails on an empty catalogue instead of holding every event', async () => {
-    await expect(loadCventCatalogue(stubSource([]))).rejects.toThrow(/empty/)
+    await expect(loadCventCatalogue(stubSource([]), fakeLog().log)).rejects.toThrow(/empty/)
+  })
+
+  it('logs and leaves out the rows without a name or start date', async () => {
+    const source = stubSource([
+      { eventId: 'ev-1', eventName: 'Fake Summit', startDate: '2027-04-28', projectId: null },
+      { eventId: 'ev-2', eventName: null, startDate: '2027-04-28', projectId: null },
+      { eventId: 'ev-3', eventName: 'Fake Day', startDate: null, projectId: null },
+    ])
+    const { warn, log } = fakeLog()
+
+    expect((await loadCventCatalogue(source, log)).map((row) => row.eventId)).toEqual(['ev-1'])
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0][0]).toEqual({
+      event: 'sessionize_catalogue_rows_skipped',
+      count: 2,
+      eventIds: ['ev-2', 'ev-3'],
+    })
   })
 
   it.for(['2027-02-30', '2027-4-28', '28/04/2027'])(
@@ -70,7 +97,7 @@ describe('loadCventCatalogue', () => {
         { eventId: 'ev-1', eventName: 'Fake Summit', startDate: '2027-04-28', projectId: null },
         { eventId: 'ev-2', eventName: 'Fake Day', startDate, projectId: null },
       ])
-      await expect(loadCventCatalogue(source)).rejects.toThrow(/ev-2/)
+      await expect(loadCventCatalogue(source, fakeLog().log)).rejects.toThrow(/ev-2/)
     },
   )
 })
@@ -96,20 +123,6 @@ describe('buildSubprojectLookup', () => {
     expect(lookup(null, 'proj-z')).toBeNull()
   })
 })
-
-async function createSegment(qx: QueryExecutor): Promise<string> {
-  const id = generateUUIDv1()
-  await qx.result(
-    `
-    INSERT INTO public.segments
-      (id, slug, name, "grandparentSlug", status, "sourceId", "tenantId", "createdAt", "updatedAt")
-    VALUES ($(id), $(slug), $(slug), 'fake-foundation', 'active', $(sourceId), $(tenantId),
-            NOW(), NOW())
-    `,
-    { id, slug: `segment-${id}`, sourceId: `source-${id}`, tenantId: DEFAULT_TENANT_ID },
-  )
-  return id
-}
 
 function event(eventKey: string): SessionizeEventDecision['event'] {
   return {
@@ -156,30 +169,42 @@ function toInput(decision: SessionizeEventDecision) {
   return { ...listed, ...rest }
 }
 
-describe('applySessionizeDecisions', () => {
-  test('writes every decision, reports a reviewed row once and deactivates an unlisted one', async ({
-    qx,
-  }) => {
-    const segmentId = await createSegment(qx)
-    await upsertSessionizeEventDecision(qx, toInput(matchedDecision('reviewed', segmentId)))
-    await qx.result(
-      `UPDATE integration."sessionizeEventMappings" SET "reviewedAt" = now() WHERE "eventKey" = 'reviewed'`,
-    )
-    await upsertSessionizeEventDecision(qx, toInput(heldDecision('gone', 'no_match')))
-    await upsertSessionizeEventDecision(qx, toInput(heldDecision('same', 'ambiguous')))
-    const warn = vi.fn()
-    const log = { warn, info: vi.fn() } as unknown as Logger
+function storedRow(decision: SessionizeEventDecision): IStoredSessionizeEventMapping {
+  return { ...toInput(decision), reviewedAt: '2026-11-01', lockedAt: null, deactivatedAt: null }
+}
 
-    const summary = await applySessionizeDecisions(
-      qx,
-      [
-        matchedDecision('new', segmentId),
-        heldDecision('same', 'ambiguous'),
-        heldDecision('reviewed', 'no_segment'),
-        heldDecision('fresh', 'no_match'),
-      ],
-      log,
-    )
+describe('applySessionizeDecisions', () => {
+  const upsert = vi.mocked(upsertSessionizeEventDecision)
+  const deactivate = vi.mocked(deactivateUnlistedSessionizeEvents)
+  const list = vi.mocked(listSessionizeEventMappings)
+  const qx = { tx: (fn: (tx: QueryExecutor) => unknown) => fn(qx) } as unknown as QueryExecutor
+
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('writes every decision, reports a reviewed row once, then deactivates the unlisted ones', async () => {
+    const outcomes: Record<string, SessionizeDecisionOutcome> = {
+      new: 'inserted',
+      same: 'unchanged',
+      reviewed: 'protected',
+      fresh: 'inserted',
+    }
+    upsert.mockImplementation(async (_tx, input) => outcomes[input.eventKey])
+    deactivate.mockResolvedValue(1)
+    list.mockResolvedValue([
+      storedRow(matchedDecision('reviewed', 'seg-1')),
+      storedRow(heldDecision('same', 'ambiguous')),
+    ])
+    const { warn, log } = fakeLog()
+    const decisions = [
+      matchedDecision('new', 'seg-1'),
+      heldDecision('same', 'ambiguous'),
+      heldDecision('reviewed', 'no_segment'),
+      heldDecision('fresh', 'no_match'),
+    ]
+
+    const summary = await applySessionizeDecisions(qx, decisions, log)
 
     expect(summary).toEqual({
       listed: 4,
@@ -188,6 +213,7 @@ describe('applySessionizeDecisions', () => {
       outcomes: { inserted: 2, updated: 0, unchanged: 1, protected: 1 },
       deactivated: 1,
     })
+    expect(upsert.mock.calls.map(([, input]) => input)).toEqual(decisions.map(toInput))
     expect(warn).toHaveBeenCalledTimes(1)
     expect(warn.mock.calls[0][0]).toEqual({
       event: 'sessionize_decision_needs_review',
@@ -196,27 +222,23 @@ describe('applySessionizeDecisions', () => {
       stored: {
         status: 'matched',
         holdReason: null,
-        segmentId,
+        segmentId: 'seg-1',
         cventEventId: 'cvent-reviewed',
       },
     })
-    const rows = await listSessionizeEventMappings(qx)
-    expect(
-      Object.fromEntries(rows.map((row) => [row.eventKey, row.deactivatedAt !== null])),
-    ).toEqual({ fresh: false, gone: true, new: false, reviewed: false, same: false })
-    expect(rows.find((row) => row.eventKey === 'reviewed')).toMatchObject({
-      status: 'matched',
-      segmentId,
-    })
+    expect(deactivate).toHaveBeenCalledTimes(1)
+    expect(deactivate).toHaveBeenCalledWith(qx, ['new', 'same', 'reviewed', 'fresh'])
+    expect(deactivate.mock.invocationCallOrder[0]).toBeGreaterThan(
+      Math.max(...upsert.mock.invocationCallOrder),
+    )
   })
 
-  test('refuses an empty listing and writes nothing', async ({ qx }) => {
-    await upsertSessionizeEventDecision(qx, toInput(heldDecision('kept', 'no_match')))
-    const log = { warn: vi.fn(), info: vi.fn() } as unknown as Logger
+  it('refuses an empty listing and writes nothing', async () => {
+    list.mockResolvedValue([])
+    deactivate.mockRejectedValue(new Error('empty listing'))
 
-    await expect(applySessionizeDecisions(qx, [], log)).rejects.toThrow()
+    await expect(applySessionizeDecisions(qx, [], fakeLog().log)).rejects.toThrow('empty listing')
 
-    const rows = await listSessionizeEventMappings(qx)
-    expect(rows.map((row) => [row.eventKey, row.deactivatedAt])).toEqual([['kept', null]])
+    expect(upsert).not.toHaveBeenCalled()
   })
 })

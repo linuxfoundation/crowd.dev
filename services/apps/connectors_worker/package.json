@@ -42,7 +42,6 @@
     "tsx": "^4.7.1"
   },
   "devDependencies": {
-    "@crowd/test-kit": "workspace:*",
     "@types/node": "catalog:",
     "nodemon": "^3.0.1",
     "typescript": "catalog:"

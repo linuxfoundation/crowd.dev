@@ -18,24 +18,26 @@ import type { Logger } from '@crowd/logging'
 import type { CatalogueSource } from './credlyTemplateResolve'
 
 const CVENT_CATALOGUE_QUERY = `
-  SELECT "eventId", "eventName", "startDate", "projectId"
-  FROM (
-    SELECT EVENT_ID AS "eventId", EVENT_NAME AS "eventName",
-           TO_VARCHAR(EVENT_START_DATE::date, 'YYYY-MM-DD') AS "startDate",
-           PROJECT_ID AS "projectId"
-    FROM analytics.silver_dim.events
-    WHERE EVENT_ID IS NOT NULL
-    QUALIFY ROW_NUMBER() OVER (PARTITION BY EVENT_ID ORDER BY UPDATED_AT DESC NULLS LAST) = 1
-  )
-  WHERE "eventName" IS NOT NULL AND "startDate" IS NOT NULL
-  ORDER BY "eventId"
+  SELECT EVENT_ID AS "eventId", EVENT_NAME AS "eventName",
+         TO_VARCHAR(EVENT_START_DATE::date, 'YYYY-MM-DD') AS "startDate",
+         PROJECT_ID AS "projectId"
+  FROM analytics.silver_dim.events
+  WHERE EVENT_ID IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY EVENT_ID ORDER BY UPDATED_AT DESC NULLS LAST) = 1
+  ORDER BY EVENT_ID
 `
 
 interface CventCatalogueRow {
   eventId: string
-  eventName: string
-  startDate: string
+  eventName: string | null
+  startDate: string | null
   projectId: string | null
+}
+
+type CompleteCventCatalogueRow = CventCatalogueRow & { eventName: string; startDate: string }
+
+function isComplete(row: CventCatalogueRow): row is CompleteCventCatalogueRow {
+  return typeof row.eventName === 'string' && typeof row.startDate === 'string'
 }
 
 function isCalendarDate(value: string): boolean {
@@ -44,19 +46,43 @@ function isCalendarDate(value: string): boolean {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
 }
 
-export async function loadCventCatalogue(source: CatalogueSource): Promise<CventCatalogueEvent[]> {
+export async function loadCventCatalogue(
+  source: CatalogueSource,
+  log: Logger,
+): Promise<CventCatalogueEvent[]> {
   const rows = await source.run<CventCatalogueRow>(CVENT_CATALOGUE_QUERY)
   if (rows.length === 0) {
     throw new Error('The Cvent event catalogue is empty, refusing to match against it!')
   }
-  const invalid = rows.filter((row) => !isCalendarDate(String(row.startDate)))
+  const complete: CompleteCventCatalogueRow[] = []
+  const skipped: CventCatalogueRow[] = []
+  for (const row of rows) {
+    if (isComplete(row)) complete.push(row)
+    else skipped.push(row)
+  }
+  if (skipped.length > 0) {
+    log.warn(
+      {
+        event: 'sessionize_catalogue_rows_skipped',
+        count: skipped.length,
+        eventIds: skipped.slice(0, 5).map((row) => row.eventId),
+      },
+      'Cvent catalogue events without a name or start date are left out of matching',
+    )
+  }
+  if (complete.length === 0) {
+    throw new Error(
+      'The Cvent event catalogue has no complete event, refusing to match against it!',
+    )
+  }
+  const invalid = complete.filter((row) => !isCalendarDate(String(row.startDate)))
   if (invalid.length > 0) {
     const examples = invalid.slice(0, 5).map((row) => `${row.eventId}=${row.startDate}`)
     throw new Error(
       `${invalid.length} Cvent catalogue events have an invalid start date: ${examples.join(', ')}`,
     )
   }
-  return rows.map((row) => ({
+  return complete.map((row) => ({
     eventId: row.eventId,
     eventName: row.eventName,
     startDate: row.startDate,

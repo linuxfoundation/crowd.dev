@@ -906,9 +906,6 @@ importers:
         specifier: ^4.7.1
         version: 4.23.12
     devDependencies:
-      '@crowd/test-kit':
-        specifier: workspace:*
-        version: link:../../libs/test-kit
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
