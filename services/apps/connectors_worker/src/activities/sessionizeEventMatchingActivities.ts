@@ -21,14 +21,9 @@ export async function runSessionizeEventMatching(): Promise<SessionizeEventMatch
     return { skipped: 'not_configured' }
   }
 
-  const region =
-    process.env.AWS_REGION ||
-    process.env.AWS_DEFAULT_REGION ||
-    process.env.CROWD_SNOWFLAKE_S3_REGION
+  const region = process.env.CROWD_SNOWFLAKE_S3_REGION
   if (!region) {
-    throw new Error(
-      'sessionize event matching needs CROWD_SNOWFLAKE_S3_REGION or AWS_REGION to load the Snowflake client',
-    )
+    throw new Error('sessionize event matching needs CROWD_SNOWFLAKE_S3_REGION to load Snowflake')
   }
   process.env.AWS_REGION ||= region
 
