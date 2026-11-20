@@ -1,4 +1,4 @@
-import type { ConnectorHttp } from '@crowd/connectors'
+import type { ConnectorHttp, Credential } from '@crowd/connectors'
 import { createHttpClient, createTokenPool, getCredential, getManifest } from '@crowd/connectors'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import type { Logger } from '@crowd/logging'
@@ -11,8 +11,16 @@ export async function createPlatformHttp(
   integrationId: string,
   log: Logger,
 ): Promise<ConnectorHttp> {
+  const credential = getManifest(platform).mintToken ? await getCredential(qx, integrationId) : null
+  return createCredentialHttp(platform, credential, log)
+}
+
+export async function createCredentialHttp(
+  platform: string,
+  credential: Credential | null,
+  log: Logger,
+): Promise<ConnectorHttp> {
   const manifest = getManifest(platform)
-  const credential = manifest.mintToken ? await getCredential(qx, integrationId) : null
   const pool = createTokenPool(svc.redis, platform, {
     probeBudget: manifest.probeBudget,
     mintToken: credential && manifest.mintToken ? manifest.mintToken(credential) : undefined,
