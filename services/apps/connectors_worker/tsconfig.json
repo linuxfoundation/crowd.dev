@@ -46,6 +46,9 @@
     },
     {
       "path": "../../libs/temporal"
+    },
+    {
+      "path": "../../libs/test-kit"
     }
   ]
 }
