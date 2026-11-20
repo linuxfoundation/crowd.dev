@@ -1,0 +1,56 @@
+DESCRIPTION >
+    - `project_doc_readiness_history.pipe` serves the Score history chart of the AI documentation readiness card: one row per calendar month.
+    - **Requires `project` parameter** - inherited from `segments_filtered`; without it, or for an unknown slug, returns no rows.
+    - Window: the current calendar month (UTC) and the five before it, so at most 6 rows. Months without a counted run are omitted.
+    - Counted runs are successes (`ok` = 1) and evaluation failures. `no-docs-url` and `repo-only` rows are not evaluations and are ignored.
+    - `score` and `docsUrl` come from the latest successful run of the month. A month with only failed runs has `failedOnly` = 1, `score` NULL and the latest failed run's `docsUrl`.
+    - `urlChanged` = 1 when `docsUrl` differs from the previous returned row after normalising it like the worker's `normalizeUrl` (trim, lowercase scheme and host, drop the fragment and one trailing slash). The first returned row is always 0.
+    - `firstEvaluatedMonth` is the month of the project's earliest counted run over all time, not only the window.
+    - Parameters:
+    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow')
+    - Response: `month`, `score`, `failedOnly`, `docsUrl`, `urlChanged`, `firstEvaluatedMonth`
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Project"
+
+NODE project_doc_readiness_history_runs
+SQL >
+    SELECT runDate, ok, overallScore, docsUrl
+    FROM projectDocReadiness FINAL
+    WHERE
+        projectId IN (SELECT insightsProjectId FROM segments_filtered)
+        AND error NOT IN ('no-docs-url', 'repo-only')
+
+NODE project_doc_readiness_history_months
+SQL >
+    SELECT
+        toStartOfMonth(runDate) AS month,
+        argMaxIf(overallScore, runDate, ok = 1) AS score,
+        countIf(ok = 1) = 0 AS failedOnly,
+        if(failedOnly, argMax(docsUrl, runDate), argMaxIf(docsUrl, runDate, ok = 1)) AS docsUrl,
+        extract(trimBoth(docsUrl), '^[a-zA-Z][a-zA-Z0-9+.-]*://[^/?#]*') AS origin,
+        replaceRegexpOne(
+            concat(lower(origin), substring(cutFragment(trimBoth(docsUrl)), length(origin) + 1)),
+            '/$',
+            ''
+        ) AS normalizedUrl
+    FROM project_doc_readiness_history_runs
+    WHERE runDate >= toStartOfMonth(today()) - INTERVAL 5 MONTH
+    GROUP BY month
+
+NODE project_doc_readiness_history_result
+SQL >
+    SELECT
+        month,
+        score,
+        failedOnly,
+        docsUrl,
+        normalizedUrl != lagInFrame(normalizedUrl, 1, normalizedUrl) OVER (
+            ORDER BY month ASC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS urlChanged,
+        (
+            SELECT toStartOfMonth(min(runDate)) FROM project_doc_readiness_history_runs
+        ) AS firstEvaluatedMonth
+    FROM project_doc_readiness_history_months
+    ORDER BY month ASC
