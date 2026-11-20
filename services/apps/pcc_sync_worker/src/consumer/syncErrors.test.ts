@@ -4,7 +4,7 @@ import type { QueryExecutor } from '@crowd/database'
 import { DEFAULT_BATCH_SIZE } from '@crowd/snowflake'
 import { withQx } from '@crowd/test-kit/db'
 
-import { resolveSyncErrorsNotReportedByExport } from './syncErrors'
+import { isSingleFileExport, resolveSyncErrorsNotReportedByExport } from './syncErrors'
 
 const test = withQx(base)
 
@@ -21,13 +21,14 @@ async function insertSyncError(
   qx: QueryExecutor,
   externalProjectId: string | null,
   runAt: Date,
+  errorType = 'HIERARCHY_MISMATCH',
 ): Promise<void> {
   await qx.result(
     `
     INSERT INTO pcc_projects_sync_errors (external_project_id, error_type, details, run_at)
-    VALUES ($(externalProjectId), 'HIERARCHY_MISMATCH', '{"reason": "moved"}'::jsonb, $(runAt))
+    VALUES ($(externalProjectId), $(errorType), '{"reason": "moved"}'::jsonb, $(runAt))
     `,
-    { externalProjectId, runAt },
+    { externalProjectId, runAt, errorType },
   )
 }
 
@@ -74,6 +75,19 @@ describe('resolveSyncErrorsNotReportedByExport', () => {
 
     expect(resolved).toBe(1)
     expect(await unresolvedProjectIds(qx)).toEqual(['pcc-still-broken'])
+  })
+
+  test('keeps the error types the job could not check', async ({ qx }) => {
+    await insertExportJob(qx, 'part-0.parquet', 'completed')
+    await insertSyncError(qx, 'pcc-fixed', BEFORE_EXPORT)
+    await insertSyncError(qx, 'pcc-not-checked', BEFORE_EXPORT, 'PROJECT_NOT_IN_PCC')
+
+    const resolved = await resolveSyncErrorsNotReportedByExport(qx, PLATFORM, EXPORT_STARTED_AT, [
+      'PROJECT_NOT_IN_PCC',
+    ])
+
+    expect(resolved).toBe(1)
+    expect(await unresolvedProjectIds(qx)).toEqual(['pcc-not-checked'])
   })
 
   test('accepts the export start as the database returns it', async ({ qx }) => {
@@ -145,5 +159,33 @@ describe('resolveSyncErrorsNotReportedByExport', () => {
     await insertSyncError(qx, 'pcc-comes-back', DURING_EXPORT)
 
     expect(await unresolvedProjectIds(qx)).toEqual(['pcc-comes-back'])
+  })
+})
+
+describe('isSingleFileExport', () => {
+  test('is true when the export wrote one file that is also the last', async ({ qx }) => {
+    await insertExportJob(qx, 'part-0.parquet', 'completed')
+
+    expect(await isSingleFileExport(qx, PLATFORM, EXPORT_STARTED_AT)).toBe(true)
+  })
+
+  test('is false when the export wrote several files', async ({ qx }) => {
+    await insertExportJob(qx, 'part-0.parquet', 'completed', EXPORT_STARTED_AT, DEFAULT_BATCH_SIZE)
+    await insertExportJob(qx, 'part-1.parquet', 'completed')
+
+    expect(await isSingleFileExport(qx, PLATFORM, EXPORT_STARTED_AT)).toBe(false)
+  })
+
+  test('is false when the only file is full and another one may follow', async ({ qx }) => {
+    await insertExportJob(qx, 'part-0.parquet', 'completed', EXPORT_STARTED_AT, DEFAULT_BATCH_SIZE)
+
+    expect(await isSingleFileExport(qx, PLATFORM, EXPORT_STARTED_AT)).toBe(false)
+  })
+
+  test('ignores the files of another export', async ({ qx }) => {
+    await insertExportJob(qx, 'part-0.parquet', 'completed')
+    await insertExportJob(qx, 'part-0.parquet', 'completed', new Date('2026-11-17T01:00:00.000Z'))
+
+    expect(await isSingleFileExport(qx, PLATFORM, EXPORT_STARTED_AT)).toBe(true)
   })
 })
