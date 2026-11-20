@@ -7,7 +7,7 @@ DESCRIPTION >
     - Reader rule: read with FINAL and keep only the rows whose `scoredAt` equals the max `scoredAt` of that `projectId`; every row of one scoring shares the same `scoredAt`.
     - Postgres also clears a project's checks when a run fails on a different docs URL or with none, and a scoring can return no checks. Read `projectDocReadiness` FINAL and show checks only when gate conditions 1-3 all hold.
     - Gate 1: the project has an `ok` run, and the checks' max `scoredAt` equals the `updatedAt` of the newest `ok` run (both are set in one transaction).
-    - Gate 2: that run and every later run (by `runDate`) have the same docs URL after normalizing it like `normalizeUrl` in `services/apps/docs_readiness_worker/src/discovery/http.ts` (`https://` added when no scheme, lowercase scheme and host, a bare host gets a trailing `/`, other paths lose a trailing `/`, `#fragment` dropped).
+    - Gate 2: that run and every later run (by `runDate`) have the same docs URL after normalizing it like `normalizeUrl` in `services/apps/docs_readiness_worker/src/discovery/http.ts` (`https://` added when no scheme, lowercase scheme and host, a bare host gets a trailing `/`, `#fragment` dropped, then one trailing `/` dropped from the whole URL unless the path is just `/`).
     - Gate 3: the latest run's `error` is not `no-docs-url` or `repo-only`.
     - The gate is approximate when a project is scored more than once on one `runDate`, because `projectDocReadiness` keeps one row per project per day.
 
