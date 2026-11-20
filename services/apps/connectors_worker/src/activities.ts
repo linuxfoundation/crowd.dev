@@ -31,6 +31,7 @@ import {
 } from './activities/githubLifecycleActivities'
 import { runOctolensDiscovery } from './activities/octolensDiscoveryActivities'
 import {
+  postSessionizeHeldReport,
   reportSessionizeEventMatchingFailure,
   runSessionizeEventMatching,
 } from './activities/sessionizeEventMatchingActivities'
@@ -59,6 +60,7 @@ export {
   logUndrainedChannels,
   onboardGithubRepos,
   planGithubLifecycle,
+  postSessionizeHeldReport,
   recordSyncRunTimeout,
   reportSessionizeEventMatchingFailure,
   runOctolensDiscovery,

@@ -63,12 +63,26 @@ describe('buildSessionizeHeldReport', () => {
     const report = buildSessionizeHeldReport(before, after, TODAY)
 
     expect(report.changed).toBe(true)
-    expect(report.title).toBe('Sessionize held events: 1 new, 1 released')
+    expect(report.title).toBe('Sessionize held events: 1 new, 1 released, 0 removed')
     expect(section(report, 'Newly held (1)')?.text).toBe(
       '• Fake &lt;Day&gt; &amp; Night — 2027-02-01, `no_match`, key `3`',
     )
     expect(section(report, 'Released (1)')?.text).toBe(
       '• Gone &lt;Fake&gt; &amp; Co — 2027-04-28, `no_match`, key `2`',
+    )
+  })
+
+  it('lists a held event deactivated in Sessionize as removed, not released', () => {
+    const before = [stored('1', { eventName: 'Fake Removed Day' })]
+    const after = [stored('1', { eventName: 'Fake Removed Day', deactivatedAt: '2027-01-09' })]
+
+    const report = buildSessionizeHeldReport(before, after, TODAY)
+
+    expect(report.changed).toBe(true)
+    expect(report.title).toBe('Sessionize held events: 0 new, 0 released, 1 removed')
+    expect(section(report, 'Released')).toBeUndefined()
+    expect(section(report, 'Removed from Sessionize (1)')?.text).toBe(
+      '• Fake Removed Day — 2027-04-28, `no_match`, key `1`',
     )
   })
 

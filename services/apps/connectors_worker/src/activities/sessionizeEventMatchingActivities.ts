@@ -11,11 +11,17 @@ import {
   applySessionizeDecisions,
   computeSessionizeDecisions,
 } from '../sessionizeEventMatching'
-import { buildSessionizeHeldReport, postSessionizeHeldReport } from '../sessionizeHeldReport'
+import {
+  SessionizeHeldReport,
+  buildSessionizeHeldReport,
+  sendSessionizeHeldReport,
+} from '../sessionizeHeldReport'
 
-export async function runSessionizeEventMatching(): Promise<
-  SessionizeMatchingSummary | { skipped: 'not_configured' }
-> {
+export type SessionizeEventMatchingResult =
+  | { summary: SessionizeMatchingSummary; heldReport: SessionizeHeldReport | null }
+  | { skipped: 'not_configured' }
+
+export async function runSessionizeEventMatching(): Promise<SessionizeEventMatchingResult> {
   const log = svc.log
   if (!isSessionizeCredentialConfigured()) {
     log.info('sessionize event matching skipped: the Sessionize organizer account is not set')
@@ -36,25 +42,27 @@ export async function runSessionizeEventMatching(): Promise<
 
   const summary = await applySessionizeDecisions(qx, decisions, log)
   const report = buildSessionizeHeldReport(heldBefore, await listSessionizeEventMappings(qx))
-  if (report.changed) {
-    await postSessionizeHeldReport(report)
-  }
   log.info(
     { event: 'sessionize_event_matching_summary', ...summary },
     'sessionize event matching done',
   )
-  return summary
+  return { summary, heldReport: report.changed ? report : null }
+}
+
+export async function postSessionizeHeldReport(report: SessionizeHeldReport): Promise<void> {
+  if (!(await sendSessionizeHeldReport(report))) {
+    throw new Error('Could not post the Sessionize held events report to Slack')
+  }
 }
 
 export async function reportSessionizeEventMatchingFailure(message: string): Promise<void> {
-  try {
-    await sendSlackNotificationAsync(
-      SlackChannel.CDP_INTEGRATIONS_ALERTS,
-      SlackPersona.ERROR_REPORTER,
-      'Sessionize event matching failed',
-      message,
-    )
-  } catch (err) {
-    svc.log.error({ err }, 'sessionize event matching: could not post the failure to Slack')
+  const sent = await sendSlackNotificationAsync(
+    SlackChannel.CDP_INTEGRATIONS_ALERTS,
+    SlackPersona.ERROR_REPORTER,
+    'Sessionize event matching failed',
+    message,
+  )
+  if (!sent) {
+    svc.log.error({ message }, 'sessionize event matching: could not post the failure to Slack')
   }
 }

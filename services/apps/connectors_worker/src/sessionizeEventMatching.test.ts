@@ -33,7 +33,8 @@ vi.mock('@crowd/data-access-layer/src/segments', () => ({
 
 function fakeLog() {
   const warn = vi.fn()
-  return { warn, log: { warn, info: vi.fn() } as unknown as Logger }
+  const info = vi.fn()
+  return { warn, info, log: { warn, info } as unknown as Logger }
 }
 
 function stubSource(rows: Record<string, unknown>[]): CatalogueSource & { queries: string[] } {
@@ -203,7 +204,7 @@ describe('applySessionizeDecisions', () => {
       storedRow(matchedDecision('reviewed', 'seg-1')),
       storedRow(heldDecision('same', 'ambiguous')),
     ])
-    const { warn, log } = fakeLog()
+    const { info, log } = fakeLog()
     const decisions = [
       matchedDecision('new', 'seg-1'),
       heldDecision('same', 'ambiguous'),
@@ -221,8 +222,8 @@ describe('applySessionizeDecisions', () => {
       deactivated: 1,
     })
     expect(upsert.mock.calls.map(([, input]) => input)).toEqual(decisions.map(toInput))
-    expect(warn).toHaveBeenCalledTimes(1)
-    expect(warn.mock.calls[0][0]).toEqual({
+    expect(info).toHaveBeenCalledTimes(1)
+    expect(info.mock.calls[0][0]).toEqual({
       event: 'sessionize_decision_needs_review',
       eventKey: 'reviewed',
       wanted: { status: 'held', holdReason: 'no_segment', segmentId: null, cventEventId: null },

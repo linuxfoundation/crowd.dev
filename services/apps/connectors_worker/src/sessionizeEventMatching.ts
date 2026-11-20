@@ -184,7 +184,7 @@ export async function applySessionizeDecisions(
       summary.outcomes[outcome] += 1
       if (outcome === 'protected') {
         const row = stored.get(input.eventKey)
-        log.warn(
+        log.info(
           {
             event: 'sessionize_decision_needs_review',
             eventKey: input.eventKey,

@@ -50,11 +50,17 @@ export function buildSessionizeHeldReport(
   const beforeKeys = new Set(heldBefore.map((row) => row.eventKey))
   const afterKeys = new Set(heldAfter.map((row) => row.eventKey))
 
+  const deactivatedKeys = new Set(
+    after.filter((row) => row.deactivatedAt !== null).map((row) => row.eventKey),
+  )
+
   const newlyHeld = heldAfter.filter((row) => !beforeKeys.has(row.eventKey))
-  const released = upcomingFirst(
+  const leftHeld = upcomingFirst(
     heldBefore.filter((row) => !afterKeys.has(row.eventKey)),
     today,
   )
+  const released = leftHeld.filter((row) => !deactivatedKeys.has(row.eventKey))
+  const removed = leftHeld.filter((row) => deactivatedKeys.has(row.eventKey))
 
   const sections: SlackMessageSection[] = []
   if (newlyHeld.length > 0) {
@@ -63,6 +69,12 @@ export function buildSessionizeHeldReport(
   if (released.length > 0) {
     sections.push({ title: `Released (${released.length})`, text: capped(released) })
   }
+  if (removed.length > 0) {
+    sections.push({
+      title: `Removed from Sessionize (${removed.length})`,
+      text: capped(removed),
+    })
+  }
   if (heldAfter.length > 0) {
     sections.push({
       title: `Top ${Math.min(HELD_REPORT_TOP, heldAfter.length)} held`,
@@ -70,17 +82,17 @@ export function buildSessionizeHeldReport(
     })
   }
 
-  const changed = newlyHeld.length > 0 || released.length > 0
+  const changed = newlyHeld.length > 0 || released.length > 0 || removed.length > 0
   return {
     changed,
     title: changed
-      ? `Sessionize held events: ${newlyHeld.length} new, ${released.length} released`
+      ? `Sessionize held events: ${newlyHeld.length} new, ${released.length} released, ${removed.length} removed`
       : `Sessionize held events: ${heldAfter.length} waiting for review`,
     sections,
   }
 }
 
-export function postSessionizeHeldReport(report: SessionizeHeldReport): Promise<boolean> {
+export function sendSessionizeHeldReport(report: SessionizeHeldReport): Promise<boolean> {
   return sendSlackNotificationAsync(
     SlackChannel.CDP_INTEGRATIONS_ALERTS,
     SlackPersona.SUMMARY_REPORTER,

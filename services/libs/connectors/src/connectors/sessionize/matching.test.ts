@@ -147,4 +147,17 @@ describe('matchSessionizeEvent', () => {
     )
     expect(decision).toMatchObject({ status: 'held', holdReason: 'no_match' })
   })
+
+  it('never matches a name that normalizes to nothing', () => {
+    const decision = matchSessionizeEvent(
+      sessionizeEvent('Virtual', '2025-11-10'),
+      [cventEvent('cv-1', 'Virtual', '2025-11-10')],
+      subprojectFor,
+    )
+    expect(decision).toMatchObject({
+      status: 'held',
+      holdReason: 'no_match',
+      evidence: { candidates: [] },
+    })
+  })
 })

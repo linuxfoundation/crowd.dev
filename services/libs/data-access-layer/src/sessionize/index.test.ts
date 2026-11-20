@@ -178,6 +178,9 @@ describe('sessionize event decisions', () => {
       await upsertSessionizeEventDecision(qx, matched('1004', segmentId))
       await markMapping(qx, '1004', column)
       await deactivateUnlistedSessionizeEvents(qx, ['other'])
+      const stored = (await listSessionizeEventMappings(qx)).find((row) => row.eventKey === '1004')
+      expect(typeof stored?.[column]).toBe('string')
+      expect(typeof stored?.deactivatedAt).toBe('string')
 
       expect(
         await upsertSessionizeEventDecision(qx, { ...held('1004'), eventName: 'Renamed Summit' }),

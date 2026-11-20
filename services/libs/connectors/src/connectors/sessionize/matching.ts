@@ -72,6 +72,9 @@ function findCandidates(
   catalogue: CventCatalogueEvent[],
 ): { catalogueEvent: CventCatalogueEvent; candidate: SessionizeMatchCandidate }[] {
   const normalizedName = normalizeEventName(event.eventName)
+  if (normalizedName === '') {
+    return []
+  }
   return catalogue
     .filter((entry) => normalizeEventName(entry.eventName) === normalizedName)
     .map((entry) => ({
