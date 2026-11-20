@@ -95,9 +95,7 @@ export async function loadCventCatalogue(
   }))
 }
 
-export function buildSubprojectLookup(
-  rows: { id: string; slug: string; sourceId: string }[],
-): SubprojectLookup {
+export function buildSubprojectLookup(rows: { id: string; sourceId: string }[]): SubprojectLookup {
   const idsBySourceId = new Map<string, string[]>()
   for (const row of rows) {
     const key = row.sourceId.toLowerCase()

@@ -3,7 +3,7 @@ import { ActivityFailure, log, proxyActivities } from '@temporalio/workflow'
 import type * as activities from '../activities/sessionizeEventMatchingActivities'
 
 const matching = proxyActivities<typeof activities>({
-  startToCloseTimeout: '5 minutes',
+  startToCloseTimeout: '15 minutes',
   retry: {
     initialInterval: '30 seconds',
     backoffCoefficient: 2,
@@ -14,7 +14,11 @@ const matching = proxyActivities<typeof activities>({
 
 const reporting = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 minute',
-  retry: { maximumAttempts: 3 },
+  retry: {
+    initialInterval: '10 seconds',
+    backoffCoefficient: 2,
+    maximumAttempts: 3,
+  },
 })
 
 function failureMessage(err: unknown): string {

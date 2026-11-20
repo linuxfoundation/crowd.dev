@@ -1,11 +1,11 @@
 import { getPlatformCredential, isSessionizeCredentialConfigured } from '@crowd/connectors'
+import { createSessionizeSessionHttp } from '@crowd/connectors/src/connectors/sessionize/sessionHttp'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { listSessionizeEventMappings } from '@crowd/data-access-layer/src/sessionize'
 import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 import { SnowflakeClient } from '@crowd/snowflake'
 
 import { svc } from '../main'
-import { createCredentialHttp } from '../platformHttp'
 import {
   SessionizeMatchingSummary,
   applySessionizeDecisions,
@@ -29,7 +29,7 @@ export async function runSessionizeEventMatching(): Promise<SessionizeEventMatch
   }
 
   const qx = dbStoreQx(svc.postgres.writer)
-  const http = await createCredentialHttp('sessionize', getPlatformCredential('sessionize'), log)
+  const http = createSessionizeSessionHttp(getPlatformCredential('sessionize'))
   const heldBefore = await listSessionizeEventMappings(qx)
 
   const snowflake = SnowflakeClient.fromEnv({ parentLog: log, maxConnections: 1 })

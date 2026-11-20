@@ -129,7 +129,7 @@ describe('fetchActivatedEvents', () => {
     return { request: vi.fn().mockResolvedValue(body), requestCount: vi.fn() }
   }
 
-  it('requests the events page once as text', async () => {
+  it('requests the events page once as text, with at most 3 attempts', async () => {
     const http = stubHttp(FIXTURE)
     const events = await fetchActivatedEvents(http)
     expect(events).toHaveLength(4)
@@ -139,6 +139,8 @@ describe('fetchActivatedEvents', () => {
         url: SESSIONIZE_BASE_URL + SESSIONIZE_EVENTS_PATH,
         responseType: 'text',
       }),
+      undefined,
+      3,
     )
   })
 

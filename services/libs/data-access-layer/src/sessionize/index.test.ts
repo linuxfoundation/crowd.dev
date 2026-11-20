@@ -241,6 +241,6 @@ describe('listActiveSubprojectSegmentSources', () => {
       created.includes(row.id),
     )
 
-    expect(sources).toEqual([{ id: subproject, slug: `segment-${subproject}`, sourceId: 'pcc-1' }])
+    expect(sources).toEqual([{ id: subproject, sourceId: 'pcc-1' }])
   })
 })

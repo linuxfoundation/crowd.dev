@@ -112,9 +112,9 @@ describe('loadCventCatalogue', () => {
 
 describe('buildSubprojectLookup', () => {
   const lookup = buildSubprojectLookup([
-    { id: 'seg-a', slug: 'alpha', sourceId: 'PROJ-A' },
-    { id: 'seg-b1', slug: 'beta-one', sourceId: 'proj-b' },
-    { id: 'seg-b2', slug: 'beta-two', sourceId: 'Proj-B' },
+    { id: 'seg-a', sourceId: 'PROJ-A' },
+    { id: 'seg-b1', sourceId: 'proj-b' },
+    { id: 'seg-b2', sourceId: 'Proj-B' },
   ])
 
   it('resolves a project id case-insensitively, whatever the slug', () => {
@@ -272,7 +272,7 @@ describe('computeSessionizeDecisions', () => {
   })
 
   it('matches every activated event against the catalogue and the subprojects', async () => {
-    segments.mockResolvedValue([{ id: 'seg-1', slug: 'fake-one', sourceId: 'proj-1' }])
+    segments.mockResolvedValue([{ id: 'seg-1', sourceId: 'proj-1' }])
     const http = stubHttp([
       consoleRow('101', 'Fake Summit 2027', '15 Mar 2027'),
       consoleRow('102', 'Fake Unknown Day', '20 Mar 2027'),

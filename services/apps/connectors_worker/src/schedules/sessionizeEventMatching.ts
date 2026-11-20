@@ -19,7 +19,7 @@ export async function scheduleSessionizeEventMatching(): Promise<void> {
         workflowType: sessionizeEventMatching,
         taskQueue: 'connectors',
         args: [],
-        workflowExecutionTimeout: '30 minutes',
+        workflowExecutionTimeout: '1 hour',
       },
     })
   } catch (err) {
