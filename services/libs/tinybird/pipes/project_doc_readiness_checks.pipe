@@ -1,0 +1,75 @@
+DESCRIPTION >
+    - `project_doc_readiness_checks.pipe` serves the AI documentation readiness breakdown: the per-check results of a project's latest successful scoring.
+    - **Requires `project` parameter** - without it, returns no results (`segments_filtered` returns no project).
+    - Reads `projectDocReadinessChecks` with FINAL and keeps only the rows whose `scoredAt` is the project's max, so checks dropped by a later scoring never appear.
+    - Returns no rows unless the checks still describe the project's newest successful run in `projectDocReadiness`: that run exists, its `updatedAt` equals the checks' max `scoredAt`, and every run from it on has the same normalized docs URL and the latest run's error is not `no-docs-url` or `repo-only`.
+    - Postgres clears a project's checks in every other case, but those deletes are not applied in Tinybird, so the gate reproduces them here. It is approximate when a project is scored more than once on one `runDate`.
+    - URLs are normalized with the same expression as `project_doc_readiness_summary.pipe` and `project_doc_readiness_history.pipe`.
+    - `testedPages` and `totalPages` are extracted from `details` with a regex, because `details` is cut at 32 KB and may not be valid JSON; each is NULL when its key is missing or cut off.
+    - `maxTestedPages` is the highest `testedPages` across the returned checks, repeated on every row and NULL when no check reports it; the UI shows it as "Based on N pages tested", and 1 means only the landing page could be tested.
+    - Parameters:
+    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow')
+    - Response: `checkId`, `category`, `status`, `message`, `testedPages`, `totalPages`, `maxTestedPages`
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Project"
+
+NODE project_doc_readiness_checks_runs
+SQL >
+    SELECT
+        runDate,
+        ok,
+        error,
+        updatedAt,
+        extract(trimBoth(docsUrl), '^[a-zA-Z][a-zA-Z0-9+.-]*://[^/?#]*') AS origin,
+        replaceRegexpOne(
+            concat(lower(origin), substring(cutFragment(trimBoth(docsUrl)), length(origin) + 1)),
+            '/$',
+            ''
+        ) AS normalizedUrl
+    FROM projectDocReadiness FINAL
+    WHERE projectId IN (SELECT insightsProjectId FROM segments_filtered)
+
+NODE project_doc_readiness_checks_gate
+SQL >
+    SELECT
+        countIf(ok = 1) = 1
+        AND uniqExact(normalizedUrl) = 1
+        AND argMax(error, runDate) NOT IN ('no-docs-url', 'repo-only') AS showChecks,
+        maxIf(updatedAt, ok = 1) AS okUpdatedAt
+    FROM project_doc_readiness_checks_runs
+    WHERE runDate >= (SELECT max(runDate) FROM project_doc_readiness_checks_runs WHERE ok = 1)
+
+NODE project_doc_readiness_checks_latest
+SQL >
+    SELECT
+        checkId,
+        category,
+        status,
+        message,
+        toUInt32OrNull(extract(details, '"testedPages"\\s*:\\s*([0-9]+)\\s*[,}]')) AS testedPages,
+        toUInt32OrNull(extract(details, '"totalPages"\\s*:\\s*([0-9]+)\\s*[,}]')) AS totalPages
+    FROM projectDocReadinessChecks FINAL
+    WHERE
+        projectId IN (SELECT insightsProjectId FROM segments_filtered)
+        AND scoredAt = (
+            SELECT max(scoredAt)
+            FROM projectDocReadinessChecks FINAL
+            WHERE projectId IN (SELECT insightsProjectId FROM segments_filtered)
+        )
+        AND scoredAt = (SELECT okUpdatedAt FROM project_doc_readiness_checks_gate)
+        AND (SELECT showChecks FROM project_doc_readiness_checks_gate) = 1
+
+NODE project_doc_readiness_checks_result
+SQL >
+    SELECT
+        checkId,
+        category,
+        status,
+        message,
+        testedPages,
+        totalPages,
+        max(testedPages) OVER () AS maxTestedPages
+    FROM project_doc_readiness_checks_latest
+    ORDER BY category, checkId
