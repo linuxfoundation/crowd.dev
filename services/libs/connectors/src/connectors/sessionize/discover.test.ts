@@ -1,11 +1,9 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-
 import axios from 'axios'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Credential } from '../../types'
 import { parseActivatedEvents } from './consoleEvents'
+import { SESSIONIZE_CONSOLE_FIXTURE } from './consoleEvents.fixture'
 import { discoverSessionize } from './discover'
 import { sessionizeConnector } from './index'
 import { SESSIONIZE_POOL_ENTRY_ID, signInToSessionize } from './session'
@@ -19,7 +17,7 @@ vi.mock('@crowd/logging', () => ({
   getServiceChildLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }))
 
-const FIXTURE = readFileSync(join(__dirname, 'consoleEvents.fixture.html'), 'utf8')
+const FIXTURE = SESSIONIZE_CONSOLE_FIXTURE
 
 const CREDENTIAL: Credential = {
   platform: 'sessionize',

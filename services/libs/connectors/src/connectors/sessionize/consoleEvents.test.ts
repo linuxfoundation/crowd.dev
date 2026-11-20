@@ -1,14 +1,12 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ConnectorHttp } from '../../http/client'
 import { ProviderContractError } from '../../http/errors'
 import { SESSIONIZE_EVENTS_PATH, fetchActivatedEvents, parseActivatedEvents } from './consoleEvents'
+import { SESSIONIZE_CONSOLE_FIXTURE } from './consoleEvents.fixture'
 import { SESSIONIZE_BASE_URL } from './session'
 
-const FIXTURE = readFileSync(join(__dirname, 'consoleEvents.fixture.html'), 'utf8')
+const FIXTURE = SESSIONIZE_CONSOLE_FIXTURE
 
 function pane(rows: string): string {
   return `<div id="tab-activated" class="tab-pane"><table><tbody>${rows}</tbody></table></div><div id="tab-test"></div>`
