@@ -19,7 +19,8 @@ const SOURCE_NAME = 'project-hierarchy'
 const MAX_HIERARCHY_LEVELS = 20
 
 function buildSourceQuery(): string {
-  // The level cap ends the walk if PCC ever holds a cycle of parents.
+  // The level cap ends the walk if PCC ever holds a cycle of parents. A walk that does not
+  // reach a root exports null levels, which the parser reports as a schema mismatch.
   return `
     WITH RECURSIVE leaves AS (
       SELECT
@@ -47,6 +48,11 @@ function buildSourceQuery(): string {
       FROM hierarchy h
       JOIN ANALYTICS.SILVER_DIM.PROJECTS parent ON parent.project_id = h.parent_id
       WHERE h.hierarchy_level < ${MAX_HIERARCHY_LEVELS}
+    ),
+    rooted AS (
+      SELECT base_project_id
+      FROM hierarchy
+      WHERE parent_id IS NULL
     )
     SELECT
       p.project_id,
@@ -58,11 +64,12 @@ function buildSourceQuery(): string {
       h.mapped_project_id,
       ancestor.name AS mapped_project_name,
       ancestor.slug AS mapped_project_slug,
-      h.hierarchy_level,
+      CASE WHEN r.base_project_id IS NOT NULL THEN h.hierarchy_level END AS hierarchy_level,
       ancestor.project_model AS mapped_project_model,
       s.segment_id
     FROM leaves p
     JOIN hierarchy h ON h.base_project_id = p.project_id
+    LEFT JOIN rooted r ON r.base_project_id = p.project_id
     JOIN ANALYTICS.SILVER_DIM.PROJECTS ancestor ON ancestor.project_id = h.mapped_project_id
     LEFT JOIN ANALYTICS.SILVER_DIM.ACTIVE_SEGMENTS s
       ON s.source_id = p.project_id
