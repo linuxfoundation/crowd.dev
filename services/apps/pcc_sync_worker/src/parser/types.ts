@@ -6,7 +6,7 @@
  */
 
 /**
- * Raw Parquet row from the PCC PROJECT_SPINE export.
+ * Raw Parquet row from the PCC project hierarchy export.
  *
  * One row is emitted per (leaf project, hierarchy level). A leaf project at
  * depth N produces N rows: hierarchy_level=1 is the leaf itself,

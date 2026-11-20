@@ -17,6 +17,7 @@ DESCRIPTION >
     - `headline` is a brief description or tagline for the organization (empty string if not provided).
     - `industry` specifies the primary industry or sector the organization operates in (empty string if not specified).
     - `founded` is the year the organization was founded (0 default if unknown).
+    - `countryCode` is the ISO 3166-1 alpha-2 code of the organization's country (empty string if not determined).
 
 SCHEMA >
     `id` String `json:$.record.id`,
@@ -34,7 +35,8 @@ SCHEMA >
     `size` String `json:$.record.size` DEFAULT '',
     `headline` String `json:$.record.headline` DEFAULT '',
     `industry` String `json:$.record.industry` DEFAULT '',
-    `founded` UInt16 `json:$.record.founded` DEFAULT 0
+    `founded` UInt16 `json:$.record.founded` DEFAULT 0,
+    `countryCode` String `json:$.record.geo.countryCode` DEFAULT ''
 
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)

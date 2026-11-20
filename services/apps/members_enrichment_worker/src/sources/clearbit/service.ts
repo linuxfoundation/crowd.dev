@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { replaceDoubleQuotes } from '@crowd/common'
+import { getCountryName, replaceDoubleQuotes, toCountryCode } from '@crowd/common'
 import { Logger, LoggerBase } from '@crowd/logging'
 import {
   MemberAttributeName,
@@ -17,12 +17,13 @@ import {
   IMemberEnrichmentAttributeSettings,
   IMemberEnrichmentDataNormalized,
 } from '../../types'
-import { normalizeAttributes, normalizeSocialIdentity } from '../../utils/common'
+import { normalizeAttributes, normalizeSocialIdentity, toEnrichmentGeo } from '../../utils/common'
 import { hasVerifiedIdentitySql } from '../../utils/sql'
 import {
   IMemberEnrichmentClearbitAPIErrorResponse,
   IMemberEnrichmentClearbitAPIResponse,
   IMemberEnrichmentDataClearbit,
+  IMemberGeoClearbit,
 } from './types'
 
 export default class EnrichmentServiceClearbit extends LoggerBase implements IEnrichmentService {
@@ -40,6 +41,15 @@ export default class EnrichmentServiceClearbit extends LoggerBase implements IEn
   public attributeSettings: IMemberEnrichmentAttributeSettings = {
     [MemberAttributeName.LOCATION]: {
       fields: ['location'],
+    },
+    [MemberAttributeName.COUNTRY]: {
+      fields: ['geo.countryCode'],
+      transform: (countryCode: string) => getCountryName(countryCode),
+    },
+    [MemberAttributeName.GEO]: {
+      fields: ['geo'],
+      transform: ({ countryCode, state, city }: IMemberGeoClearbit) =>
+        toEnrichmentGeo(toCountryCode(countryCode), state, city),
     },
     [MemberAttributeName.TIMEZONE]: {
       fields: ['timezone'],

@@ -9,6 +9,7 @@ export const ENRICH_EMAIL_IDENTITIES = false
 export const SINGLE_SOURCE_ENRICHMENT_ATTRIBUTES: MemberAttributeName[] = [
   MemberAttributeName.LOCATION,
   MemberAttributeName.COUNTRY,
+  MemberAttributeName.GEO,
 ]
 
 export const SOURCES_READING_OTHER_CACHES: Partial<

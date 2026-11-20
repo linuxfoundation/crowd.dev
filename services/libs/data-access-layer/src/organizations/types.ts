@@ -1,4 +1,5 @@
 import {
+  IGeo,
   IOrganizationRevenueRange,
   OrganizationAttributeSource,
   OrganizationIdentityType,
@@ -16,6 +17,7 @@ export interface IDbOrganization {
   importHash?: string
   location?: string
   country?: string
+  geo?: IGeo
   isTeamOrganization: boolean
   isAffiliationBlocked?: boolean
   type?: string
@@ -38,6 +40,7 @@ export interface IDbOrganizationInput {
   importHash?: string
   location?: string
   country?: string
+  geo?: IGeo
   isTeamOrganization: boolean
   isAffiliationBlocked?: boolean
   type?: string

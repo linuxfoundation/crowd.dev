@@ -15,6 +15,7 @@ import {
   isDomainExcluded,
   normalizeCountryAttribute,
   normalizeDisplayName,
+  normalizeGeoAttributes,
 } from '@crowd/common'
 import {
   CommonMemberService,
@@ -193,11 +194,17 @@ export default class MemberService extends LoggerBase {
     const priorityArray = this.options.currentTenant.settings[0].get({ plain: true })
       .attributeSettings.priorities
 
-    for (const attributeName of Object.keys(attributes)) {
-      if (attributeName === MemberAttributeName.COUNTRY) {
-        attributes[attributeName] = normalizeCountryAttribute(attributes[attributeName])
-      }
+    if (attributes[MemberAttributeName.COUNTRY] || attributes[MemberAttributeName.GEO]) {
+      Object.assign(
+        attributes,
+        normalizeGeoAttributes(
+          attributes[MemberAttributeName.COUNTRY],
+          attributes[MemberAttributeName.GEO],
+        ),
+      )
+    }
 
+    for (const attributeName of Object.keys(attributes)) {
       const highestPriorityPlatform = MemberService.getHighestPriorityPlatformForAttributes(
         Object.keys(attributes[attributeName]),
         priorityArray,
@@ -838,6 +845,13 @@ export default class MemberService extends LoggerBase {
               default: data.attributes.country?.default ?? country,
             }
           }
+        }
+
+        if (data.attributes.country || data.attributes.geo) {
+          Object.assign(
+            data.attributes,
+            normalizeGeoAttributes(data.attributes.country, data.attributes.geo),
+          )
         }
       }
 

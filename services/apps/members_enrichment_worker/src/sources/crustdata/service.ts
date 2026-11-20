@@ -1,6 +1,11 @@
 import axios from 'axios'
 
-import { isDomainExcluded, isValidEmail, replaceDoubleQuotes } from '@crowd/common'
+import {
+  isDomainExcluded,
+  isValidEmail,
+  normalizeCountryCode,
+  replaceDoubleQuotes,
+} from '@crowd/common'
 import { Logger, LoggerBase } from '@crowd/logging'
 import {
   IMemberEnrichmentCache,
@@ -22,11 +27,12 @@ import {
   IMemberEnrichmentData,
   IMemberEnrichmentDataNormalized,
 } from '../../types'
-import { normalizeAttributes, normalizeSocialIdentity } from '../../utils/common'
+import { normalizeAttributes, normalizeSocialIdentity, toEnrichmentGeo } from '../../utils/common'
 import { SOURCES_READING_OTHER_CACHES } from '../../utils/config'
 import { hasNewCachedInputsSql, hasVerifiedIdentitySql } from '../../utils/sql'
 import {
   IMemberEnrichmentCrustdataEnrichResponse,
+  IMemberEnrichmentCrustdataLocation,
   IMemberEnrichmentCrustdataRemainingCredits,
   IMemberEnrichmentDataCrustdata,
 } from './types'
@@ -71,6 +77,11 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
     },
     [MemberAttributeName.COUNTRY]: {
       fields: ['basic_profile.location.country'],
+    },
+    [MemberAttributeName.GEO]: {
+      fields: ['basic_profile.location'],
+      transform: ({ country, state, city }: IMemberEnrichmentCrustdataLocation) =>
+        toEnrichmentGeo(normalizeCountryCode(country), state, city),
     },
     [MemberAttributeName.BIO]: {
       fields: ['basic_profile.summary', 'basic_profile.headline'],

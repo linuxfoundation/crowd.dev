@@ -545,14 +545,15 @@ export async function findMembersByVerifiedEmails(
 
   const results = await qx.select(
     `
-    select mi.value as "identityValue", ${MEMBER_SELECT_COLUMNS.map((c) => `m."${c}"`).join(', ')}
+    select distinct on (lower(mi.value))
+      lower(mi.value) as "identityValue", ${MEMBER_SELECT_COLUMNS.map((c) => `m."${c}"`).join(', ')}
     from "memberIdentities" mi
     inner join "members" m on m.id = mi."memberId"
     where mi.verified = true
       and mi.type = $(type)
       and mi."deletedAt" is null
       and lower(mi.value) = any(array[${emailsArray}])
-    limit ${emails.length}
+    order by lower(mi.value), m."createdAt"
   `,
     data,
   )
