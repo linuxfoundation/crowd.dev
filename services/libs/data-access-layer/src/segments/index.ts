@@ -277,6 +277,19 @@ export async function listActiveSubprojectSegments(
   )
 }
 
+export async function listActiveSubprojectSegmentSources(
+  qx: QueryExecutor,
+): Promise<{ id: string; sourceId: string }[]> {
+  return qx.select(
+    `
+      SELECT id, "sourceId"
+      FROM segments
+      WHERE "grandparentSlug" IS NOT NULL AND status = $(status) AND "sourceId" IS NOT NULL
+    `,
+    { status: SegmentStatus.ACTIVE },
+  )
+}
+
 export async function getSegmentSubprojects(
   qx: QueryExecutor,
   segmentIds: string[],

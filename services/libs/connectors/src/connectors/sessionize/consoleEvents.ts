@@ -215,9 +215,15 @@ export function parseActivatedEvents(html: string): SessionizeConsoleEvent[] {
   return events
 }
 
+const EVENTS_PAGE_MAX_ATTEMPTS = 3
+
 export async function fetchActivatedEvents(http: ConnectorHttp): Promise<SessionizeConsoleEvent[]> {
   const url = SESSIONIZE_BASE_URL + SESSIONIZE_EVENTS_PATH
-  const body = await http.request<unknown>({ method: 'GET', url, responseType: 'text' })
+  const body = await http.request<unknown>(
+    { method: 'GET', url, responseType: 'text' },
+    undefined,
+    EVENTS_PAGE_MAX_ATTEMPTS,
+  )
   if (typeof body !== 'string') {
     throw contractError('events page body is not text').withContext({
       request: { method: 'GET', url },

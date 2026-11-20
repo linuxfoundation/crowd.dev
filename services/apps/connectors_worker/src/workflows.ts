@@ -4,6 +4,7 @@ import { dispatcher } from './workflows/dispatcher'
 import { githubLifecycleSweep } from './workflows/githubLifecycleSweep'
 import { octolensDiscovery } from './workflows/octolensDiscovery'
 import { reconcileGithubIntegration } from './workflows/reconcileGithubIntegration'
+import { sessionizeEventMatching } from './workflows/sessionizeEventMatching'
 import { syncRun } from './workflows/syncRun'
 import { validateCompleteness } from './workflows/validateCompleteness'
 import { weeklyCompletenessValidation } from './workflows/weeklyCompletenessValidation'
@@ -15,6 +16,7 @@ export {
   githubLifecycleSweep,
   octolensDiscovery,
   reconcileGithubIntegration,
+  sessionizeEventMatching,
   syncRun,
   validateCompleteness,
   weeklyCompletenessValidation,

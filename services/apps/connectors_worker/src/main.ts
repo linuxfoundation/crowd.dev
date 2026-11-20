@@ -12,6 +12,7 @@ import { scheduleCompletenessBackfillSweep } from './schedules/completenessBackf
 import { scheduleDispatcher } from './schedules/dispatcher'
 import { scheduleGithubLifecycleSweep } from './schedules/githubLifecycleSweep'
 import { scheduleOctolensDiscovery } from './schedules/octolensDiscovery'
+import { scheduleSessionizeEventMatching } from './schedules/sessionizeEventMatching'
 import { scheduleWeeklyCompletenessValidation } from './schedules/weeklyCompletenessValidation'
 
 const config: Config = {
@@ -59,6 +60,7 @@ setImmediate(async () => {
   await scheduleCompletenessBackfillSweep()
   await scheduleOctolensDiscovery()
   await scheduleGithubLifecycleSweep()
+  await scheduleSessionizeEventMatching()
 
   await svc.start()
 })

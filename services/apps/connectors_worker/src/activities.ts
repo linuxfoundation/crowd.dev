@@ -30,6 +30,10 @@ import {
   softDeleteIntegrationRepositories,
 } from './activities/githubLifecycleActivities'
 import { runOctolensDiscovery } from './activities/octolensDiscoveryActivities'
+import {
+  reportSessionizeEventMatchingFailure,
+  runSessionizeEventMatching,
+} from './activities/sessionizeEventMatchingActivities'
 import { executeSync, recordSyncRunTimeout } from './activities/syncRunActivities'
 
 export {
@@ -56,7 +60,9 @@ export {
   onboardGithubRepos,
   planGithubLifecycle,
   recordSyncRunTimeout,
+  reportSessionizeEventMatchingFailure,
   runOctolensDiscovery,
+  runSessionizeEventMatching,
   softDeleteIntegrationRepositories,
   startRun,
   touchHeartbeat,

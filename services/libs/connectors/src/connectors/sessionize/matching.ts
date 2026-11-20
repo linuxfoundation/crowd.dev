@@ -33,6 +33,7 @@ export interface SessionizeMatchCandidate {
   eventId: string
   eventName: string
   startDate: string
+  projectId: string | null
   dayGap: number
 }
 
@@ -72,6 +73,9 @@ function findCandidates(
   catalogue: CventCatalogueEvent[],
 ): { catalogueEvent: CventCatalogueEvent; candidate: SessionizeMatchCandidate }[] {
   const normalizedName = normalizeEventName(event.eventName)
+  if (normalizedName === '') {
+    return []
+  }
   return catalogue
     .filter((entry) => normalizeEventName(entry.eventName) === normalizedName)
     .map((entry) => ({
@@ -80,6 +84,7 @@ function findCandidates(
         eventId: entry.eventId,
         eventName: entry.eventName,
         startDate: entry.startDate,
+        projectId: entry.projectId,
         dayGap: dayGap(entry.startDate, event.eventStart),
       },
     }))
