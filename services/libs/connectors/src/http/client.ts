@@ -180,7 +180,8 @@ async function send<T>(
   try {
     return await axios.request<T>(authenticatedConfig)
   } catch (err) {
-    throw new ProviderUnavailableError('no response from provider', { cause: err }).withContext({
+    const cause = axios.isAxiosError(err) ? { code: err.code, message: err.message } : err
+    throw new ProviderUnavailableError('no response from provider', { cause }).withContext({
       request: requestContext(config),
     })
   }

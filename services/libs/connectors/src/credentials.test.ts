@@ -74,4 +74,26 @@ describe('getCredential', () => {
       'missing CROWD_CREDLY_CLIENT_ID, CROWD_CREDLY_CLIENT_SECRET or CROWD_CREDLY_ORGANIZATION_ID',
     )
   })
+
+  it('returns a sessionize-organizer-account credential from the shared env vars', async () => {
+    process.env.CROWD_SESSIONIZE_USERNAME = 'organizer@example.org'
+    process.env.CROWD_SESSIONIZE_PASSWORD = 'secret'
+
+    const credential = await getCredential(qxReturning({ platform: 'sessionize' }), 'id')
+
+    expect(credential).toEqual({
+      platform: 'sessionize',
+      kind: 'sessionize-organizer-account',
+      data: { username: 'organizer@example.org', password: 'secret' },
+    })
+  })
+
+  it('throws when any sessionize env var is missing', async () => {
+    process.env.CROWD_SESSIONIZE_USERNAME = 'organizer@example.org'
+    delete process.env.CROWD_SESSIONIZE_PASSWORD
+
+    await expect(getCredential(qxReturning({ platform: 'sessionize' }), 'id')).rejects.toThrow(
+      'missing CROWD_SESSIONIZE_USERNAME or CROWD_SESSIONIZE_PASSWORD',
+    )
+  })
 })

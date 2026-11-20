@@ -22,6 +22,8 @@ export async function getCredential(qx: QueryExecutor, integrationId: string): P
       return octolensTokenCredential()
     case 'credly':
       return credlyOAuthClientCredential()
+    case 'sessionize':
+      return sessionizeOrganizerAccountCredential()
     default:
       throw new Error(`unsupported platform ${integration.platform}`)
   }
@@ -85,5 +87,22 @@ function credlyOAuthClientCredential(): Credential {
     platform: 'credly',
     kind: 'credly-oauth-client',
     data: { clientId, clientSecret, organizationId },
+  }
+}
+
+function sessionizeOrganizerAccountCredential(): Credential {
+  const username = process.env.CROWD_SESSIONIZE_USERNAME
+  const password = process.env.CROWD_SESSIONIZE_PASSWORD
+
+  if (!username || !password) {
+    throw new Error(
+      'missing CROWD_SESSIONIZE_USERNAME or CROWD_SESSIONIZE_PASSWORD environment variables',
+    )
+  }
+
+  return {
+    platform: 'sessionize',
+    kind: 'sessionize-organizer-account',
+    data: { username, password },
   }
 }
