@@ -2,7 +2,6 @@ import { getPlatformCredential, isSessionizeCredentialConfigured } from '@crowd/
 import { createSessionizeSessionHttp } from '@crowd/connectors/src/connectors/sessionize/sessionHttp'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
-import { SnowflakeClient } from '@crowd/snowflake'
 
 import { svc } from '../main'
 import {
@@ -22,8 +21,22 @@ export async function runSessionizeEventMatching(): Promise<SessionizeEventMatch
     return { skipped: 'not_configured' }
   }
 
+  const region =
+    process.env.AWS_REGION ||
+    process.env.AWS_DEFAULT_REGION ||
+    process.env.CROWD_SNOWFLAKE_S3_REGION
+  if (!region) {
+    throw new Error(
+      'sessionize event matching needs CROWD_SNOWFLAKE_S3_REGION or AWS_REGION to load the Snowflake client',
+    )
+  }
+  process.env.AWS_REGION ||= region
+
   const qx = dbStoreQx(svc.postgres.writer)
   const http = createSessionizeSessionHttp(getPlatformCredential('sessionize'))
+  // Loaded per run: with dd-trace active, snowflake-sdk without an AWS region crashes the process
+  // on load (unhandled "Region is missing"), so it must never load at worker startup.
+  const { SnowflakeClient } = await import('@crowd/snowflake')
   const snowflake = SnowflakeClient.fromEnv({ parentLog: log, maxConnections: 1 })
   let decisions: Awaited<ReturnType<typeof computeSessionizeDecisions>>
   try {
