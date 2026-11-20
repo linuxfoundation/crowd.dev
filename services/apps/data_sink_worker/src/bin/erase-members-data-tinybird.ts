@@ -4,7 +4,7 @@ import * as path from 'path'
 import * as readline from 'readline'
 
 // GDPR erasure from every Tinybird datasource. Run after erase-member.ts once Kafka Connect has
-// caught up, and not between 01:25 and 02:30 UTC while the served-layer merger copies run.
+// caught up, and not 01:25-02:30 or 04:25-05:30 UTC, while the mergers and v2 aggregate copies run.
 
 const TINYBIRD_API = 'https://api.us-west-2.aws.tinybird.co/v0'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

@@ -52,26 +52,32 @@ function parseCountryToken(token: string): string | undefined {
   }
 
   if (US_STATE_NAMES.has(token)) {
-    return 'United States'
+    return 'US'
   }
 
-  const alpha2 = toAlpha2(token)
-  return alpha2 ? toDisplayName(alpha2) : undefined
+  return toAlpha2(token)
 }
 
 export function normalizeLocation(location: string): string {
   return normalizeWhitespace(location.normalize('NFKC')).toLowerCase()
 }
 
-export function getCountryName(alpha2: string): string | undefined {
-  const code = alpha2.toUpperCase()
-  return countries.isValid(code) ? toDisplayName(code) : undefined
+export function toCountryCode(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  // isValid also accepts alpha-3 and numeric codes.
+  const code = value.trim().toUpperCase()
+  return /^[A-Z]{2}$/.test(code) && countries.isValid(code) ? code : undefined
 }
 
-/**
- * Resolves a country name from a location string.
- */
-export function getCountry(location: string | null | undefined): string | undefined {
+export function getCountryName(alpha2: string): string | undefined {
+  const code = toCountryCode(alpha2)
+  return code ? toDisplayName(code) : undefined
+}
+
+export function getCountryCode(location: string | null | undefined): string | undefined {
   if (!location) {
     return undefined
   }
@@ -91,24 +97,36 @@ export function getCountry(location: string | null | undefined): string | undefi
     .filter(Boolean)
 
   for (let i = parts.length - 1; i >= 0; i--) {
-    const country = parseCountryToken(parts[i])
-    if (country) {
-      return country
+    const code = parseCountryToken(parts[i])
+    if (code) {
+      return code
     }
   }
 
   return undefined
 }
 
-export function normalizeCountryName(value: unknown): string | undefined {
+/**
+ * Resolves a country name from a location string.
+ */
+export function getCountry(location: string | null | undefined): string | undefined {
+  const code = getCountryCode(location)
+  return code ? toDisplayName(code) : undefined
+}
+
+export function normalizeCountryCode(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined
   }
 
-  // Match the whole value first: getCountry reads the last comma segment,
+  // Match the whole value first: getCountryCode reads the last comma segment,
   // which misses official names like "Korea, Republic of".
-  const alpha2 = toAlpha2(normalizeLocation(value))
-  return alpha2 ? toDisplayName(alpha2) : getCountry(value)
+  return toAlpha2(normalizeLocation(value)) ?? getCountryCode(value)
+}
+
+export function normalizeCountryName(value: unknown): string | undefined {
+  const code = normalizeCountryCode(value)
+  return code ? toDisplayName(code) : undefined
 }
 
 export function normalizeCountryAttribute(

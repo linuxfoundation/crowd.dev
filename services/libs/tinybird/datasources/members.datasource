@@ -15,6 +15,7 @@ DESCRIPTION >
     - `createdAt` and `updatedAt` are standard timestamp fields for record lifecycle tracking.
     - `displayName` is the member's preferred display name across platforms.
     - `score` is the computed activity/engagement score for the member (-1 default indicates no score computed).
+    - `countryCode` is the ISO 3166-1 alpha-2 code of the member's country (empty string if not determined).
 
 TAGS "Member profiles", "Community analytics"
 
@@ -32,7 +33,8 @@ SCHEMA >
     `createdAt` DateTime64(3) `json:$.record.createdAt`,
     `updatedAt` DateTime64(3) `json:$.record.updatedAt`,
     `displayName` String `json:$.record.displayName`,
-    `score` Int32 `json:$.record.score` DEFAULT -1
+    `score` Int32 `json:$.record.score` DEFAULT -1,
+    `countryCode` String `json:$.record.attributes.geo.default.countryCode` DEFAULT ''
 
 ENGINE ReplacingMergeTree
 ENGINE_PARTITION_KEY toYear(createdAt)

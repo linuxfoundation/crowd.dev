@@ -10,7 +10,7 @@ import { getPlatformPriorityArray } from '@crowd/data-access-layer/src/members/a
 import { chunkArray } from '@crowd/data-access-layer/src/old/apps/merge_suggestions_worker/utils'
 import { getServiceLogger } from '@crowd/logging'
 import { SnowflakeClient } from '@crowd/snowflake'
-import { MemberAttributeName, PlatformType } from '@crowd/types'
+import { IGeo, MemberAttributeName, PlatformType } from '@crowd/types'
 
 const log = getServiceLogger()
 
@@ -29,6 +29,7 @@ interface IMemberLfid {
   memberId: string
   lfid: string
   country: Record<string, string> | null
+  geo: Record<string, IGeo> | null
 }
 
 async function fetchProfileCountries(): Promise<Map<string, string>> {
@@ -55,7 +56,11 @@ async function fetchProfileCountries(): Promise<Map<string, string>> {
 async function findMembersByLfids(qx: QueryExecutor, lfids: string[]): Promise<IMemberLfid[]> {
   return qx.select(
     `
-      SELECT mi."memberId", LOWER(mi.value) AS lfid, m.attributes -> 'country' AS country
+      SELECT
+        mi."memberId",
+        LOWER(mi.value) AS lfid,
+        m.attributes -> 'country' AS country,
+        m.attributes -> 'geo' AS geo
       FROM "memberIdentities" mi
       JOIN members m ON m.id = mi."memberId" AND m."deletedAt" IS NULL
       WHERE mi.platform = 'lfid'
@@ -73,15 +78,19 @@ async function updateMemberCountry(
   qx: QueryExecutor,
   memberId: string,
   country: Record<string, string>,
+  geo: Record<string, IGeo>,
 ): Promise<void> {
   await qx.result(
     `
       UPDATE members
-      SET attributes = attributes || jsonb_build_object('country', $(country)::jsonb),
+      SET attributes = attributes || jsonb_build_object(
+            'country', $(country)::jsonb,
+            'geo', $(geo)::jsonb
+          ),
           "updatedAt" = NOW()
       WHERE id = $(memberId)
     `,
-    { memberId, country: JSON.stringify(country) },
+    { memberId, country: JSON.stringify(country), geo: JSON.stringify(geo) },
   )
 }
 
@@ -112,27 +121,28 @@ setImmediate(async () => {
     const members = await findMembersByLfids(qx, lfids)
     const seenMemberIds = new Set<string>()
 
-    for (const { memberId, lfid, country: current } of members) {
+    for (const { memberId, lfid, country: current, geo: currentGeo } of members) {
       if (seenMemberIds.has(memberId)) {
         continue
       }
       seenMemberIds.add(memberId)
 
-      const { country } = (await setAttributesDefaultValues(
+      const { country, geo } = (await setAttributesDefaultValues(
         {
           [MemberAttributeName.COUNTRY]: {
             ...current,
             [PlatformType.LFID]: profileCountries.get(lfid),
           },
+          ...(currentGeo && { [MemberAttributeName.GEO]: currentGeo }),
         },
         priorities,
-      )) as { country?: Record<string, string> }
+      )) as { country?: Record<string, string>; geo?: Record<string, IGeo> }
 
-      if (!country || isEqual(country, current)) {
+      if (!country || (isEqual(country, current) && isEqual(geo, currentGeo))) {
         continue
       }
 
-      await updateMemberCountry(qx, memberId, country)
+      await updateMemberCountry(qx, memberId, country, geo)
       updatedCount++
 
       if (testRun) {
