@@ -19,7 +19,6 @@ const SOURCE_NAME = 'project-hierarchy'
 const MAX_HIERARCHY_LEVELS = 20
 
 function buildSourceQuery(): string {
-  // PROJECT_SPINE stops at nested foundations, so the ancestors come from the parent links.
   // The level cap ends the walk if PCC ever holds a cycle of parents.
   return `
     WITH RECURSIVE leaves AS (
