@@ -70,8 +70,22 @@ export interface IMemberEnrichmentCrustdataPersonData {
   contact?: IMemberEnrichmentCrustdataContact
 }
 
+export interface IMemberEnrichmentCrustdataMetadata extends IMemberEnrichmentLinkedinScraperMetadata {
+  creditsUsed?: number
+}
+
 export interface IMemberEnrichmentDataCrustdata extends IMemberEnrichmentCrustdataPersonData {
-  metadata: IMemberEnrichmentLinkedinScraperMetadata
+  metadata: IMemberEnrichmentCrustdataMetadata
+}
+
+export interface IMemberEnrichmentCrustdataMatchedProfile {
+  matchedOn: string
+  profile: IMemberEnrichmentDataCrustdata
+}
+
+export interface IMemberEnrichmentCrustdataEnrichCall {
+  results: IMemberEnrichmentCrustdataEnrichResponse
+  creditsUsed: number
 }
 
 export interface IMemberEnrichmentCrustdataEnrichMatch {

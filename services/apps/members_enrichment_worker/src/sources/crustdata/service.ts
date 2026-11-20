@@ -31,8 +31,10 @@ import { normalizeAttributes, normalizeSocialIdentity, toEnrichmentGeo } from '.
 import { SOURCES_READING_OTHER_CACHES } from '../../utils/config'
 import { hasNewCachedInputsSql, hasVerifiedIdentitySql } from '../../utils/sql'
 import {
+  IMemberEnrichmentCrustdataEnrichCall,
   IMemberEnrichmentCrustdataEnrichResponse,
   IMemberEnrichmentCrustdataLocation,
+  IMemberEnrichmentCrustdataMatchedProfile,
   IMemberEnrichmentCrustdataRemainingCredits,
   IMemberEnrichmentDataCrustdata,
 } from './types'
@@ -170,8 +172,8 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
 
       const response: IMemberEnrichmentCrustdataRemainingCredits = (await axios(config)).data
 
-      // Live enrich sends up to 2 verified LinkedIn handles
-      // Each match costs 7 credits (realtime) + 1 credit (business email)
+      // Worst case: both LinkedIn handles miss Crustdata's cached dataset and go live
+      // at 7 credits each, plus 1 credit each for the business email
       return response.account.credits >= 16
     } catch (error) {
       this.log.error('Error while checking Crustdata account usage', error)
@@ -234,43 +236,62 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
   private async getDataUsingLinkedinHandles(
     identities: ConsumableIdentity[],
   ): Promise<IMemberEnrichmentDataCrustdata[] | null> {
+    const cached = await this.enrichLinkedinHandles('/person/enrich', identities)
+    const cachedHandles = new Set(cached.map((m) => m.identity.value.toLowerCase()))
+    const notCached = identities.filter(
+      (identity) => !cachedHandles.has(identity.value.toLowerCase()),
+    )
+    const live =
+      notCached.length > 0
+        ? await this.enrichLinkedinHandles('/person/professional_network/enrich/live', notCached)
+        : []
+
+    const matches = [...cached, ...live]
+    if (matches.length === 0) {
+      return null
+    }
+
+    return this.withContact(matches, 'linkedin')
+  }
+
+  private async enrichLinkedinHandles(
+    path: string,
+    identities: ConsumableIdentity[],
+  ): Promise<(IMemberEnrichmentCrustdataMatchedProfile & { identity: ConsumableIdentity })[]> {
     const urls = identities.map((identity) => `https://www.linkedin.com/in/${identity.value}`)
 
-    const response = await this.requestEnrich('/person/professional_network/enrich/live', {
+    const { results, creditsUsed } = await this.requestEnrich(path, {
       professional_network_profile_urls: urls,
       fields: PROFILE_FIELDS,
     })
 
-    const profiles: IMemberEnrichmentDataCrustdata[] = []
-    const matchedOns: string[] = []
-
-    for (const result of response || []) {
+    const matches = results.flatMap((result) => {
       const personData = result.matches?.[0]?.person_data
       if (!personData || !result.matched_on) {
-        continue
+        return []
       }
 
       const handle = result.matched_on.split('/').filter(Boolean).pop()?.toLowerCase()
       const identity = identities.find((i) => i.value.toLowerCase() === handle)
       if (!identity) {
-        continue
+        return []
       }
 
-      matchedOns.push(result.matched_on)
-      profiles.push({
+      return [{ identity, matchedOn: result.matched_on, personData }]
+    })
+
+    return matches.map(({ identity, matchedOn, personData }) => ({
+      identity,
+      matchedOn,
+      profile: {
         ...personData,
         metadata: {
           repeatedTimesInDifferentSources: identity.repeatedTimesInDifferentSources,
           isFromVerifiedSource: identity.isFromVerifiedSource,
+          creditsUsed: creditsUsed / matches.length,
         },
-      })
-    }
-
-    if (profiles.length === 0) {
-      return null
-    }
-
-    return this.withContact(profiles, matchedOns, 'linkedin')
+      },
+    }))
   }
 
   private async getDataUsingWorkEmails(
@@ -281,7 +302,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
     // CrustData rejects the entire request when even one business email is invalid.
     // Remove the rejected emails and retry until the request succeeds or nothing remains.
     while (remaining.length > 0) {
-      let response: IMemberEnrichmentCrustdataEnrichResponse | null
+      let response: IMemberEnrichmentCrustdataEnrichCall
 
       try {
         response = await this.requestEnrich('/person/enrich', {
@@ -330,40 +351,36 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
         continue
       }
 
-      const profiles: IMemberEnrichmentDataCrustdata[] = []
-      const matchedOns: string[] = []
+      const results = response.results.filter(
+        (result) => result.matches?.[0]?.person_data && result.matched_on,
+      )
 
-      for (const result of response || []) {
-        const personData = result.matches?.[0]?.person_data
-
-        if (!personData || !result.matched_on) {
-          continue
-        }
-
-        matchedOns.push(result.matched_on)
-
-        profiles.push({
-          ...personData,
-          metadata: {
-            repeatedTimesInDifferentSources: 1,
-            isFromVerifiedSource: true,
-          },
-        })
-      }
-
-      if (profiles.length === 0) {
+      if (results.length === 0) {
         return null
       }
 
-      return this.withContact(profiles, matchedOns, 'email')
+      const matches = results.map((result) => ({
+        matchedOn: result.matched_on,
+        profile: {
+          ...result.matches[0].person_data,
+          metadata: {
+            repeatedTimesInDifferentSources: 1,
+            isFromVerifiedSource: true,
+            creditsUsed: response.creditsUsed / results.length,
+          },
+        },
+      }))
+
+      return this.withContact(matches, 'email')
     }
   }
 
   private async withContact(
-    profiles: IMemberEnrichmentDataCrustdata[],
-    matchedOns: string[],
+    matches: IMemberEnrichmentCrustdataMatchedProfile[],
     identifierType: 'linkedin' | 'email',
   ): Promise<IMemberEnrichmentDataCrustdata[]> {
+    const matchedOns = matches.map((match) => match.matchedOn)
+    const profiles = matches.map((match) => match.profile)
     const body =
       identifierType === 'linkedin'
         ? {
@@ -375,7 +392,7 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
             fields: ['contact.business_emails'],
           }
 
-    let response: IMemberEnrichmentCrustdataEnrichResponse | null
+    let response: IMemberEnrichmentCrustdataEnrichCall
 
     try {
       // contact is best effort, so we don't want to fail the enrichment if it fails.
@@ -395,34 +412,39 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       return profiles
     }
 
-    if (!response?.length) {
+    if (response.results.length === 0) {
       return profiles
     }
 
     const contactByMatchedOn = new Map(
-      response
+      response.results
         .filter((result) => result.matched_on && result.matches?.[0]?.person_data?.contact)
         .map((result) => [
           result.matched_on.trim().toLowerCase().replace(/\/+$/, ''),
           result.matches[0].person_data.contact,
         ]),
     )
+    const contactCreditsPerProfile = response.creditsUsed / profiles.length
 
     return profiles.map((profile, index) => {
+      const withCredits = {
+        ...profile,
+        metadata: {
+          ...profile.metadata,
+          creditsUsed: (profile.metadata.creditsUsed ?? 0) + contactCreditsPerProfile,
+        },
+      }
       const contact = contactByMatchedOn.get(
         matchedOns[index].trim().toLowerCase().replace(/\/+$/, ''),
       )
-      if (!contact) {
-        return profile
-      }
-      return { ...profile, contact }
+      return contact ? { ...withCredits, contact } : withCredits
     })
   }
 
   private async requestEnrich(
     path: string,
     data: Record<string, unknown>,
-  ): Promise<IMemberEnrichmentCrustdataEnrichResponse | null> {
+  ): Promise<IMemberEnrichmentCrustdataEnrichCall> {
     const response = await axios<IMemberEnrichmentCrustdataEnrichResponse>({
       method: 'post',
       url: `${process.env['CROWD_ENRICHMENT_CRUSTDATA_URL']}${path}`,
@@ -437,11 +459,10 @@ export default class EnrichmentServiceCrustdata extends LoggerBase implements IE
       },
     })
 
-    if (response.status === 404) {
-      return null
+    return {
+      results: response.status === 404 ? [] : response.data,
+      creditsUsed: Number(response.headers['x-credits-used']) || 0,
     }
-
-    return response.data
   }
 
   private findDistinctScrapableLinkedinIdentities(
