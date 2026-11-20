@@ -5,14 +5,14 @@ export const MATCH_WINDOW_DAYS = 21
 
 const MILLISECONDS_PER_DAY = 86_400_000
 
-const NAME_SYNONYMS: [RegExp, string][] = [
-  [/\bna\b/g, 'north america'],
-  [/\beu\b/g, 'europe'],
-  [/\bagl\b/g, 'automotive grade linux'],
-  [/\bamm\b/g, 'all member meeting'],
-  [/\bconf\b/g, 'conference'],
-  [/\bvirtual\b/g, ''],
-]
+const NAME_SYNONYMS = new Map<string, string>([
+  ['na', 'north america'],
+  ['eu', 'europe'],
+  ['agl', 'automotive grade linux'],
+  ['amm', 'all member meeting'],
+  ['conf', 'conference'],
+  ['virtual', ''],
+])
 
 export interface CventCatalogueEvent {
   eventId: string
@@ -50,16 +50,14 @@ export interface SessionizeEventDecision {
 }
 
 export function normalizeEventName(name: string): string {
-  const spaced = name
+  return name
+    .normalize('NFKC')
     .toLowerCase()
-    .replaceAll('+', ' ')
     .replaceAll('&', ' and ')
-    .replace(/[^a-z0-9 ]/g, ' ')
-  const expanded = NAME_SYNONYMS.reduce(
-    (text, [pattern, replacement]) => text.replace(pattern, replacement),
-    spaced,
-  )
-  return expanded.split(/\s+/).filter(Boolean).join(' ')
+    .split(/[^\p{L}\p{M}\p{N}]+/u)
+    .map((token) => NAME_SYNONYMS.get(token) ?? token)
+    .filter(Boolean)
+    .join(' ')
 }
 
 function dayGap(first: string, second: string): number {

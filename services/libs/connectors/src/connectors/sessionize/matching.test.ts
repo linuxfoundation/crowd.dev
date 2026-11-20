@@ -44,8 +44,16 @@ describe('normalizeEventName', () => {
     ],
     ['SampleCon Virtual 2026', 'samplecon 2026'],
     ['Open Source Conf EU 2025', 'open source conference europe 2025'],
+    ['Example Summit 日本 ２０２７', 'example summit 日本 2027'],
+    ['Exämple Constructor Summit', 'exämple constructor summit'],
   ])('%s', (name, expected) => {
     expect(normalizeEventName(name)).toBe(expected)
+  })
+
+  it('keeps names that differ only in non-Latin letters apart', () => {
+    expect(normalizeEventName('Example Summit 日本 2027')).not.toBe(
+      normalizeEventName('Example Summit 中国 2027'),
+    )
   })
 })
 
