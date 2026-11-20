@@ -14,6 +14,7 @@
     "script:probe-sessionize-session": "tsx src/bin/probe-sessionize-session.ts",
     "script:dry-run-credly-badge-poll": "tsx src/bin/dry-run-credly-badge-poll.ts",
     "script:resolve-credly-templates": "tsx src/bin/resolve-credly-templates.ts",
+    "script:dry-run-sessionize-event-matching": "tsx src/bin/dry-run-sessionize-event-matching.ts",
     "script:import-sched": "tsx src/bin/import-sched.ts"
   },
   "dependencies": {
