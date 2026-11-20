@@ -11,6 +11,8 @@ DESCRIPTION >
     - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow')
     - Response: `projectId`, `state`, `lastRunDate`, `lastRunOk`, `resultRunDate`, `docsUrl`, `discoveryMethod`, `confidence`, `isOverride`, `overallScore`, `categoryScores`, `repoUrl`, `lfMedian`
 
+TOKEN "insights-app-token" READ
+
 TAGS "Insights, Widget", "Project"
 
 NODE project_doc_readiness_summary_runs
