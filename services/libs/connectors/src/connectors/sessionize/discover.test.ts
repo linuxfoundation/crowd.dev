@@ -52,6 +52,24 @@ describe('discoverSessionize', () => {
     expect(mockedRequest).toHaveBeenCalledTimes(1)
   })
 
+  it('ends the call on a rate limit after a single request', async () => {
+    mockedRequest.mockResolvedValue({ status: 429, headers: { 'retry-after': '60' }, data: '' })
+
+    await expect(discoverSessionize(CREDENTIAL)).rejects.toMatchObject({
+      errorClass: 'provider.rate_limit',
+    })
+    expect(mockedRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it('signs in again once after a login redirect', async () => {
+    mockedRequest
+      .mockResolvedValueOnce({ status: 302, headers: { location: '/login' }, data: '' })
+      .mockResolvedValueOnce({ status: 200, headers: {}, data: FIXTURE })
+
+    await expect(discoverSessionize(CREDENTIAL)).resolves.not.toHaveLength(0)
+    expect(mockedSignIn).toHaveBeenCalledTimes(2)
+  })
+
   it('rejects a credential of another kind without signing in', async () => {
     const credential: Credential = {
       platform: 'octolens',
