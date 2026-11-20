@@ -1,0 +1,203 @@
+DESCRIPTION >
+    Temporary measurement of the change detection for the daily aggregate sinks: compares the v2
+    leaf aggregates with cdp_segment_aggregates_sent_ds, then recomputes the parent and grandparent
+    keys above every new, changed, gone or moved leaf. Writes what the sinks would send into
+    cdp_segment_aggregates_diff_tmp_ds. To be deleted after the measurement
+    (linuxfoundation/lfx-cdp-insights-ops#1146).
+
+NODE segment_hierarchy
+SQL >
+    SELECT
+        id,
+        argMax(parentId, updatedAt) AS parentId,
+        argMax(grandparentId, updatedAt) AS grandparentId
+    FROM segments
+    GROUP BY id
+
+NODE member_leaf
+SQL >
+    SELECT
+        'member' AS kind,
+        a.segmentId AS segmentId,
+        a.memberId AS entityId,
+        h.parentId AS parentId,
+        h.grandparentId AS grandparentId,
+        cityHash64(
+            finalizeAggregation(a.activityCountState),
+            finalizeAggregation(a.lastActiveState),
+            arraySort(finalizeAggregation(a.activityTypesState)),
+            arraySort(finalizeAggregation(a.activeOnState)),
+            ifNotFinite(round(finalizeAggregation(a.averageSentimentState), 2), -1)
+        ) AS hash
+    FROM cdp_member_segment_aggregates_v2_ds a
+    LEFT JOIN segment_hierarchy h ON h.id = a.segmentId
+
+NODE organization_leaf
+SQL >
+    SELECT
+        'organization' AS kind,
+        a.segmentId AS segmentId,
+        a.organizationId AS entityId,
+        h.parentId AS parentId,
+        h.grandparentId AS grandparentId,
+        cityHash64(
+            finalizeAggregation(a.joinedAtState),
+            finalizeAggregation(a.lastActiveState),
+            arraySort(finalizeAggregation(a.activeOnState)),
+            finalizeAggregation(a.activityCountState),
+            finalizeAggregation(a.memberCountState),
+            ifNotFinite(round(finalizeAggregation(a.avgContributorEngagement), 2), -1)
+        ) AS hash
+    FROM cdp_organization_segment_aggregates_v2_ds a
+    LEFT JOIN segment_hierarchy h ON h.id = a.segmentId
+    WHERE a.organizationId != ''
+
+NODE current_leaf
+SQL >
+    SELECT * FROM member_leaf
+    UNION ALL
+    SELECT * FROM organization_leaf
+
+NODE leaf_changes
+SQL >
+    SELECT
+        kind,
+        segmentId,
+        entityId,
+        countIf(src = 1) AS inCurrent,
+        countIf(src = 0) AS inSent,
+        anyIf(hash, src = 1) AS currentHash,
+        anyIf(hash, src = 0) AS sentHash,
+        anyIf(parentId, src = 1) AS currentParent,
+        anyIf(parentId, src = 0) AS sentParent,
+        anyIf(grandparentId, src = 1) AS currentGrandparent,
+        anyIf(grandparentId, src = 0) AS sentGrandparent
+    FROM
+        (
+            SELECT kind, segmentId, entityId, parentId, grandparentId, hash, 1 AS src
+            FROM current_leaf
+            UNION ALL
+            SELECT kind, segmentId, entityId, parentId, grandparentId, hash, 0 AS src
+            FROM cdp_segment_aggregates_sent_ds
+        )
+    GROUP BY kind, segmentId, entityId
+    HAVING
+        inCurrent != inSent
+        OR currentHash != sentHash
+        OR currentParent != sentParent
+        OR currentGrandparent != sentGrandparent
+
+NODE affected_parents
+SQL >
+    SELECT DISTINCT kind, p AS segmentId, entityId
+    FROM leaf_changes ARRAY JOIN [currentParent, sentParent] AS p
+    WHERE p != ''
+
+NODE affected_grandparents
+SQL >
+    SELECT DISTINCT kind, g AS segmentId, entityId
+    FROM leaf_changes ARRAY JOIN [currentGrandparent, sentGrandparent] AS g
+    WHERE g != ''
+
+NODE member_rollups
+SQL >
+    SELECT 'parent' AS level, h.parentId AS segmentId, a.memberId AS entityId,
+        countMerge(a.activityCountState) AS activityCount, toUInt64(0) AS memberCount,
+        maxMerge(a.lastActiveState) AS lastActive
+    FROM cdp_member_segment_aggregates_v2_ds a
+    INNER JOIN segment_hierarchy h ON h.id = a.segmentId
+    WHERE
+        a.memberId IN (SELECT entityId FROM affected_parents WHERE kind = 'member')
+        AND (h.parentId, a.memberId) IN (SELECT segmentId, entityId FROM affected_parents WHERE kind = 'member')
+    GROUP BY h.parentId, a.memberId
+    UNION ALL
+    SELECT 'grandparent' AS level, h.grandparentId AS segmentId, a.memberId AS entityId,
+        countMerge(a.activityCountState) AS activityCount, toUInt64(0) AS memberCount,
+        maxMerge(a.lastActiveState) AS lastActive
+    FROM cdp_member_segment_aggregates_v2_ds a
+    INNER JOIN segment_hierarchy h ON h.id = a.segmentId
+    WHERE
+        a.memberId IN (SELECT entityId FROM affected_grandparents WHERE kind = 'member')
+        AND (h.grandparentId, a.memberId) IN (SELECT segmentId, entityId FROM affected_grandparents WHERE kind = 'member')
+    GROUP BY h.grandparentId, a.memberId
+
+NODE organization_rollups
+SQL >
+    SELECT 'parent' AS level, h.parentId AS segmentId, a.organizationId AS entityId,
+        countMerge(a.activityCountState) AS activityCount,
+        toUInt64(countDistinctMerge(a.memberCountState)) AS memberCount,
+        maxMerge(a.lastActiveState) AS lastActive
+    FROM cdp_organization_segment_aggregates_v2_ds a
+    INNER JOIN segment_hierarchy h ON h.id = a.segmentId
+    WHERE
+        a.organizationId IN (SELECT entityId FROM affected_parents WHERE kind = 'organization')
+        AND (h.parentId, a.organizationId) IN (SELECT segmentId, entityId FROM affected_parents WHERE kind = 'organization')
+    GROUP BY h.parentId, a.organizationId
+    UNION ALL
+    SELECT 'grandparent' AS level, h.grandparentId AS segmentId, a.organizationId AS entityId,
+        countMerge(a.activityCountState) AS activityCount,
+        toUInt64(countDistinctMerge(a.memberCountState)) AS memberCount,
+        maxMerge(a.lastActiveState) AS lastActive
+    FROM cdp_organization_segment_aggregates_v2_ds a
+    INNER JOIN segment_hierarchy h ON h.id = a.segmentId
+    WHERE
+        a.organizationId IN (SELECT entityId FROM affected_grandparents WHERE kind = 'organization')
+        AND (h.grandparentId, a.organizationId) IN (SELECT segmentId, entityId FROM affected_grandparents WHERE kind = 'organization')
+    GROUP BY h.grandparentId, a.organizationId
+
+NODE rollups
+SQL >
+    SELECT 'member' AS kind, * FROM member_rollups
+    UNION ALL
+    SELECT 'organization' AS kind, * FROM organization_rollups
+
+NODE leaf_output
+SQL >
+    SELECT
+        c.kind AS kind,
+        'leaf' AS level,
+        multiIf(c.inSent = 0, 'new', c.inCurrent = 0, 'gone', c.currentHash != c.sentHash, 'changed', 'moved') AS reason,
+        c.segmentId AS segmentId,
+        c.entityId AS entityId,
+        coalesce(m.activityCount, o.activityCount, 0) AS activityCount,
+        coalesce(o.memberCount, 0) AS memberCount,
+        coalesce(m.lastActive, o.lastActive, toDateTime64(0, 3)) AS lastActive
+    FROM leaf_changes c
+    LEFT JOIN
+        (
+            SELECT segmentId, memberId AS entityId, finalizeAggregation(activityCountState) AS activityCount,
+                finalizeAggregation(lastActiveState) AS lastActive
+            FROM cdp_member_segment_aggregates_v2_ds
+            WHERE (segmentId, memberId) IN (SELECT segmentId, entityId FROM leaf_changes WHERE kind = 'member' AND inCurrent = 1)
+        ) m ON c.kind = 'member' AND m.segmentId = c.segmentId AND m.entityId = c.entityId
+    LEFT JOIN
+        (
+            SELECT segmentId, organizationId AS entityId, finalizeAggregation(activityCountState) AS activityCount,
+                toUInt64(finalizeAggregation(memberCountState)) AS memberCount, finalizeAggregation(lastActiveState) AS lastActive
+            FROM cdp_organization_segment_aggregates_v2_ds
+            WHERE (segmentId, organizationId) IN (SELECT segmentId, entityId FROM leaf_changes WHERE kind = 'organization' AND inCurrent = 1)
+        ) o ON c.kind = 'organization' AND o.segmentId = c.segmentId AND o.entityId = c.entityId
+    SETTINGS join_use_nulls = 1
+
+NODE cdp_segment_aggregates_diff_tmp_copy_result
+SQL >
+    SELECT kind, level, reason, segmentId, entityId, activityCount, memberCount, lastActive, now() AS updatedAt
+    FROM leaf_output
+    UNION ALL
+    SELECT kind, level, 'recomputed' AS reason, segmentId, entityId, activityCount, memberCount, lastActive, now() AS updatedAt
+    FROM rollups
+    UNION ALL
+    SELECT a.kind, if(a.level = 'parent', 'parent', 'grandparent') AS level, 'gone' AS reason, a.segmentId, a.entityId,
+        toUInt64(0) AS activityCount, toUInt64(0) AS memberCount, toDateTime64(0, 3) AS lastActive, now() AS updatedAt
+    FROM
+        (
+            SELECT kind, 'parent' AS level, segmentId, entityId FROM affected_parents
+            UNION ALL
+            SELECT kind, 'grandparent' AS level, segmentId, entityId FROM affected_grandparents
+        ) a
+    LEFT ANTI JOIN rollups r ON r.kind = a.kind AND r.level = a.level AND r.segmentId = a.segmentId AND r.entityId = a.entityId
+
+TYPE COPY
+TARGET_DATASOURCE cdp_segment_aggregates_diff_tmp_ds
+COPY_MODE replace
+COPY_SCHEDULE @on-demand
