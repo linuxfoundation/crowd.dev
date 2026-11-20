@@ -5,7 +5,7 @@ DESCRIPTION >
     - `details` is the raw afdocs detail JSON as a string, cut at 32 KB in Postgres, so it may not parse as JSON; extract values with string functions.
     - Postgres deletes and re-inserts a project's checks on every scoring and those deletes are not applied here, so checks dropped by a later scoring stay in this datasource.
     - Reader rule: read with FINAL and keep only the rows whose `scoredAt` equals the max `scoredAt` of that `projectId`; every row of one scoring shares the same `scoredAt`.
-    - Postgres also clears a project's checks when a run fails on a different docs URL or with none; show checks only when the project has an `ok` run in `projectDocReadiness`, every run since its newest `ok` run has the same normalized `docsUrl`, and the latest `error` is not `no-docs-url` or `repo-only`.
+    - Postgres also clears a project's checks when a run fails on a different docs URL or with none; show checks only when the project has an `ok` run in `projectDocReadiness`, every run since its newest `ok` run has the same normalized `docsUrl`, and the latest `error` is not `no-docs-url` or `repo-only`. The gate is approximate when a project is scored more than once on one `runDate`, because `projectDocReadiness` keeps one row per project per day.
 
 TAGS "Project metadata"
 
@@ -22,6 +22,6 @@ SCHEMA >
     `updatedAt` DateTime64(3) `json:$.record.updatedAt`
 
 ENGINE ReplacingMergeTree
-ENGINE_PARTITION_KEY toYear(createdAt)
+ENGINE_PARTITION_KEY tuple()
 ENGINE_SORTING_KEY projectId, checkId
 ENGINE_VER updatedAt
