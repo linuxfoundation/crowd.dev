@@ -41,7 +41,7 @@ type Resolution =
   | { state: 'missing' }
   | { state: 'blocked'; plan: CreationPlan }
 
-function typedKey(type: SegmentType, key: string): string {
+export function typedKey(type: SegmentType, key: string): string {
   return `${type}:${key}`
 }
 
@@ -65,6 +65,14 @@ export function buildCdpSegmentIndex(segments: CdpSegment[]): CdpSegmentIndex {
   return index
 }
 
+export function findLinkedSegments(
+  index: CdpSegmentIndex,
+  type: SegmentType,
+  pccProjectId: string,
+): CdpSegment[] {
+  return index.bySourceId.get(typedKey(type, pccProjectId)) ?? []
+}
+
 function blocked(reason: CreationBlockReason, details: Record<string, unknown>): Resolution {
   return { state: 'blocked', plan: { action: 'BLOCKED', reason, details } }
 }
@@ -80,7 +88,7 @@ function resolve(
   parent: Parent,
   levelsOfNode: Set<SegmentType>,
 ): Resolution {
-  const linked = index.bySourceId.get(typedKey(type, node.pccProjectId)) ?? []
+  const linked = findLinkedSegments(index, type, node.pccProjectId)
 
   if (linked.length > 1) {
     return blocked('AMBIGUOUS_PCC_ID', { type, node, segments: describe(linked) })
