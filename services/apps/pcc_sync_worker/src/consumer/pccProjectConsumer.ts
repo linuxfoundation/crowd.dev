@@ -24,7 +24,12 @@ import {
 import type { CdpSegmentIndex, CreationPlan } from './creationPlan'
 import { findExistingProjectCandidates, loadCdpSubprojectIndex } from './existingProjects'
 import type { CdpSubprojectIndex } from './existingProjects'
-import { resolveSyncErrorsNotReportedByExport } from './syncErrors'
+import {
+  PROJECT_NOT_IN_PCC,
+  addPccProjectIdsOfRow,
+  findProjectsMissingFromPcc,
+} from './projectsMissingFromPcc'
+import { isSingleFileExport, resolveSyncErrorsNotReportedByExport } from './syncErrors'
 
 const log = getServiceChildLogger('pccProjectConsumer')
 
@@ -129,7 +134,9 @@ export class PccProjectConsumer {
       // carries surrounding whitespace) so the same logical project never splits
       // into multiple groups.
       const groups = new Map<string, Record<string, unknown>[]>()
+      const exportedPccProjectIds = new Set<string>()
       for await (const raw of this.s3Service.streamParquetRows(job.s3Path)) {
+        addPccProjectIdsOfRow(exportedPccProjectIds, raw as Record<string, unknown>)
         const rawId = (raw as Record<string, unknown>).PROJECT_ID
         const projectId = rawId == null ? '' : String(rawId).trim()
         if (!projectId) {
@@ -239,6 +246,12 @@ export class PccProjectConsumer {
         }
       })
 
+      const missingFromPccCount = await this.reportProjectsMissingFromPcc(
+        job,
+        cdpSegments,
+        exportedPccProjectIds,
+      )
+
       const durationMs = Date.now() - startTime
       log.info(
         {
@@ -254,6 +267,7 @@ export class PccProjectConsumer {
           schemaMismatchWithCdpMatch: schemaMismatchMatchedCount,
           schemaMismatchNoCdpMatch: schemaMismatchCount - schemaMismatchMatchedCount,
           missingProjectId: missingProjectIdCount,
+          missingFromPcc: missingFromPccCount,
           creation: creationSummaryCounts(creationSummary),
         },
         'PCC job completed',
@@ -273,7 +287,10 @@ export class PccProjectConsumer {
           skippedCount: skippedCount + schemaMismatchCount + missingProjectIdCount,
           processingDurationMs: durationMs,
         })
-        await this.resolveSyncErrorsNotReportedBy(job)
+        await this.resolveSyncErrorsNotReportedBy(
+          job,
+          missingFromPccCount === null ? [PROJECT_NOT_IN_PCC] : [],
+        )
       }
     } catch (err) {
       log.error({ jobId: job.id, err }, 'PCC job failed')
@@ -296,7 +313,41 @@ export class PccProjectConsumer {
     }
   }
 
-  private async resolveSyncErrorsNotReportedBy(job: SnowflakeExportJob): Promise<void> {
+  private async reportProjectsMissingFromPcc(
+    job: SnowflakeExportJob,
+    cdpSegments: CdpSegmentIndex,
+    exportedPccProjectIds: Set<string>,
+  ): Promise<number | null> {
+    if (!job.exportStartedAt) return null
+    try {
+      const wholeExport = await isSingleFileExport(pgpQx(this.db), PLATFORM, job.exportStartedAt)
+      if (!wholeExport) {
+        log.warn(
+          { jobId: job.id },
+          'Skipped the PCC missing-project check: export has several files',
+        )
+        return null
+      }
+    } catch (err) {
+      log.error({ jobId: job.id, err }, 'Failed to check the PCC export for missing projects')
+      return null
+    }
+
+    const missing = findProjectsMissingFromPcc(cdpSegments, exportedPccProjectIds)
+    for (const { pccProjectId, subprojects } of missing) {
+      if (this.dryRun) log.info({ pccProjectId, subprojects }, 'CDP project missing in PCC')
+      await this.recordSyncError(pccProjectId, null, PROJECT_NOT_IN_PCC, {
+        reason: 'the PCC project is not in the export',
+        subprojects,
+      })
+    }
+    return missing.length
+  }
+
+  private async resolveSyncErrorsNotReportedBy(
+    job: SnowflakeExportJob,
+    errorTypesNotChecked: string[],
+  ): Promise<void> {
     if (!job.exportStartedAt) return
     const exportKey = String(job.exportStartedAt)
     if (this.syncErrorWriteFailed) this.exportsWithUnrecordedSyncErrors.add(exportKey)
@@ -309,6 +360,7 @@ export class PccProjectConsumer {
         pgpQx(this.db),
         PLATFORM,
         job.exportStartedAt,
+        errorTypesNotChecked,
       )
       log.info({ jobId: job.id, resolved }, 'Resolved PCC sync errors no longer reported')
     } catch (err) {
