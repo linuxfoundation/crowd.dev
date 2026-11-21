@@ -44,7 +44,7 @@ export async function cleanupOrganizationSegmentAgg(args: IScriptBatchTestArgs):
       do {
         zeroActivityDeleted =
           await deleteZeroActivityOrganizationsSegmentsAgg(ZERO_ACTIVITY_BATCH_SIZE)
-      } while (zeroActivityDeleted === ZERO_ACTIVITY_BATCH_SIZE)
+      } while (zeroActivityDeleted > 0)
 
       // Update the cleanup run as completed
       if (runId) {

@@ -43,7 +43,7 @@ export async function cleanupMemberSegmentsAgg(args: IScriptBatchTestArgs): Prom
       let zeroActivityDeleted: number
       do {
         zeroActivityDeleted = await deleteZeroActivityMembersSegmentsAgg(ZERO_ACTIVITY_BATCH_SIZE)
-      } while (zeroActivityDeleted === ZERO_ACTIVITY_BATCH_SIZE)
+      } while (zeroActivityDeleted > 0)
 
       // Update the cleanup run as completed
       if (runId) {
