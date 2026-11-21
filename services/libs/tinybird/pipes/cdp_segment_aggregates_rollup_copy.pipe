@@ -23,7 +23,8 @@ SQL >
         currentParent,
         sentParent,
         currentGrandparent,
-        sentGrandparent
+        sentGrandparent,
+        currentHash
     FROM cdp_segment_aggregates_changes_ds
     WHERE stage = 'detected' AND runDate = today() AND level = 'leaf'
 
@@ -166,6 +167,7 @@ SQL >
         d.sentParent AS sentParent,
         d.currentGrandparent AS currentGrandparent,
         d.sentGrandparent AS sentGrandparent,
+        d.currentHash AS currentHash,
         v.activityCount AS activityCount,
         v.lastActive AS lastActive,
         v.activityTypes AS activityTypes,
@@ -191,6 +193,7 @@ SQL >
         d.sentParent,
         d.currentGrandparent,
         d.sentGrandparent,
+        d.currentHash,
         v.activityCount,
         v.lastActive,
         CAST([], 'Array(String)'),
@@ -216,6 +219,7 @@ SQL >
         sentParent,
         currentGrandparent,
         sentGrandparent,
+        currentHash,
         toUInt64(0),
         toDateTime64(0, 3),
         CAST([], 'Array(String)'),
@@ -240,6 +244,7 @@ SQL >
         '',
         '',
         '',
+        toUInt64(0),
         r.activityCount,
         if(r.entityId = '', toDateTime64(0, 3), r.lastActive),
         r.activityTypes,

@@ -1,92 +1,81 @@
 DESCRIPTION >
-    Daily at 06:30 UTC, after the daily aggregate sinks: replaces cdp_segment_aggregates_sent_ds with the
-    hash of every current v2 leaf aggregate, which is what the sinks just sent. Only when today's rows
-    were prepared and both sinks succeeded today; otherwise it keeps yesterday's hashes, so the next run
-    sends today's changes again. The leaf-hash nodes must stay identical to
-    cdp_segment_aggregates_changes_copy and cdp_segment_aggregates_sent_seed_copy
+    Daily at 06:30 UTC, after the daily aggregate sinks: replaces cdp_segment_aggregates_sent_ds with what
+    was sent: yesterday's hashes, with the leaf keys detected today (cdp_segment_aggregates_changes_ds)
+    taking their detected hash and parents, and gone keys removed. It does not hash v2 again, so a v2
+    change after 05:25 is detected tomorrow instead of being recorded as sent. Only when, for each kind
+    with changes today, the rollup wrote its rows and that kind's sink ran ok after them and wrote at
+    least as many rows; otherwise it keeps yesterday's hashes and the next run sends the changes again
     (linuxfoundation/lfx-cdp-insights-ops#1146).
 
-NODE segment_hierarchy
+NODE detected_today
+SQL >
+    SELECT kind, segmentId, entityId, reason, currentParent, currentGrandparent, currentHash
+    FROM cdp_segment_aggregates_changes_ds
+    WHERE stage = 'detected' AND runDate = today() AND level = 'leaf'
+
+NODE kind_counts
 SQL >
     SELECT
-        id, argMax(parentId, updatedAt) AS parentId, argMax(grandparentId, updatedAt) AS grandparentId
-    FROM segments
-    GROUP BY id
+        kind,
+        if(
+            kind = 'member',
+            'cdp_member_segment_aggregates_sink',
+            'cdp_organization_segment_aggregates_sink'
+        ) AS sink,
+        countIf(stage = 'detected') AS detected,
+        uniqExactIf((segmentId, entityId), stage = 'ready') AS ready,
+        maxIf(updatedAt, stage = 'ready') AS readyAt
+    FROM cdp_segment_aggregates_changes_ds
+    WHERE runDate = today() AND (stage = 'ready' OR level = 'leaf')
+    GROUP BY kind
 
-NODE member_leaf
+NODE sink_runs
 SQL >
-    SELECT
-        'member' AS kind,
-        a.segmentId AS segmentId,
-        a.memberId AS entityId,
-        h.parentId AS parentId,
-        h.grandparentId AS grandparentId,
-        cityHash64(
-            finalizeAggregation(a.activityCountState),
-            finalizeAggregation(a.lastActiveState),
-            arraySort(finalizeAggregation(a.activityTypesState)),
-            arraySort(finalizeAggregation(a.activeOnState)),
-            ifNotFinite(round(finalizeAggregation(a.averageSentimentState), 2), -1)
-        ) AS hash
-    FROM cdp_member_segment_aggregates_v2_ds a
-    LEFT JOIN segment_hierarchy h ON h.id = a.segmentId
-
-NODE organization_leaf
-SQL >
-    SELECT
-        'organization' AS kind,
-        a.segmentId AS segmentId,
-        a.organizationId AS entityId,
-        h.parentId AS parentId,
-        h.grandparentId AS grandparentId,
-        cityHash64(
-            finalizeAggregation(a.joinedAtState),
-            finalizeAggregation(a.lastActiveState),
-            arraySort(finalizeAggregation(a.activeOnState)),
-            finalizeAggregation(a.activityCountState),
-            finalizeAggregation(a.memberCountState),
-            ifNotFinite(round(finalizeAggregation(a.avgContributorEngagement), 2), -1)
-        ) AS hash
-    FROM cdp_organization_segment_aggregates_v2_ds a
-    LEFT JOIN segment_hierarchy h ON h.id = a.segmentId
-    WHERE a.organizationId != ''
-
-NODE current_leaf
-SQL >
-    SELECT *
-    FROM member_leaf
-    UNION ALL
-    SELECT *
-    FROM organization_leaf
+    SELECT pipe_name, timestamp, written_rows
+    FROM tinybird.sinks_ops_log
+    WHERE
+        timestamp >= toStartOfDay(now())
+        AND result = 'ok'
+        AND pipe_name
+        IN ('cdp_member_segment_aggregates_sink', 'cdp_organization_segment_aggregates_sink')
 
 NODE sent_today
 SQL >
-    SELECT
+    SELECT min(detected = 0 OR (ready > 0 AND sinkOk)) AS sentOk
+    FROM
         (
-            SELECT count()
-            FROM cdp_segment_aggregates_changes_ds
-            WHERE stage = 'ready' AND runDate = today()
+            SELECT
+                c.kind,
+                c.detected,
+                c.ready,
+                max(r.timestamp >= c.readyAt AND r.written_rows >= c.ready) AS sinkOk
+            FROM kind_counts c
+            LEFT JOIN sink_runs r ON r.pipe_name = c.sink
+            GROUP BY c.kind, c.detected, c.ready
         )
-        > 0
-        AND (
-            SELECT uniqExactIf(pipe_name, result = 'ok')
-            FROM tinybird.sinks_ops_log
-            WHERE
-                timestamp >= toStartOfDay(now())
-                AND pipe_name
-                IN ('cdp_member_segment_aggregates_sink', 'cdp_organization_segment_aggregates_sink')
-        )
-        = 2 AS sentOk
 
 NODE cdp_segment_aggregates_sent_copy_result
 SQL >
-    SELECT kind, segmentId, entityId, parentId, grandparentId, hash, now() AS updatedAt
-    FROM current_leaf
-    WHERE (SELECT sentOk FROM sent_today) = 1
-    UNION ALL
     SELECT kind, segmentId, entityId, parentId, grandparentId, hash, updatedAt
     FROM cdp_segment_aggregates_sent_ds
     WHERE (SELECT sentOk FROM sent_today) = 0
+    UNION ALL
+    SELECT kind, segmentId, entityId, parentId, grandparentId, hash, updatedAt
+    FROM cdp_segment_aggregates_sent_ds
+    WHERE
+        (SELECT sentOk FROM sent_today) = 1
+        AND (kind, segmentId, entityId) NOT IN (SELECT kind, segmentId, entityId FROM detected_today)
+    UNION ALL
+    SELECT
+        kind,
+        segmentId,
+        entityId,
+        currentParent AS parentId,
+        currentGrandparent AS grandparentId,
+        currentHash AS hash,
+        now() AS updatedAt
+    FROM detected_today
+    WHERE (SELECT sentOk FROM sent_today) = 1 AND reason != 'gone'
 
 TYPE COPY
 TARGET_DATASOURCE cdp_segment_aggregates_sent_ds

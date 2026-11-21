@@ -48,7 +48,7 @@ SQL >
 TYPE SINK
 EXPORT_SERVICE kafka
 EXPORT_CONNECTION_NAME lfx-oracle-kafka-streaming
-EXPORT_SCHEDULE 30 2 * * *
+EXPORT_SCHEDULE @on-demand
 EXPORT_FORMAT csv
 EXPORT_STRATEGY @new
 EXPORT_KAFKA_TOPIC organizationSegmentsAgg_sink

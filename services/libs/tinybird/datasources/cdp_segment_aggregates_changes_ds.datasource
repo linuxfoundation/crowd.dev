@@ -16,6 +16,7 @@ SCHEMA >
     `sentParent` String,
     `currentGrandparent` String,
     `sentGrandparent` String,
+    `currentHash` UInt64,
     `activityCount` UInt64,
     `lastActive` DateTime64(3),
     `activityTypes` Array(String),

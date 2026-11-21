@@ -2,7 +2,8 @@ DESCRIPTION >
     Daily at 05:25 UTC, after the v2 aggregate copies: compares every v2 leaf aggregate (member and
     organization) with cdp_segment_aggregates_sent_ds once and replaces cdp_segment_aggregates_changes_ds
     with the leaf keys that are new, changed, gone or moved under another parent (stage 'detected').
-    The leaf-hash nodes must stay identical to cdp_segment_aggregates_sent_copy and
+    Writes nothing when v2 has fewer than 90% of the fingerprint's keys (an empty or partial v2 would
+    otherwise send every key as gone). The leaf-hash nodes must stay identical to
     cdp_segment_aggregates_sent_seed_copy (linuxfoundation/lfx-cdp-insights-ops#1146).
 
 NODE segment_hierarchy
@@ -74,6 +75,7 @@ SQL >
         sentParent,
         currentGrandparent,
         sentGrandparent,
+        currentHash,
         toUInt64(0) AS activityCount,
         toDateTime64(0, 3) AS lastActive,
         CAST([], 'Array(String)') AS activityTypes,
@@ -112,6 +114,12 @@ SQL >
                 OR currentParent != sentParent
                 OR currentGrandparent != sentGrandparent
         )
+    WHERE
+        (
+            (SELECT count() FROM cdp_member_segment_aggregates_v2_ds)
+            + (SELECT count() FROM cdp_organization_segment_aggregates_v2_ds WHERE organizationId != '')
+        )
+        >= 0.9 * (SELECT count() FROM cdp_segment_aggregates_sent_ds)
 
 TYPE COPY
 TARGET_DATASOURCE cdp_segment_aggregates_changes_ds

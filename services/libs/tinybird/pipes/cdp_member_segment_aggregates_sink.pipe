@@ -2,11 +2,12 @@ DESCRIPTION >
     Daily at 06:00 UTC: sends today's member segment aggregate rows from cdp_segment_aggregates_changes_ds
     (leaf, parent and grandparent; written by cdp_segment_aggregates_rollup_copy) to Postgres
     memberSegmentsAgg through Kafka. Same columns and topic as the v1 sinks. Keys that are gone are sent
-    with activityCount 0 and deleted in Postgres by the nightly cleanup
+    with activityCount 0 and deleted in Postgres by the nightly cleanup. On demand with entity_id it sends only that member's rows
     (linuxfoundation/lfx-cdp-insights-ops#1146).
 
 NODE cdp_member_segment_aggregates_sink_result
 SQL >
+    %
     SELECT
         segmentId,
         entityId AS memberId,
@@ -17,8 +18,19 @@ SQL >
         activeOn,
         averageSentiment,
         now() AS updatedAt
-    FROM cdp_segment_aggregates_changes_ds
-    WHERE kind = 'member' AND stage = 'ready' AND runDate = today()
+    FROM
+        (
+            SELECT *
+            FROM cdp_segment_aggregates_changes_ds
+            WHERE
+                kind = 'member' AND stage = 'ready' AND runDate = today()
+                {% if defined(entity_id) %}
+                    AND entityId
+                    = {{ String(entity_id, description="Send only this member (a one-row test)") }}
+                {% end %}
+            ORDER BY updatedAt DESC
+            LIMIT 1 BY segmentId, entityId
+        )
 
 TYPE SINK
 EXPORT_SERVICE kafka
