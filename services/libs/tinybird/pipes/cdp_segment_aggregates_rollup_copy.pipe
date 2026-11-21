@@ -1,0 +1,264 @@
+DESCRIPTION >
+    Daily at 05:45 UTC, after cdp_segment_aggregates_changes_copy: appends to
+    cdp_segment_aggregates_changes_ds every row the daily aggregate sinks send (stage 'ready'): the
+    changed leaf keys with their v2 values, and the parent and grandparent keys above them (old and new
+    parents) merged from v2 states. Keys with nothing left are sent with zeros and deleted in Postgres.
+    No score gives a NULL averageSentiment and 0 avgContributorEngagement
+    (linuxfoundation/lfx-cdp-insights-ops#1146).
+
+NODE segment_hierarchy
+SQL >
+    SELECT
+        id,
+        argMax(parentId, updatedAt) AS parentId,
+        argMax(grandparentId, updatedAt) AS grandparentId
+    FROM segments
+    GROUP BY id
+
+NODE detected
+SQL >
+    SELECT
+        kind,
+        reason,
+        segmentId,
+        entityId,
+        currentParent,
+        sentParent,
+        currentGrandparent,
+        sentGrandparent
+    FROM cdp_segment_aggregates_changes_ds
+    WHERE stage = 'detected' AND runDate = today() AND level = 'leaf'
+
+NODE affected
+SQL >
+    SELECT DISTINCT kind, t.1 AS level, t.2 AS segmentId, entityId
+    FROM detected
+    ARRAY JOIN
+        [
+            ('parent', currentParent),
+            ('parent', sentParent),
+            ('grandparent', currentGrandparent),
+            ('grandparent', sentGrandparent)
+        ] AS t
+    WHERE t.2 != ''
+
+NODE member_rollups
+SQL >
+    SELECT
+        'member' AS kind,
+        t.1 AS level,
+        t.2 AS segmentId,
+        memberId AS entityId,
+        countMerge(activityCountState) AS activityCount,
+        maxMerge(lastActiveState) AS lastActive,
+        groupArrayDistinctMerge(activityTypesState) AS activityTypes,
+        groupArrayDistinctMerge(activeOnState) AS activeOn,
+        toFloat64(avgMerge(averageSentimentState)) AS sentiment,
+        toDateTime64(0, 3) AS joinedAt,
+        toUInt64(0) AS memberCount,
+        toFloat64(nan) AS engagement
+    FROM
+        (
+            SELECT
+                a.memberId,
+                a.activityCountState,
+                a.lastActiveState,
+                a.activityTypesState,
+                a.activeOnState,
+                a.averageSentimentState,
+                h.parentId,
+                h.grandparentId
+            FROM
+                (
+                    SELECT *
+                    FROM cdp_member_segment_aggregates_v2_ds
+                    WHERE memberId IN (SELECT entityId FROM affected WHERE kind = 'member')
+                ) a
+            INNER JOIN segment_hierarchy h ON h.id = a.segmentId
+        )
+    ARRAY JOIN [('parent', parentId), ('grandparent', grandparentId)] AS t
+    WHERE ('member', t.1, t.2, memberId) IN (SELECT kind, level, segmentId, entityId FROM affected)
+    GROUP BY t.1, t.2, memberId
+
+NODE organization_rollups
+SQL >
+    SELECT
+        'organization' AS kind,
+        t.1 AS level,
+        t.2 AS segmentId,
+        organizationId AS entityId,
+        countMerge(activityCountState) AS activityCount,
+        maxMerge(lastActiveState) AS lastActive,
+        CAST([], 'Array(String)') AS activityTypes,
+        groupArrayDistinctMerge(activeOnState) AS activeOn,
+        toFloat64(nan) AS sentiment,
+        minMerge(joinedAtState) AS joinedAt,
+        toUInt64(countDistinctMerge(memberCountState)) AS memberCount,
+        toFloat64(avgMerge(avgContributorEngagement)) AS engagement
+    FROM
+        (
+            SELECT
+                a.organizationId,
+                a.activityCountState,
+                a.lastActiveState,
+                a.activeOnState,
+                a.joinedAtState,
+                a.memberCountState,
+                a.avgContributorEngagement,
+                h.parentId,
+                h.grandparentId
+            FROM
+                (
+                    SELECT *
+                    FROM cdp_organization_segment_aggregates_v2_ds
+                    WHERE organizationId IN (SELECT entityId FROM affected WHERE kind = 'organization')
+                ) a
+            INNER JOIN segment_hierarchy h ON h.id = a.segmentId
+        )
+    ARRAY JOIN [('parent', parentId), ('grandparent', grandparentId)] AS t
+    WHERE
+        ('organization', t.1, t.2, organizationId)
+        IN (SELECT kind, level, segmentId, entityId FROM affected)
+    GROUP BY t.1, t.2, organizationId
+
+NODE member_leaf_values
+SQL >
+    SELECT
+        segmentId,
+        memberId AS entityId,
+        finalizeAggregation(activityCountState) AS activityCount,
+        finalizeAggregation(lastActiveState) AS lastActive,
+        finalizeAggregation(activityTypesState) AS activityTypes,
+        finalizeAggregation(activeOnState) AS activeOn,
+        toFloat64(finalizeAggregation(averageSentimentState)) AS sentiment
+    FROM cdp_member_segment_aggregates_v2_ds
+    WHERE
+        (segmentId, memberId)
+        IN (SELECT segmentId, entityId FROM detected WHERE kind = 'member' AND reason != 'gone')
+
+NODE organization_leaf_values
+SQL >
+    SELECT
+        segmentId,
+        organizationId AS entityId,
+        finalizeAggregation(activityCountState) AS activityCount,
+        finalizeAggregation(lastActiveState) AS lastActive,
+        finalizeAggregation(activeOnState) AS activeOn,
+        finalizeAggregation(joinedAtState) AS joinedAt,
+        toUInt64(finalizeAggregation(memberCountState)) AS memberCount,
+        toFloat64(finalizeAggregation(avgContributorEngagement)) AS engagement
+    FROM cdp_organization_segment_aggregates_v2_ds
+    WHERE
+        (segmentId, organizationId)
+        IN (SELECT segmentId, entityId FROM detected WHERE kind = 'organization' AND reason != 'gone')
+
+NODE cdp_segment_aggregates_rollup_copy_result
+SQL >
+    SELECT
+        d.kind AS kind,
+        'leaf' AS level,
+        d.reason AS reason,
+        'ready' AS stage,
+        today() AS runDate,
+        d.segmentId AS segmentId,
+        d.entityId AS entityId,
+        d.currentParent AS currentParent,
+        d.sentParent AS sentParent,
+        d.currentGrandparent AS currentGrandparent,
+        d.sentGrandparent AS sentGrandparent,
+        v.activityCount AS activityCount,
+        v.lastActive AS lastActive,
+        v.activityTypes AS activityTypes,
+        v.activeOn AS activeOn,
+        if(isFinite(v.sentiment), v.sentiment, NULL) AS averageSentiment,
+        toDateTime64(0, 3) AS joinedAt,
+        toUInt64(0) AS memberCount,
+        toInt64(0) AS avgContributorEngagement,
+        now() AS updatedAt
+    FROM detected d
+    INNER JOIN member_leaf_values v ON v.segmentId = d.segmentId AND v.entityId = d.entityId
+    WHERE d.kind = 'member' AND d.reason != 'gone'
+    UNION ALL
+    SELECT
+        d.kind,
+        'leaf',
+        d.reason,
+        'ready',
+        today(),
+        d.segmentId,
+        d.entityId,
+        d.currentParent,
+        d.sentParent,
+        d.currentGrandparent,
+        d.sentGrandparent,
+        v.activityCount,
+        v.lastActive,
+        CAST([], 'Array(String)'),
+        v.activeOn,
+        CAST(NULL, 'Nullable(Float64)'),
+        v.joinedAt,
+        v.memberCount,
+        if(isFinite(v.engagement), toInt64(round(v.engagement)), 0),
+        now()
+    FROM detected d
+    INNER JOIN organization_leaf_values v ON v.segmentId = d.segmentId AND v.entityId = d.entityId
+    WHERE d.kind = 'organization' AND d.reason != 'gone'
+    UNION ALL
+    SELECT
+        kind,
+        'leaf',
+        reason,
+        'ready',
+        today(),
+        segmentId,
+        entityId,
+        currentParent,
+        sentParent,
+        currentGrandparent,
+        sentGrandparent,
+        toUInt64(0),
+        toDateTime64(0, 3),
+        CAST([], 'Array(String)'),
+        CAST([], 'Array(String)'),
+        CAST(NULL, 'Nullable(Float64)'),
+        toDateTime64(0, 3),
+        toUInt64(0),
+        toInt64(0),
+        now()
+    FROM detected
+    WHERE reason = 'gone'
+    UNION ALL
+    SELECT
+        a.kind,
+        a.level,
+        if(r.entityId = '', 'gone', 'recomputed'),
+        'ready',
+        today(),
+        a.segmentId,
+        a.entityId,
+        '',
+        '',
+        '',
+        '',
+        r.activityCount,
+        if(r.entityId = '', toDateTime64(0, 3), r.lastActive),
+        r.activityTypes,
+        r.activeOn,
+        if(r.entityId != '' AND isFinite(r.sentiment), r.sentiment, NULL),
+        if(r.entityId = '', toDateTime64(0, 3), r.joinedAt),
+        r.memberCount,
+        if(r.entityId != '' AND isFinite(r.engagement), toInt64(round(r.engagement)), 0),
+        now()
+    FROM affected a
+    LEFT JOIN
+        (
+            SELECT * FROM member_rollups
+            UNION ALL
+            SELECT * FROM organization_rollups
+        ) r
+        ON r.kind = a.kind AND r.level = a.level AND r.segmentId = a.segmentId AND r.entityId = a.entityId
+
+TYPE COPY
+TARGET_DATASOURCE cdp_segment_aggregates_changes_ds
+COPY_MODE append
+COPY_SCHEDULE 45 5 * * *
