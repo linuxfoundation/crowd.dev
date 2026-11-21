@@ -1,17 +1,17 @@
 DESCRIPTION >
     Daily at 06:30 UTC, after the daily aggregate sinks: replaces cdp_segment_aggregates_sent_ds with what
-    was sent: yesterday's hashes, with the leaf keys detected today (cdp_segment_aggregates_changes_ds)
-    taking their detected hash and parents, and gone keys removed. It does not hash v2 again, so a v2
-    change after 05:25 is detected tomorrow instead of being recorded as sent. Only when, for each kind
-    with changes today, the rollup wrote its rows and that kind's sink ran ok after them and wrote at
-    least as many rows; otherwise it keeps yesterday's hashes and the next run sends the changes again
+    was sent: yesterday's hashes, with the leaf rows sent today (stage 'ready' in
+    cdp_segment_aggregates_changes_ds, hashed by the rollup from the values it sent) replacing theirs, and
+    gone keys removed. Only when, for each kind with changes today, every detected leaf got a ready row,
+    and that kind's sink ran ok after the rollup and wrote at least as many rows; otherwise it keeps
+    yesterday's hashes and the next run sends the changes again
     (linuxfoundation/lfx-cdp-insights-ops#1146).
 
-NODE detected_today
+NODE sent_leaves
 SQL >
     SELECT kind, segmentId, entityId, reason, currentParent, currentGrandparent, currentHash
     FROM cdp_segment_aggregates_changes_ds
-    WHERE stage = 'detected' AND runDate = today() AND level = 'leaf'
+    WHERE stage = 'ready' AND runDate = today() AND level = 'leaf'
 
 NODE kind_counts
 SQL >
@@ -23,6 +23,7 @@ SQL >
             'cdp_organization_segment_aggregates_sink'
         ) AS sink,
         countIf(stage = 'detected') AS detected,
+        uniqExactIf((segmentId, entityId), stage = 'ready' AND level = 'leaf') AS readyLeaves,
         uniqExactIf((segmentId, entityId), stage = 'ready') AS ready,
         maxIf(updatedAt, stage = 'ready') AS readyAt
     FROM cdp_segment_aggregates_changes_ds
@@ -41,17 +42,18 @@ SQL >
 
 NODE sent_today
 SQL >
-    SELECT min(detected = 0 OR (ready > 0 AND sinkOk)) AS sentOk
+    SELECT min(detected = 0 OR (readyLeaves = detected AND sinkOk)) AS sentOk
     FROM
         (
             SELECT
                 c.kind,
                 c.detected,
+                c.readyLeaves,
                 c.ready,
                 max(r.timestamp >= c.readyAt AND r.written_rows >= c.ready) AS sinkOk
             FROM kind_counts c
             LEFT JOIN sink_runs r ON r.pipe_name = c.sink
-            GROUP BY c.kind, c.detected, c.ready
+            GROUP BY c.kind, c.detected, c.readyLeaves, c.ready
         )
 
 NODE cdp_segment_aggregates_sent_copy_result
@@ -64,7 +66,7 @@ SQL >
     FROM cdp_segment_aggregates_sent_ds
     WHERE
         (SELECT sentOk FROM sent_today) = 1
-        AND (kind, segmentId, entityId) NOT IN (SELECT kind, segmentId, entityId FROM detected_today)
+        AND (kind, segmentId, entityId) NOT IN (SELECT kind, segmentId, entityId FROM sent_leaves)
     UNION ALL
     SELECT
         kind,
@@ -74,7 +76,7 @@ SQL >
         currentGrandparent AS grandparentId,
         currentHash AS hash,
         now() AS updatedAt
-    FROM detected_today
+    FROM sent_leaves
     WHERE (SELECT sentOk FROM sent_today) = 1 AND reason != 'gone'
 
 TYPE COPY

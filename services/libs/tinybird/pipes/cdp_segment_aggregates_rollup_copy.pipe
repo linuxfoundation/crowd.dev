@@ -1,8 +1,9 @@
 DESCRIPTION >
     Daily at 05:45 UTC, after cdp_segment_aggregates_changes_copy: appends to
     cdp_segment_aggregates_changes_ds every row the daily aggregate sinks send (stage 'ready'): the
-    changed leaf keys with their v2 values, and the parent and grandparent keys above them (old and new
-    parents) merged from v2 states. Keys with nothing left are sent with zeros and deleted in Postgres.
+    changed leaf keys with their v2 values and the hash of those values (the leaf-hash expressions must
+    stay identical to cdp_segment_aggregates_changes_copy), and the parent and grandparent keys above
+    them (old and new parents) merged from v2 states. Keys with nothing left are sent with zeros and deleted in Postgres.
     No score gives a NULL averageSentiment and 0 avgContributorEngagement
     (linuxfoundation/lfx-cdp-insights-ops#1146).
 
@@ -131,8 +132,15 @@ SQL >
         finalizeAggregation(lastActiveState) AS lastActive,
         finalizeAggregation(activityTypesState) AS activityTypes,
         finalizeAggregation(activeOnState) AS activeOn,
-        toFloat64(finalizeAggregation(averageSentimentState)) AS sentiment
-    FROM cdp_member_segment_aggregates_v2_ds
+        toFloat64(finalizeAggregation(averageSentimentState)) AS sentiment,
+        cityHash64(
+            finalizeAggregation(a.activityCountState),
+            finalizeAggregation(a.lastActiveState),
+            arraySort(finalizeAggregation(a.activityTypesState)),
+            arraySort(finalizeAggregation(a.activeOnState)),
+            hex(CAST(a.averageSentimentState AS String))
+        ) AS hash
+    FROM cdp_member_segment_aggregates_v2_ds a
     WHERE
         (segmentId, memberId)
         IN (SELECT segmentId, entityId FROM detected WHERE kind = 'member' AND reason != 'gone')
@@ -147,8 +155,17 @@ SQL >
         finalizeAggregation(activeOnState) AS activeOn,
         finalizeAggregation(joinedAtState) AS joinedAt,
         toUInt64(finalizeAggregation(memberCountState)) AS memberCount,
-        toFloat64(finalizeAggregation(avgContributorEngagement)) AS engagement
-    FROM cdp_organization_segment_aggregates_v2_ds
+        toFloat64(finalizeAggregation(avgContributorEngagement)) AS engagement,
+        cityHash64(
+            finalizeAggregation(a.joinedAtState),
+            finalizeAggregation(a.lastActiveState),
+            arraySort(finalizeAggregation(a.activeOnState)),
+            finalizeAggregation(a.activityCountState),
+            finalizeAggregation(a.memberCountState),
+            a.memberSetHash,
+            hex(CAST(a.avgContributorEngagement AS String))
+        ) AS hash
+    FROM cdp_organization_segment_aggregates_v2_ds a
     WHERE
         (segmentId, organizationId)
         IN (SELECT segmentId, entityId FROM detected WHERE kind = 'organization' AND reason != 'gone')
@@ -167,7 +184,7 @@ SQL >
         d.sentParent AS sentParent,
         d.currentGrandparent AS currentGrandparent,
         d.sentGrandparent AS sentGrandparent,
-        d.currentHash AS currentHash,
+        v.hash AS currentHash,
         v.activityCount AS activityCount,
         v.lastActive AS lastActive,
         v.activityTypes AS activityTypes,
@@ -193,7 +210,7 @@ SQL >
         d.sentParent,
         d.currentGrandparent,
         d.sentGrandparent,
-        d.currentHash,
+        v.hash,
         v.activityCount,
         v.lastActive,
         CAST([], 'Array(String)'),
