@@ -1,9 +1,11 @@
 import {
   deleteOrphanMemberSegmentsAgg as deleteMemberSegmentsAgg,
+  deleteZeroActivityMemberSegmentsAgg,
   getOrphanMemberSegmentsAgg as getMemberSegmentsAgg,
 } from '@crowd/data-access-layer/src/members/segmentsAgg'
 import {
   deleteOrphanOrganizationSegmentsAgg as deleteOrganizationSegmentsAgg,
+  deleteZeroActivityOrganizationSegmentsAgg,
   getOrphanOrganizationSegmentsAgg as getOrganizationSegmentsAgg,
 } from '@crowd/data-access-layer/src/organizations/segmentsAgg'
 import {
@@ -69,6 +71,29 @@ export async function deleteOrphanOrganizationSegmentsAgg(organizationId: string
     return deleteOrganizationSegmentsAgg(dbStoreQx(svc.postgres.writer), organizationId)
   } catch (error) {
     svc.log.error(error, 'Error deleting orphan organizationSegmentsAgg record!')
+    throw error
+  }
+}
+
+export async function deleteZeroActivityMembersSegmentsAgg(batchSize: number): Promise<number> {
+  try {
+    return await deleteZeroActivityMemberSegmentsAgg(dbStoreQx(svc.postgres.writer), batchSize)
+  } catch (error) {
+    svc.log.error(error, 'Error deleting zero-activity memberSegmentsAgg records!')
+    throw error
+  }
+}
+
+export async function deleteZeroActivityOrganizationsSegmentsAgg(
+  batchSize: number,
+): Promise<number> {
+  try {
+    return await deleteZeroActivityOrganizationSegmentsAgg(
+      dbStoreQx(svc.postgres.writer),
+      batchSize,
+    )
+  } catch (error) {
+    svc.log.error(error, 'Error deleting zero-activity organizationSegmentsAgg records!')
     throw error
   }
 }
