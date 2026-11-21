@@ -4,8 +4,9 @@ DESCRIPTION >
     changed leaf keys with their v2 values and the hash of those values (the leaf-hash expressions must
     stay identical to cdp_segment_aggregates_changes_copy), and the parent and grandparent keys above
     them (old and new parents) merged from v2 states. Keys with nothing left are sent with zeros and deleted in Postgres.
-    No score gives a NULL averageSentiment and 0 avgContributorEngagement
-    (linuxfoundation/lfx-cdp-insights-ops#1146).
+    No score gives a NULL averageSentiment and 0 avgContributorEngagement. Writes nothing when a v2
+    copy finished after today's comparison, so leaves and parents come from the compared snapshot; the
+    fingerprint then stays and the next night compares again (linuxfoundation/lfx-cdp-insights-ops#1146).
 
 NODE segment_hierarchy
 SQL >
@@ -27,7 +28,24 @@ SQL >
         sentGrandparent,
         currentHash
     FROM cdp_segment_aggregates_changes_ds
-    WHERE stage = 'detected' AND runDate = today() AND level = 'leaf'
+    WHERE
+        stage = 'detected'
+        AND runDate = today()
+        AND level = 'leaf'
+        AND (
+            SELECT max(timestamp + toIntervalSecond(toInt64(elapsed_time)))
+            FROM tinybird.datasources_ops_log
+            WHERE
+                event_type = 'copy'
+                AND result = 'ok'
+                AND timestamp >= toStartOfDay(now())
+                AND datasource_name
+                IN ('cdp_member_segment_aggregates_v2_ds', 'cdp_organization_segment_aggregates_v2_ds')
+        ) <= (
+            SELECT min(updatedAt)
+            FROM cdp_segment_aggregates_changes_ds
+            WHERE stage = 'detected' AND runDate = today()
+        )
 
 NODE affected
 SQL >
