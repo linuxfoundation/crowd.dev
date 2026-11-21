@@ -1,8 +1,9 @@
 DESCRIPTION >
-    Temporary measurement, step 1 of the change detection for the daily aggregate sinks: compares the
-    v2 leaf aggregates with cdp_segment_aggregates_sent_ds once and writes the leaf keys that are new,
-    changed, gone or moved under another parent into cdp_segment_aggregates_diff_tmp_ds. To be
-    deleted after the measurement (linuxfoundation/lfx-cdp-insights-ops#1146).
+    Daily at 05:25 UTC, after the v2 aggregate copies: compares every v2 leaf aggregate (member and
+    organization) with cdp_segment_aggregates_sent_ds once and replaces cdp_segment_aggregates_changes_ds
+    with the leaf keys that are new, changed, gone or moved under another parent (stage 'detected').
+    The leaf-hash nodes must stay identical to cdp_segment_aggregates_sent_copy and
+    cdp_segment_aggregates_sent_seed_copy (linuxfoundation/lfx-cdp-insights-ops#1146).
 
 NODE segment_hierarchy
 SQL >
@@ -57,12 +58,14 @@ SQL >
     UNION ALL
     SELECT * FROM organization_leaf
 
-NODE cdp_segment_aggregates_diff_tmp_copy_result
+NODE cdp_segment_aggregates_changes_copy_result
 SQL >
     SELECT
         kind,
         'leaf' AS level,
         multiIf(inSent = 0, 'new', inCurrent = 0, 'gone', currentHash != sentHash, 'changed', 'moved') AS reason,
+        'detected' AS stage,
+        today() AS runDate,
         segmentId,
         entityId,
         currentParent,
@@ -70,8 +73,13 @@ SQL >
         currentGrandparent,
         sentGrandparent,
         toUInt64(0) AS activityCount,
-        toUInt64(0) AS memberCount,
         toDateTime64(0, 3) AS lastActive,
+        CAST([], 'Array(String)') AS activityTypes,
+        CAST([], 'Array(String)') AS activeOn,
+        CAST(NULL, 'Nullable(Float64)') AS averageSentiment,
+        toDateTime64(0, 3) AS joinedAt,
+        toUInt64(0) AS memberCount,
+        toInt64(0) AS avgContributorEngagement,
         now() AS updatedAt
     FROM
         (
@@ -104,6 +112,6 @@ SQL >
         )
 
 TYPE COPY
-TARGET_DATASOURCE cdp_segment_aggregates_diff_tmp_ds
+TARGET_DATASOURCE cdp_segment_aggregates_changes_ds
 COPY_MODE replace
-COPY_SCHEDULE @on-demand
+COPY_SCHEDULE 25 5 * * *
