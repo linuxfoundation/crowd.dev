@@ -23,7 +23,7 @@ SQL >
             finalizeAggregation(a.lastActiveState),
             arraySort(finalizeAggregation(a.activityTypesState)),
             arraySort(finalizeAggregation(a.activeOnState)),
-            ifNotFinite(round(finalizeAggregation(a.averageSentimentState), 2), -1)
+            hex(CAST(a.averageSentimentState AS String))
         ) AS hash
     FROM cdp_member_segment_aggregates_v2_ds a
     LEFT JOIN segment_hierarchy h ON h.id = a.segmentId
@@ -42,7 +42,8 @@ SQL >
             arraySort(finalizeAggregation(a.activeOnState)),
             finalizeAggregation(a.activityCountState),
             finalizeAggregation(a.memberCountState),
-            ifNotFinite(round(finalizeAggregation(a.avgContributorEngagement), 2), -1)
+            a.memberSetHash,
+            hex(CAST(a.avgContributorEngagement AS String))
         ) AS hash
     FROM cdp_organization_segment_aggregates_v2_ds a
     LEFT JOIN segment_hierarchy h ON h.id = a.segmentId

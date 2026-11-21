@@ -7,6 +7,7 @@ SCHEMA >
     `activeOnState` AggregateFunction(groupArrayDistinct, String),
     `activityCountState` AggregateFunction(count, String),
     `memberCountState` AggregateFunction(countDistinct, String),
+    `memberSetHash` UInt64,
     `avgContributorEngagement` AggregateFunction(avg, Int8),
     `lastActivityUpdatedAtState` AggregateFunction(max, DateTime64(3)),
     `updatedAt` DateTime64(3)

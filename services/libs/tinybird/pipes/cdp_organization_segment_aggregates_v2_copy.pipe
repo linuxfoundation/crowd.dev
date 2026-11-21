@@ -18,6 +18,7 @@ SQL >
         groupArrayDistinctState(platform) AS activeOnState,
         countState(activityId) AS activityCountState,
         countDistinctState(memberId) as memberCountState,
+        groupBitXor(DISTINCT cityHash64(memberId)) AS memberSetHash,
         avgStateIf(score, score != -1) AS avgContributorEngagement,
         maxState(act.updatedAt) as lastActivityUpdatedAtState,
         max(act.updatedAt) as updatedAt
