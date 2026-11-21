@@ -1,3 +1,9 @@
+DESCRIPTION >
+    On demand, one bucket at a time (bucket_id 0-4): sends every organization segment aggregate in v2 (leaf,
+    parent and grandparent) to Postgres organizationSegmentsAgg through Kafka, for the one-time backfill
+    that replaces the inflated v1 numbers. updatedAt is the send time, so rows the backfill did not rewrite
+    can be found afterwards (linuxfoundation/lfx-cdp-insights-ops#1146).
+
 NODE leaf_segment_aggregates
 SQL >
     %
@@ -10,9 +16,11 @@ SQL >
         groupArrayDistinctMerge(activeOnState) AS activeOn,
         countMerge(activityCountState) AS activityCount,
         countDistinctMerge(memberCountState) as memberCount,
-        round(avgMerge(avgContributorEngagement)) AS avgContributorEngagement,
-        max(updatedAt) AS updatedAt
-    FROM cdp_organization_segment_aggregates_ds
+        if(
+            isFinite(avgMerge(avgContributorEngagement)), round(avgMerge(avgContributorEngagement)), 0
+        ) AS avgContributorEngagement,
+        now() AS updatedAt
+    FROM cdp_organization_segment_aggregates_v2_ds
     WHERE
         organizationId <> ''
         {% if defined(bucket_id) %}
@@ -40,10 +48,21 @@ SQL >
         groupArrayDistinctMerge(activeOnState) AS activeOn,
         countMerge(activityCountState) AS activityCount,
         countDistinctMerge(memberCountState) as memberCount,
-        round(avgMerge(avgContributorEngagement)) AS avgContributorEngagement,
-        max(updatedAt) AS updatedAt
-    FROM cdp_organization_segment_aggregates_ds as cdp_aggs
-    join segments s on s.id = cdp_aggs.segmentId
+        if(
+            isFinite(avgMerge(avgContributorEngagement)), round(avgMerge(avgContributorEngagement)), 0
+        ) AS avgContributorEngagement,
+        now() AS updatedAt
+    FROM cdp_organization_segment_aggregates_v2_ds as cdp_aggs
+    join
+        (
+            SELECT
+                id,
+                argMax(parentId, updatedAt) AS parentId,
+                argMax(grandparentId, updatedAt) AS grandparentId
+            FROM segments
+            GROUP BY id
+        ) s
+        on s.id = cdp_aggs.segmentId
     WHERE
         organizationId <> '' AND s.parentId <> ''
         {% if defined(bucket_id) %}
@@ -71,10 +90,21 @@ SQL >
         groupArrayDistinctMerge(activeOnState) AS activeOn,
         countMerge(activityCountState) AS activityCount,
         countDistinctMerge(memberCountState) as memberCount,
-        round(avgMerge(avgContributorEngagement)) AS avgContributorEngagement,
-        max(updatedAt) AS updatedAt
-    FROM cdp_organization_segment_aggregates_ds as cdp_aggs
-    join segments s on s.id = cdp_aggs.segmentId
+        if(
+            isFinite(avgMerge(avgContributorEngagement)), round(avgMerge(avgContributorEngagement)), 0
+        ) AS avgContributorEngagement,
+        now() AS updatedAt
+    FROM cdp_organization_segment_aggregates_v2_ds as cdp_aggs
+    join
+        (
+            SELECT
+                id,
+                argMax(parentId, updatedAt) AS parentId,
+                argMax(grandparentId, updatedAt) AS grandparentId
+            FROM segments
+            GROUP BY id
+        ) s
+        on s.id = cdp_aggs.segmentId
     WHERE
         organizationId <> '' AND s.grandparentId <> ''
         {% if defined(bucket_id) %}

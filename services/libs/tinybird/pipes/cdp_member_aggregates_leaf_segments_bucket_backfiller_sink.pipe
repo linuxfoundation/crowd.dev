@@ -1,3 +1,9 @@
+DESCRIPTION >
+    On demand, one bucket at a time (bucket_id 0-4): sends every member leaf segment aggregate in v2 to
+    Postgres memberSegmentsAgg through Kafka, for the one-time backfill that replaces the inflated v1 numbers.
+    updatedAt is the send time, so rows the backfill did not rewrite can be found afterwards
+    (linuxfoundation/lfx-cdp-insights-ops#1146).
+
 NODE leaf_segment_aggregates
 SQL >
     %
@@ -9,9 +15,13 @@ SQL >
         maxMerge(cdp_aggs.lastActiveState) AS lastActive,
         groupArrayDistinctMerge(cdp_aggs.activityTypesState) AS activityTypes,
         groupArrayDistinctMerge(cdp_aggs.activeOnState) AS activeOn,
-        avgMerge(cdp_aggs.averageSentimentState) AS averageSentiment,
+        if(
+            isFinite(avgMerge(cdp_aggs.averageSentimentState)),
+            avgMerge(cdp_aggs.averageSentimentState),
+            NULL
+        ) AS averageSentiment,
         now() AS updatedAt
-    FROM cdp_member_segment_aggregates_ds cdp_aggs
+    FROM cdp_member_segment_aggregates_v2_ds cdp_aggs
     {% if defined(bucket_id) %}
         WHERE
             cityHash64(segmentId) % 5

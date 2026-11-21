@@ -1,0 +1,17 @@
+DESCRIPTION >
+    Hash of the leaf-segment aggregates last sent to Postgres, per member and per organization,
+    with the leaf's parent and grandparent at that time. The daily sinks compare the v2 aggregates
+    with it to find leaf keys that are new, changed, gone or moved, and recompute only the parent and
+    grandparent keys above them (linuxfoundation/lfx-cdp-insights-ops#1146).
+
+SCHEMA >
+    `kind` LowCardinality(String),
+    `segmentId` String,
+    `entityId` String,
+    `parentId` String,
+    `grandparentId` String,
+    `hash` UInt64,
+    `updatedAt` DateTime
+
+ENGINE MergeTree
+ENGINE_SORTING_KEY kind, segmentId, entityId
