@@ -13,7 +13,8 @@ This project has guided skills for common workflows. **Proactively suggest the r
 | `/commit`                         | Commit staged changes, generate a commit message, "commit this", "make a commit"                    |
 | `/preflight`                      | Before submitting a PR, check if code is ready, validate changes, verify a branch, run all checks   |
 | `/dco`                            | PR failing DCO check, missing Signed-off-by, sign-off forgotten on a commit                         |
-| `/review-pr`                      | Review a PR, audit code changes, check PR quality, validate a PR against standards                  |
+| `/review`                         | Review changes before a push, the push gate blocked, re-review after fixes, "review this"           |
+| `/review-pr`                      | Review someone else's PR and draft GitHub comments (runs `/review` for the bug hunt)                |
 | `/adr`                            | Record an architecture decision, choose between frameworks/libraries/patterns, query past decisions |
 | `/scaffold-snowflake-connector`   | Add a new Snowflake-connector data source or integration                                            |
 | `/packages-worker-setup`          | First-time setup of packages-db and github-repos-enricher for a new engineer                        |
@@ -38,11 +39,18 @@ This project has guided skills for common workflows. **Proactively suggest the r
 - "DCO bot blocked my PR", "forgot --signoff"
 - Any mention of the DCO Probot check
 
+**`/review`** — match any of these intents:
+
+- "Review this", "review my changes", "is this ready to push?", "look over the diff"
+- The push gate blocked a `git push`, or Important findings were just fixed
+- Any workflow step that calls for a code reviewer (superpowers reviewer dispatch, final branch review)
+- Any `git push` about to happen without a clean local review
+
 **`/review-pr`** — match any of these intents:
 
-- "Review this PR", "Check PR quality", "Audit code changes"
+- "Review this PR", "Check PR quality", "Audit code changes", draft comments on a PR
 - "Review #123", "Is this PR ready to merge?"
-- Any mention of reviewing or auditing a pull request
+- Reviewing or auditing a pull request authored by someone else
 
 **`/adr`** — match any of these intents:
 

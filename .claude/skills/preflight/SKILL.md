@@ -110,7 +110,19 @@ git log --format="%h %s%n%b" origin/main..HEAD
 
 ---
 
-## Check 7: Change Summary
+## Check 7: Local Review
+
+```bash
+bash .claude/hooks/review-state.sh status
+```
+
+- `clean` — the current change passed `/review` with no open Important findings. Pass.
+- `unreviewed` or `open` — invoke the `review` skill now (Skill tool, no arguments). The push gate refuses `git push` until the status is `clean`, so this is not optional. Report the review's first line (the count) in the results.
+- `empty` — nothing to review.
+
+---
+
+## Check 8: Change Summary
 
 ```bash
 git diff --stat origin/main...HEAD
@@ -138,6 +150,7 @@ PREFLIGHT RESULTS
 ✓ TypeScript          — backend: OK
 ✓ Protected files     — None modified
 ✓ Commits             — Conventions followed, signed off, issue referenced
+✓ Local review        — clean (round 1: nothing needs fixing)
 ─────────────────────────────────────────────────
 READY FOR PR
 ```
