@@ -38,12 +38,16 @@ export async function deleteZeroActivityOrganizationSegmentsAgg(
   return qx.result(
     `
     DELETE FROM "organizationSegmentsAgg"
-    WHERE ("segmentId", "organizationId") IN (
-      SELECT "segmentId", "organizationId"
-      FROM "organizationSegmentsAgg"
-      WHERE "activityCount" = 0
-      LIMIT $(batchSize)
+    WHERE ctid = ANY (
+      ARRAY(
+        SELECT ctid
+        FROM "organizationSegmentsAgg"
+        WHERE "activityCount" = 0
+        LIMIT $(batchSize)
+      )
     )
+    -- re-checked on rows a sink updated after the batch was selected
+    AND "activityCount" = 0
     `,
     { batchSize },
   )
