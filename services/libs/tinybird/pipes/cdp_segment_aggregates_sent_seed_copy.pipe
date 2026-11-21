@@ -6,9 +6,7 @@ DESCRIPTION >
 NODE segment_hierarchy
 SQL >
     SELECT
-        id,
-        argMax(parentId, updatedAt) AS parentId,
-        argMax(grandparentId, updatedAt) AS grandparentId
+        id, argMax(parentId, updatedAt) AS parentId, argMax(grandparentId, updatedAt) AS grandparentId
     FROM segments
     GROUP BY id
 
@@ -52,9 +50,11 @@ SQL >
 
 NODE current_leaf
 SQL >
-    SELECT * FROM member_leaf
+    SELECT *
+    FROM member_leaf
     UNION ALL
-    SELECT * FROM organization_leaf
+    SELECT *
+    FROM organization_leaf
 
 NODE cdp_segment_aggregates_sent_seed_copy_result
 SQL >
