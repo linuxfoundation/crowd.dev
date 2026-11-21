@@ -12,6 +12,8 @@ SQL >
     SELECT kind, segmentId, entityId, reason, currentParent, currentGrandparent, currentHash
     FROM cdp_segment_aggregates_changes_ds
     WHERE stage = 'ready' AND runDate = today() AND level = 'leaf'
+    ORDER BY updatedAt DESC
+    LIMIT 1 BY kind, segmentId, entityId
 
 NODE kind_counts
 SQL >
