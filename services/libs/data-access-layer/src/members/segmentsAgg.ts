@@ -30,3 +30,21 @@ export async function deleteOrphanMemberSegmentsAgg(
     { memberId },
   )
 }
+
+export async function deleteZeroActivityMemberSegmentsAgg(
+  qx: QueryExecutor,
+  batchSize: number,
+): Promise<number> {
+  return qx.result(
+    `
+    DELETE FROM "memberSegmentsAgg"
+    WHERE ("segmentId", "memberId") IN (
+      SELECT "segmentId", "memberId"
+      FROM "memberSegmentsAgg"
+      WHERE "activityCount" = 0
+      LIMIT $(batchSize)
+    )
+    `,
+    { batchSize },
+  )
+}

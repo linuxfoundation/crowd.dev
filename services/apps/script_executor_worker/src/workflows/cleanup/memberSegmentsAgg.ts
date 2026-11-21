@@ -4,11 +4,14 @@ import * as activities from '../../activities'
 import { IScriptBatchTestArgs } from '../../types'
 import { chunkArray } from '../../utils/common'
 
+const ZERO_ACTIVITY_BATCH_SIZE = 10000
+
 const {
   startOrphanCleanupRun,
   updateOrphanCleanupRun,
   getOrphanMembersSegmentsAgg,
   deleteOrphanMembersSegmentsAgg,
+  deleteZeroActivityMembersSegmentsAgg,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '30 minutes',
   retry: { maximumAttempts: 3, backoffCoefficient: 3 },
@@ -36,6 +39,12 @@ export async function cleanupMemberSegmentsAgg(args: IScriptBatchTestArgs): Prom
     const orphanIds = await getOrphanMembersSegmentsAgg(BATCH_SIZE)
 
     if (orphanIds.length === 0) {
+      // the daily aggregate sinks send keys that no longer exist with activityCount 0
+      let zeroActivityDeleted: number
+      do {
+        zeroActivityDeleted = await deleteZeroActivityMembersSegmentsAgg(ZERO_ACTIVITY_BATCH_SIZE)
+      } while (zeroActivityDeleted === ZERO_ACTIVITY_BATCH_SIZE)
+
       // Update the cleanup run as completed
       if (runId) {
         await updateOrphanCleanupRun(runId, {
