@@ -16,7 +16,7 @@ SQL >
 NODE affected
 SQL >
     SELECT DISTINCT kind, t.1 AS level, t.2 AS segmentId, entityId
-    FROM cdp_segment_aggregates_diff_tmp_ds
+    FROM (SELECT * FROM cdp_segment_aggregates_diff_tmp_ds WHERE level = 'leaf')
     ARRAY JOIN
         [
             ('parent', currentParent),
@@ -24,7 +24,7 @@ SQL >
             ('grandparent', currentGrandparent),
             ('grandparent', sentGrandparent)
         ] AS t
-    WHERE level = 'leaf' AND t.2 != ''
+    WHERE t.2 != ''
 
 NODE member_rollups
 SQL >
