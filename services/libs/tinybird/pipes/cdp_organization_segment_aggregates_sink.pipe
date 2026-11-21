@@ -1,0 +1,30 @@
+DESCRIPTION >
+    Daily at 06:05 UTC: sends today's organization segment aggregate rows from
+    cdp_segment_aggregates_changes_ds (leaf, parent and grandparent; written by
+    cdp_segment_aggregates_rollup_copy) to Postgres organizationSegmentsAgg through Kafka. Same columns and
+    topic as the v1 sinks. Keys that are gone are sent with activityCount 0 and deleted in Postgres by the
+    nightly cleanup (linuxfoundation/lfx-cdp-insights-ops#1146).
+
+NODE cdp_organization_segment_aggregates_sink_result
+SQL >
+    SELECT
+        segmentId,
+        entityId AS organizationId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        joinedAt,
+        lastActive,
+        activeOn,
+        activityCount,
+        memberCount,
+        avgContributorEngagement,
+        now() AS updatedAt
+    FROM cdp_segment_aggregates_changes_ds
+    WHERE kind = 'organization' AND stage = 'ready' AND runDate = today()
+
+TYPE SINK
+EXPORT_SERVICE kafka
+EXPORT_CONNECTION_NAME lfx-oracle-kafka-streaming
+EXPORT_SCHEDULE 5 6 * * *
+EXPORT_FORMAT csv
+EXPORT_STRATEGY @new
+EXPORT_KAFKA_TOPIC organizationSegmentsAgg_sink
