@@ -34,7 +34,7 @@ NODE memberPerSegment
 SQL >
     -- Finalize per (segmentId, memberId) only for valid segments
     SELECT m.segmentId, m.memberId, maxMerge(m.lastActiveState) AS lastActive
-    FROM cdp_member_segment_aggregates_ds AS m ANY
+    FROM cdp_member_segment_aggregates_v2_ds AS m ANY
     INNER JOIN validSegments AS vs ON vs.id = m.segmentId
     GROUP BY m.segmentId, m.memberId
 
@@ -55,7 +55,7 @@ NODE orgPerSegment
 SQL >
     -- Finalize per (segmentId, organizationId) only for valid segments
     SELECT o.segmentId, o.organizationId, maxMerge(o.lastActiveState) AS lastActive
-    FROM cdp_organization_segment_aggregates_ds AS o ANY
+    FROM cdp_organization_segment_aggregates_v2_ds AS o ANY
     INNER JOIN validSegments AS vs ON vs.id = o.segmentId
     GROUP BY o.segmentId, o.organizationId
 

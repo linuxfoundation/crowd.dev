@@ -1,7 +1,7 @@
 DESCRIPTION >
     Populates organizations_populated_slug with one row per organization that has contributions.
     Carries all columns from organizations FINAL and adds a deterministic globally unique
-    slug and a total contributionCount (sourced from cdp_organization_segment_aggregates_ds).
+    slug and a total contributionCount (sourced from cdp_organization_segment_aggregates_v2_ds).
 
 NODE organizations_slugged_contribution_counts
 DESCRIPTION >
@@ -10,7 +10,7 @@ DESCRIPTION >
 
 SQL >
     SELECT organizationId, countMerge(activityCountState) AS contributionCount
-    FROM cdp_organization_segment_aggregates_ds
+    FROM cdp_organization_segment_aggregates_v2_ds
     WHERE organizationId != ''
     GROUP BY organizationId
 

@@ -1,6 +1,6 @@
 DESCRIPTION >
     Global metrics for activities, organizations, and members used for CDP dashboard.
-    Uses cdp_member_segment_aggregates_ds and cdp_organization_segment_aggregates_ds.
+    Uses cdp_member_segment_aggregates_v2_ds and cdp_organization_segment_aggregates_v2_ds.
     "Last30Days" is based on lastActive >= now() - 30 days.
 
 NODE activitiesGlobalMetrics
@@ -25,7 +25,7 @@ SQL >
     FROM (SELECT activitiesTotal, activitiesLast30Days FROM activitiesGlobalMetrics) AS a
     CROSS JOIN
         (
-            -- member-based global metrics (single scan over cdp_member_segment_aggregates_ds)
+            -- member-based global metrics (single scan over cdp_member_segment_aggregates_v2_ds)
             SELECT
                 uniqCombined(memberId) AS membersTotal,
                 uniqCombinedIf(memberId, lastActive >= now() - INTERVAL 30 DAY) AS membersLast30Days
@@ -33,14 +33,14 @@ SQL >
                 (
                     -- finalize AggregateFunction states per member
                     SELECT memberId, maxMerge(lastActiveState) AS lastActive
-                    FROM cdp_member_segment_aggregates_ds
+                    FROM cdp_member_segment_aggregates_v2_ds
                     GROUP BY memberId
                 ) AS m
         ) AS ms
     CROSS JOIN
         (
             -- organization-based global metrics (single scan over
-            -- cdp_organization_segment_aggregates_ds)
+            -- cdp_organization_segment_aggregates_v2_ds)
             SELECT
                 uniqCombined(organizationId) AS organizationsTotal,
                 uniqCombinedIf(
@@ -50,7 +50,7 @@ SQL >
                 (
                     -- finalize AggregateFunction states per organization
                     SELECT organizationId, maxMerge(lastActiveState) AS lastActive
-                    FROM cdp_organization_segment_aggregates_ds
+                    FROM cdp_organization_segment_aggregates_v2_ds
                     GROUP BY organizationId
                 ) AS o
         ) AS os
