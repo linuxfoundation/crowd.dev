@@ -1,6 +1,6 @@
 DESCRIPTION >
     Recomputes the member segment aggregates from the deduplicated served layer into cdp_member_segment_aggregates_v2_ds,
-    replacing it. Unlike cdp_member_segment_aggregates_MV, which counts every write of a relation,
+    replacing it. Unlike the v1 aggregates it replaced, which counted every write of a relation,
     this counts each activity once and follows moves and merges. Relations deleted in Postgres are
     counted until the erasure or cleanup scripts remove them from the served layer. Activity types
     are platform-qualified (platform:type), as the member filter sends them, and -1 (no score) is

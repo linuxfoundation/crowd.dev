@@ -3,7 +3,7 @@ DESCRIPTION >
     deterministic globally unique slug derived from displayName and a total contributionCount
     across all segments.
     Only includes organizations that have at least one activity recorded in
-    cdp_organization_segment_aggregates_ds (activityCountState > 0).
+    cdp_organization_segment_aggregates_v2_ds (activityCountState > 0).
     Slug rules:
     - slug = lowerUTF8(displayName) with non-alphanumeric runs collapsed to '-' and
     leading/trailing dashes trimmed.
