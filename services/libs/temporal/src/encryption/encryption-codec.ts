@@ -15,9 +15,14 @@ export class EncryptionCodec implements PayloadCodec {
     protected readonly defaultKeyId: string,
   ) {}
 
+  // Encrypts with the current key and also decrypts payloads written with the keys in
+  // CROWD_TEMPORAL_ENCRYPTION_KEYS_PREVIOUS, so the key can rotate while old payloads stay readable.
   static async create(keyId: string): Promise<EncryptionCodec> {
     const keys = new Map<string, crypto.CryptoKey>()
-    keys.set(keyId, await fetchKey(keyId))
+    for (const [previousKeyId, previousKey] of Object.entries(previousKeys())) {
+      keys.set(previousKeyId, await importKey(previousKey))
+    }
+    keys.set(keyId, await importKey(process.env['CROWD_TEMPORAL_ENCRYPTION_KEY']))
     return new this(keys, keyId)
   }
 
@@ -52,12 +57,8 @@ export class EncryptionCodec implements PayloadCodec {
           throw new ValueError('Unable to decrypt Payload without encryption key id')
         }
 
-        const keyId = decode(keyIdBytes)
-        let key = this.keys.get(keyId)
-        if (!key) {
-          key = await fetchKey(keyId)
-          this.keys.set(keyId, key)
-        }
+        // Unknown key ids fall back to the current key, which is how every id was decrypted before.
+        const key = this.keys.get(decode(keyIdBytes)) ?? this.keys.get(this.defaultKeyId)
         const decryptedPayloadBytes = await decrypt(payload.data, key)
         return temporal.api.common.v1.Payload.decode(decryptedPayloadBytes)
       }),
@@ -65,18 +66,41 @@ export class EncryptionCodec implements PayloadCodec {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function fetchKey(_keyId: string): Promise<crypto.CryptoKey> {
-  const key = Buffer.from(process.env['CROWD_TEMPORAL_ENCRYPTION_KEY'])
-  const cryptoKey = await crypto.subtle.importKey(
+// A JSON object of key id to key; the error never echoes the value, which holds key material.
+function previousKeys(): Record<string, string> {
+  const raw = process.env['CROWD_TEMPORAL_ENCRYPTION_KEYS_PREVIOUS']
+  if (!raw) {
+    return {}
+  }
+
+  const invalid = new ValueError(
+    'CROWD_TEMPORAL_ENCRYPTION_KEYS_PREVIOUS must be a JSON object of key id to non-empty key',
+  )
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw invalid
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed) ||
+    !Object.values(parsed).every((key) => typeof key === 'string' && key.length > 0)
+  ) {
+    throw invalid
+  }
+  return parsed as Record<string, string>
+}
+
+async function importKey(key: string): Promise<crypto.CryptoKey> {
+  return crypto.subtle.importKey(
     'raw',
-    key,
+    Buffer.from(key),
     {
       name: 'AES-GCM',
     },
     true,
     ['encrypt', 'decrypt'],
   )
-
-  return cryptoKey
 }
