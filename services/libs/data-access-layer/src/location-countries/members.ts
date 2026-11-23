@@ -1,3 +1,5 @@
+import { getCountryName } from '@crowd/common'
+
 import { QueryExecutor } from '../queryExecutor'
 import {
   ICountryScanCandidate,
@@ -83,13 +85,13 @@ export async function saveMemberCountries(
   await qx.result(
     `
       update members m
-      set attributes = jsonb_set(
-            m.attributes,
-            '{country}',
-            jsonb_build_object(u.source, u.country, 'default', u.country)
+      set attributes = m.attributes || jsonb_build_object(
+            'country', jsonb_build_object(u.source, u.country, 'default', u.country),
+            'geo', jsonb_build_object(u.source, u.geo, 'default', u.geo)
           ),
           "updatedAt" = now()
-      from unnest($(ids)::uuid[], $(sources)::text[], $(countries)::text[]) as u(id, source, country)
+      from unnest($(ids)::uuid[], $(sources)::text[], $(countries)::text[], $(geos)::jsonb[])
+        as u(id, source, country, geo)
       where m.id = u.id
         and not exists (
           select 1
@@ -100,7 +102,8 @@ export async function saveMemberCountries(
     {
       ids: updates.map((u) => u.id),
       sources: updates.map((u) => u.source),
-      countries: updates.map((u) => u.country),
+      countries: updates.map((u) => getCountryName(u.countryCode)),
+      geos: updates.map((u) => JSON.stringify({ countryCode: u.countryCode })),
     },
   )
 }

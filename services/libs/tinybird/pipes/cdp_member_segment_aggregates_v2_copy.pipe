@@ -1,0 +1,30 @@
+DESCRIPTION >
+    Recomputes the member segment aggregates from the deduplicated served layer into cdp_member_segment_aggregates_v2_ds,
+    replacing it. Unlike the v1 aggregates it replaced, which counted every write of a relation,
+    this counts each activity once and follows moves and merges. Relations deleted in Postgres are
+    counted until the erasure or cleanup scripts remove them from the served layer. Activity types
+    are platform-qualified (platform:type), as the member filter sends them, and -1 (no score) is
+    left out of the sentiment average.
+    Runs daily at 04:30 UTC: after the 01:30 served-layer merger, and outside the
+    01:00-03:00 peak of concurrent copy jobs (linuxfoundation/lfx-cdp-insights-ops#1182).
+
+NODE cdp_member_segment_aggregates_v2_copy_0
+SQL >
+    SELECT
+        segmentId,
+        memberId,
+        '875c38bd-2b1b-4e91-ad07-0cfbabb4c49f' AS tenantId,
+        countState(activityId) AS activityCountState,
+        maxState(timestamp) AS lastActiveState,
+        groupArrayDistinctState(concat(platform, ':', type)) AS activityTypesState,
+        groupArrayDistinctState(platform) AS activeOnState,
+        avgStateIf(sentimentScore, sentimentScore != -1) AS averageSentimentState,
+        maxState(act.updatedAt) as lastActivityUpdatedAtState,
+        max(act.updatedAt) as updatedAt
+    FROM activityRelations_enriched_deduplicated_bucket_union act
+    GROUP BY segmentId, memberId
+
+TYPE COPY
+TARGET_DATASOURCE cdp_member_segment_aggregates_v2_ds
+COPY_MODE replace
+COPY_SCHEDULE 30 4 * * *

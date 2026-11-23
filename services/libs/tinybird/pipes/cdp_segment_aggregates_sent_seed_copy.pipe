@@ -1,0 +1,68 @@
+DESCRIPTION >
+    Replaces cdp_segment_aggregates_sent_ds with the hash of every current v2 leaf aggregate, for
+    members and organizations. On demand while the change detection is measured
+    (linuxfoundation/lfx-cdp-insights-ops#1146).
+
+NODE segment_hierarchy
+SQL >
+    SELECT
+        id, argMax(parentId, updatedAt) AS parentId, argMax(grandparentId, updatedAt) AS grandparentId
+    FROM segments
+    GROUP BY id
+
+NODE member_leaf
+SQL >
+    SELECT
+        'member' AS kind,
+        a.segmentId AS segmentId,
+        a.memberId AS entityId,
+        h.parentId AS parentId,
+        h.grandparentId AS grandparentId,
+        cityHash64(
+            finalizeAggregation(a.activityCountState),
+            finalizeAggregation(a.lastActiveState),
+            arraySort(finalizeAggregation(a.activityTypesState)),
+            arraySort(finalizeAggregation(a.activeOnState)),
+            hex(CAST(a.averageSentimentState AS String))
+        ) AS hash
+    FROM cdp_member_segment_aggregates_v2_ds a
+    LEFT JOIN segment_hierarchy h ON h.id = a.segmentId
+
+NODE organization_leaf
+SQL >
+    SELECT
+        'organization' AS kind,
+        a.segmentId AS segmentId,
+        a.organizationId AS entityId,
+        h.parentId AS parentId,
+        h.grandparentId AS grandparentId,
+        cityHash64(
+            finalizeAggregation(a.joinedAtState),
+            finalizeAggregation(a.lastActiveState),
+            arraySort(finalizeAggregation(a.activeOnState)),
+            finalizeAggregation(a.activityCountState),
+            finalizeAggregation(a.memberCountState),
+            a.memberSetHash,
+            hex(CAST(a.avgContributorEngagement AS String))
+        ) AS hash
+    FROM cdp_organization_segment_aggregates_v2_ds a
+    LEFT JOIN segment_hierarchy h ON h.id = a.segmentId
+    WHERE a.organizationId != ''
+
+NODE current_leaf
+SQL >
+    SELECT *
+    FROM member_leaf
+    UNION ALL
+    SELECT *
+    FROM organization_leaf
+
+NODE cdp_segment_aggregates_sent_seed_copy_result
+SQL >
+    SELECT kind, segmentId, entityId, parentId, grandparentId, hash, now() AS updatedAt
+    FROM current_leaf
+
+TYPE COPY
+TARGET_DATASOURCE cdp_segment_aggregates_sent_ds
+COPY_MODE replace
+COPY_SCHEDULE @on-demand

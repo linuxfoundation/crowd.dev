@@ -155,7 +155,7 @@ export default class MemberAffiliationsService extends LoggerBase {
 
     const override = overrides[0]
 
-    await signalMemberUpdate(this.options.temporal, data.memberId)
+    await signalMemberUpdate(this.options.temporal, data.memberId, 'ui-affiliation-override')
 
     return override
   }

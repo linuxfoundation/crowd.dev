@@ -5,7 +5,7 @@ import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import type { Logger } from '@crowd/logging'
 
 import type { EmitOverrides } from './emit'
-import type { ConnectorHttp, ResponseInterpreter } from './http/client'
+import type { ConnectorHttp, ResponseInterpreter, TokenApplier } from './http/client'
 import type { BudgetProbe, TokenMinter, TokenPool } from './pool/tokenPool'
 
 export interface Channel {
@@ -28,10 +28,20 @@ export interface CredlyOAuthClientCredentialData {
   organizationId: string
 }
 
+export interface SessionizeOrganizerAccountCredentialData {
+  username: string
+  password: string
+}
+
 export type Credential =
   | { platform: 'github'; kind: 'github-app'; data: GithubAppCredentialData }
   | { platform: 'octolens'; kind: 'octolens-token'; data: OctolensTokenCredentialData }
   | { platform: 'credly'; kind: 'credly-oauth-client'; data: CredlyOAuthClientCredentialData }
+  | {
+      platform: 'sessionize'
+      kind: 'sessionize-organizer-account'
+      data: SessionizeOrganizerAccountCredentialData
+    }
 
 export function assertCredentialKind<K extends Credential['kind']>(
   credential: Credential,
@@ -113,6 +123,7 @@ interface ManifestBase<TDeps> {
   mintToken?: (credential: Credential) => TokenMinter
   probeBudget?: BudgetProbe
   runCostEstimate?: number
+  applyToken?: TokenApplier
   interpretResponse?: ResponseInterpreter
   // Every emit of every sync passes both segmentId and integrationId overrides, so the run may
   // belong to an integration with no segment (e.g. one org-wide poller fanning out to subprojects).

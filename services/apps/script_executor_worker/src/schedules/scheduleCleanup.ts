@@ -80,14 +80,15 @@ export const scheduleOrganizationsCleanup = async () => {
   }
 }
 
+// after the daily aggregate sinks (06:00 and 06:05 UTC), which send keys that no longer exist
+// with activityCount 0
+const SEGMENTS_AGG_CLEANUP_SPEC = { cronExpressions: ['0 7 * * *'] }
+
 export const scheduleMemberSegmentsAggCleanup = async () => {
   try {
     await svc.temporal.schedule.create({
       scheduleId: 'cleanupMemberSegmentsAgg',
-      spec: {
-        // Run every day at midnight
-        cronExpressions: ['0 0 * * *'],
-      },
+      spec: SEGMENTS_AGG_CLEANUP_SPEC,
       policies: {
         overlap: ScheduleOverlapPolicy.BUFFER_ONE,
         catchupWindow: '1 minute',
@@ -111,8 +112,12 @@ export const scheduleMemberSegmentsAggCleanup = async () => {
     svc.log.info('Schedule for member segments agg cleanup created successfully!')
   } catch (err) {
     if (err instanceof ScheduleAlreadyRunning) {
-      svc.log.info('Schedule cleanupMemberSegmentsAgg already registered in Temporal.')
-      svc.log.info('Configuration may have changed since. Please make sure they are in sync.')
+      await svc.temporal.schedule
+        .getHandle('cleanupMemberSegmentsAgg')
+        .update((prev) => ({ ...prev, spec: SEGMENTS_AGG_CLEANUP_SPEC }))
+      svc.log.info(
+        'Schedule cleanupMemberSegmentsAgg already registered in Temporal, spec updated.',
+      )
     } else {
       svc.log.error({ err }, 'Error creating schedule for member segments agg cleanup')
       throw new Error(err)
@@ -124,10 +129,7 @@ export const scheduleOrganizationSegmentAggCleanup = async () => {
   try {
     await svc.temporal.schedule.create({
       scheduleId: 'cleanupOrganizationSegmentAgg',
-      spec: {
-        // Run every day at midnight
-        cronExpressions: ['0 0 * * *'],
-      },
+      spec: SEGMENTS_AGG_CLEANUP_SPEC,
       policies: {
         overlap: ScheduleOverlapPolicy.BUFFER_ONE,
         catchupWindow: '1 minute',
@@ -151,8 +153,12 @@ export const scheduleOrganizationSegmentAggCleanup = async () => {
     svc.log.info('Schedule for organization segment agg cleanup created successfully!')
   } catch (err) {
     if (err instanceof ScheduleAlreadyRunning) {
-      svc.log.info('Schedule cleanupOrganizationSegmentAgg already registered in Temporal.')
-      svc.log.info('Configuration may have changed since. Please make sure they are in sync.')
+      await svc.temporal.schedule
+        .getHandle('cleanupOrganizationSegmentAgg')
+        .update((prev) => ({ ...prev, spec: SEGMENTS_AGG_CLEANUP_SPEC }))
+      svc.log.info(
+        'Schedule cleanupOrganizationSegmentAgg already registered in Temporal, spec updated.',
+      )
     } else {
       svc.log.error({ err }, 'Error creating schedule for organization segment agg cleanup')
       throw new Error(err)

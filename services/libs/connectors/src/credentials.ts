@@ -14,7 +14,11 @@ export async function getCredential(qx: QueryExecutor, integrationId: string): P
     throw new Error(`integration ${integrationId} not found`)
   }
 
-  switch (integration.platform) {
+  return getPlatformCredential(integration.platform)
+}
+
+export function getPlatformCredential(platform: string): Credential {
+  switch (platform) {
     case 'github':
     case 'github-nango':
       return githubAppCredential()
@@ -22,8 +26,10 @@ export async function getCredential(qx: QueryExecutor, integrationId: string): P
       return octolensTokenCredential()
     case 'credly':
       return credlyOAuthClientCredential()
+    case 'sessionize':
+      return sessionizeOrganizerAccountCredential()
     default:
-      throw new Error(`unsupported platform ${integration.platform}`)
+      throw new Error(`unsupported platform ${platform}`)
   }
 }
 
@@ -85,5 +91,26 @@ function credlyOAuthClientCredential(): Credential {
     platform: 'credly',
     kind: 'credly-oauth-client',
     data: { clientId, clientSecret, organizationId },
+  }
+}
+
+export function isSessionizeCredentialConfigured(): boolean {
+  return Boolean(process.env.CROWD_SESSIONIZE_USERNAME && process.env.CROWD_SESSIONIZE_PASSWORD)
+}
+
+function sessionizeOrganizerAccountCredential(): Credential {
+  const username = process.env.CROWD_SESSIONIZE_USERNAME
+  const password = process.env.CROWD_SESSIONIZE_PASSWORD
+
+  if (!username || !password) {
+    throw new Error(
+      'missing CROWD_SESSIONIZE_USERNAME or CROWD_SESSIONIZE_PASSWORD environment variables',
+    )
+  }
+
+  return {
+    platform: 'sessionize',
+    kind: 'sessionize-organizer-account',
+    data: { username, password },
   }
 }

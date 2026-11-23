@@ -13,7 +13,8 @@
     "cleanup-null-channel-duplicates": "tsx src/bin/cleanup-null-channel-duplicates.ts",
     "recalculate-enrichment-affiliations": "tsx src/bin/recalculate-enrichment-affiliations.ts",
     "recalculate-all-affiliations": "tsx src/bin/recalculate-all-affiliations.ts",
-    "add-lf-projects-to-collection": "tsx src/bin/add-lf-projects-to-collection.ts"
+    "add-lf-projects-to-collection": "tsx src/bin/add-lf-projects-to-collection.ts",
+    "delete-github-nango-connections": "tsx src/bin/delete-github-nango-connections.ts"
   },
   "dependencies": {
     "@crowd/archetype-standard": "workspace:*",

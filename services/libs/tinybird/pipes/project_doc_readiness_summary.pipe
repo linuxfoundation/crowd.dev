@@ -1,0 +1,111 @@
+DESCRIPTION >
+    - `project_doc_readiness_summary.pipe` serves the AI documentation readiness card and Overview tile for one project.
+    - Picks the card `state` from the project's latest run (newest `runDate`), first match wins: `not-evaluated`, `scored`, `confirmed-no-docs`, `no-docs`, `repo-only`, `latest-failed`, `failed`.
+    - The result columns come from the latest run, except for `latest-failed`, where they come from the project's newest successful run, which must have the same normalized docs URL.
+    - URLs are compared after normalising them like the worker's `normalizeUrl` (trim, lowercase scheme and host, drop the fragment and one trailing slash), the same expression as `project_doc_readiness_history.pipe`.
+    - `repoUrl` is the repository URL for `repo-only`, empty otherwise.
+    - `lfMedian` is the median of each enabled LF project's latest successful `overallScore`; it is the same for every project.
+    - **Requires `project` parameter** - without it, returns no results (inherited from `segments_filtered`).
+    - An unknown, disabled or deleted project returns no row. A non-LF project returns its row.
+    - Parameters:
+    - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow')
+    - Response: `projectId`, `state`, `lastRunDate`, `lastRunOk`, `resultRunDate`, `docsUrl`, `discoveryMethod`, `confidence`, `isOverride`, `overallScore`, `categoryScores`, `repoUrl`, `lfMedian`
+
+TOKEN "insights-app-token" READ
+
+TAGS "Insights, Widget", "Project"
+
+NODE project_doc_readiness_summary_runs
+SQL >
+    SELECT
+        projectId,
+        runDate,
+        ok,
+        error,
+        docsUrl,
+        discoveryMethod,
+        confidence,
+        isOverride,
+        overallScore,
+        categoryScores,
+        extract(trimBoth(docsUrl), '^[a-zA-Z][a-zA-Z0-9+.-]*://[^/?#]*') AS origin,
+        replaceRegexpOne(
+            concat(lower(origin), substring(cutFragment(trimBoth(docsUrl)), length(origin) + 1)),
+            '/$',
+            ''
+        ) AS normalizedUrl
+    -- shortcut: reads every project's runs so segments_filtered runs once. revisit: table over 1M rows
+    FROM projectDocReadiness FINAL
+
+NODE project_doc_readiness_summary_latest
+SQL >
+    SELECT *
+    FROM project_doc_readiness_summary_runs
+    ORDER BY projectId, runDate DESC
+    LIMIT 1 BY projectId
+
+NODE project_doc_readiness_summary_previous_success
+SQL >
+    SELECT r.*
+    FROM
+        (
+            SELECT *
+            FROM project_doc_readiness_summary_runs
+            WHERE ok = 1
+            ORDER BY projectId, runDate DESC
+            LIMIT 1 BY projectId
+        ) r
+    INNER JOIN
+        project_doc_readiness_summary_latest l
+        ON l.projectId = r.projectId
+        AND l.normalizedUrl = r.normalizedUrl
+    WHERE l.ok = 0 AND l.error NOT IN ('no-docs-url', 'repo-only') AND l.normalizedUrl != ''
+
+NODE project_doc_readiness_summary_lf_median
+SQL >
+    SELECT quantileExactInclusive(0.5)(score) AS lfMedian
+    FROM
+        (
+            SELECT projectId, argMax(overallScore, runDate) AS score
+            FROM projectDocReadiness FINAL
+            WHERE
+                ok = 1
+                AND projectId
+                IN (SELECT id FROM insightsProjects FINAL WHERE isLF AND isNull (deletedAt) AND enabled)
+            GROUP BY projectId
+        )
+
+NODE project_doc_readiness_summary_result
+SQL >
+    SELECT
+        p.insightsProjectId AS projectId,
+        multiIf(
+            l.projectId = '',
+            'not-evaluated',
+            l.ok = 1,
+            'scored',
+            l.error = 'no-docs-url' AND l.isOverride = 1,
+            'confirmed-no-docs',
+            l.error = 'no-docs-url',
+            'no-docs',
+            l.error = 'repo-only',
+            'repo-only',
+            s.projectId != '',
+            'latest-failed',
+            'failed'
+        ) AS state,
+        if(l.projectId = '', NULL, l.runDate) AS lastRunDate,
+        l.ok AS lastRunOk,
+        multiIf(s.projectId != '', s.runDate, l.projectId != '', l.runDate, NULL) AS resultRunDate,
+        if(s.projectId != '', s.docsUrl, l.docsUrl) AS docsUrl,
+        if(s.projectId != '', s.discoveryMethod, l.discoveryMethod) AS discoveryMethod,
+        if(s.projectId != '', s.confidence, l.confidence) AS confidence,
+        if(s.projectId != '', s.isOverride, l.isOverride) AS isOverride,
+        if(s.projectId != '', s.overallScore, l.overallScore) AS overallScore,
+        if(s.projectId != '', s.categoryScores, l.categoryScores) AS categoryScores,
+        if(l.error = 'repo-only', l.docsUrl, '') AS repoUrl,
+        m.lfMedian AS lfMedian
+    FROM segments_filtered p
+    LEFT JOIN project_doc_readiness_summary_latest l ON l.projectId = p.insightsProjectId
+    LEFT JOIN project_doc_readiness_summary_previous_success s ON s.projectId = p.insightsProjectId
+    CROSS JOIN project_doc_readiness_summary_lf_median m

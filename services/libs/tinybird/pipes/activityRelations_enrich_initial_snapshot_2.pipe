@@ -11,10 +11,9 @@ SQL >
 NODE activityRelations_deduplicated_enriched_bucket_2
 SQL >
     WITH
-        upperUTF8(coalesce(nullIf(o.country, ''), o.location)) AS search_u,
-        (SELECT arrayMap(x -> upperUTF8(x .1), country_data) FROM country_mapping_array) AS names_u,
+        (SELECT arrayMap(x -> x .2, country_data) FROM country_mapping_array) AS codes,
         (SELECT country_data FROM country_mapping_array) AS mapping,
-        multiSearchFirstIndexUTF8(search_u, names_u) AS idx,
+        indexOf(codes, o.countryCode) AS idx,
         if(idx = 0, ('Unknown', 'XX', 0), mapping[idx]) AS country_data
     SELECT
         activityRelations.*,

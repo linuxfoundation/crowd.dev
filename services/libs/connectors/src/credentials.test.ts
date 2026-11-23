@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 
-import { getCredential } from './credentials'
+import {
+  getCredential,
+  getPlatformCredential,
+  isSessionizeCredentialConfigured,
+} from './credentials'
 
 function qxReturning(integration: { platform: string } | null): QueryExecutor {
   return { selectOneOrNone: async () => integration } as unknown as QueryExecutor
@@ -73,5 +77,82 @@ describe('getCredential', () => {
     await expect(getCredential(qxReturning({ platform: 'credly' }), 'id')).rejects.toThrow(
       'missing CROWD_CREDLY_CLIENT_ID, CROWD_CREDLY_CLIENT_SECRET or CROWD_CREDLY_ORGANIZATION_ID',
     )
+  })
+
+  it('returns a sessionize-organizer-account credential from the shared env vars', async () => {
+    process.env.CROWD_SESSIONIZE_USERNAME = 'organizer@example.org'
+    process.env.CROWD_SESSIONIZE_PASSWORD = 'secret'
+
+    const credential = await getCredential(qxReturning({ platform: 'sessionize' }), 'id')
+
+    expect(credential).toEqual({
+      platform: 'sessionize',
+      kind: 'sessionize-organizer-account',
+      data: { username: 'organizer@example.org', password: 'secret' },
+    })
+  })
+
+  it('throws when any sessionize env var is missing', async () => {
+    process.env.CROWD_SESSIONIZE_USERNAME = 'organizer@example.org'
+    delete process.env.CROWD_SESSIONIZE_PASSWORD
+
+    await expect(getCredential(qxReturning({ platform: 'sessionize' }), 'id')).rejects.toThrow(
+      'missing CROWD_SESSIONIZE_USERNAME or CROWD_SESSIONIZE_PASSWORD',
+    )
+  })
+})
+
+describe('getPlatformCredential', () => {
+  const ORIGINAL_ENV = process.env
+
+  beforeEach(() => {
+    process.env = { ...ORIGINAL_ENV }
+  })
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV
+  })
+
+  it('returns the sessionize organizer account from env', () => {
+    process.env.CROWD_SESSIONIZE_USERNAME = 'organizer'
+    process.env.CROWD_SESSIONIZE_PASSWORD = 'secret'
+
+    expect(getPlatformCredential('sessionize')).toEqual({
+      platform: 'sessionize',
+      kind: 'sessionize-organizer-account',
+      data: { username: 'organizer', password: 'secret' },
+    })
+  })
+
+  it('throws for an unknown platform', () => {
+    expect(() => getPlatformCredential('unknown')).toThrow('unsupported platform unknown')
+  })
+})
+
+describe('isSessionizeCredentialConfigured', () => {
+  const ORIGINAL_ENV = process.env
+
+  beforeEach(() => {
+    process.env = { ...ORIGINAL_ENV }
+    delete process.env.CROWD_SESSIONIZE_USERNAME
+    delete process.env.CROWD_SESSIONIZE_PASSWORD
+  })
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV
+  })
+
+  it('is false when either variable is missing or empty', () => {
+    expect(isSessionizeCredentialConfigured()).toBe(false)
+    process.env.CROWD_SESSIONIZE_USERNAME = 'organizer'
+    expect(isSessionizeCredentialConfigured()).toBe(false)
+    process.env.CROWD_SESSIONIZE_PASSWORD = ''
+    expect(isSessionizeCredentialConfigured()).toBe(false)
+  })
+
+  it('is true when both are set', () => {
+    process.env.CROWD_SESSIONIZE_USERNAME = 'organizer'
+    process.env.CROWD_SESSIONIZE_PASSWORD = 'secret'
+    expect(isSessionizeCredentialConfigured()).toBe(true)
   })
 })

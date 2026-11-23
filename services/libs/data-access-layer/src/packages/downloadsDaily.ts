@@ -46,15 +46,12 @@ export interface DailyBackfillCandidate {
 // Restricted to is_critical packages — daily downloads are deep per-package history,
 // scoped to the critical set (matching the metadata pass). The 30d download passes run
 // over all npm packages, since their counts feed the criticality ranking.
-// Scoped packages need one request each, so they are due only `scopedMinAgeDays` after
-// their last run, while unscoped ones share bulk requests and are due every cutoff.
 export async function getNpmPackagesNeedingDailyBackfill(
   qx: QueryExecutor,
   cutoff: string,
   batchSize: number,
   laneIndex: number,
   laneCount: number,
-  scopedMinAgeDays: number,
 ): Promise<DailyBackfillCandidate[]> {
   const rows: Array<{
     id: string
@@ -71,11 +68,10 @@ export async function getNpmPackagesNeedingDailyBackfill(
         AND p.is_critical = TRUE
         AND (((hashtext(p.purl) % $(laneCount)) + $(laneCount)) % $(laneCount)) = $(laneIndex)
         AND (s.daily_downloads_last_processed_at IS NULL
-             OR s.daily_downloads_last_processed_at < $(cutoff)::timestamptz - make_interval(
-                  days => CASE WHEN p.namespace IS NOT NULL THEN $(scopedMinAgeDays)::int ELSE 0 END))
+             OR s.daily_downloads_last_processed_at < $(cutoff)::timestamptz)
       ORDER BY s.daily_downloads_last_processed_at ASC NULLS FIRST, p.purl
       LIMIT $(batchSize)`,
-    { cutoff, batchSize, laneIndex, laneCount, scopedMinAgeDays },
+    { cutoff, batchSize, laneIndex, laneCount },
   )
   return rows.map((r) => ({
     id: r.id,

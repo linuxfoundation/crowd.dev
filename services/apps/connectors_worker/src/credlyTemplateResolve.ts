@@ -198,7 +198,7 @@ export interface ApplyResult {
 // Credly moved to its current platform in March 2019; nothing older carries a state_updated_at.
 export const CREDLY_HISTORY_START = '2019-03-01T00:00:00.000Z'
 
-export function releaseFloor(createdAt: string | null | undefined, top: Date): string {
+function releaseFloor(createdAt: string | null | undefined, top: Date): string {
   const createdMs = Date.parse(createdAt ?? '')
   const startMs = Date.parse(CREDLY_HISTORY_START)
   const floorMs = Number.isFinite(createdMs) ? Math.max(createdMs, startMs) : startMs
@@ -207,7 +207,7 @@ export function releaseFloor(createdAt: string | null | undefined, top: Date): s
 
 // The live cursor starts where the backfill's top ends, both clamped to WINDOW_LAG_MS before `now`
 // like every live window in badgePoll.ts, so a badge Credly hasn't surfaced yet isn't missed.
-export function backfillWatermark(
+function backfillWatermark(
   createdAt: string | null | undefined,
   now: Date,
 ): Record<string, unknown> {

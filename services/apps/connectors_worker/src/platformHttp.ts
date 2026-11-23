@@ -27,6 +27,7 @@ export async function createPlatformHttp(
     acquireToken: () => pool.acquire(preferredEntryId),
     parkToken: pool.park,
     invalidateToken: pool.invalidate,
+    applyToken: manifest.applyToken,
     interpretResponse: manifest.interpretResponse,
     log,
   })

@@ -98,7 +98,7 @@ setImmediate(async () => {
       try {
         log.info(`Processing member: ${member.id}`)
 
-        await signalMemberUpdate(temporal, member.id, {
+        await signalMemberUpdate(temporal, member.id, 'script', {
           memberOrganizationIds: [organizationId],
         })
 

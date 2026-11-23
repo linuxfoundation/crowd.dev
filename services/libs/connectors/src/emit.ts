@@ -10,6 +10,7 @@ import { ConnectorCodeError, ConnectorError } from './http/errors'
 export interface EmitOverrides {
   segmentId?: string
   integrationId?: string
+  backfill?: boolean
 }
 
 export interface EmitterDeps {
@@ -26,10 +27,12 @@ export interface EmitterDeps {
 export interface Emitter {
   emit: (records: unknown[], overrides?: EmitOverrides) => Promise<void>
   emittedCount: () => number
+  liveEmittedCount: () => number
 }
 
 export function createEmit(deps: EmitterDeps): Emitter {
   let emitted = 0
+  let backfillEmitted = 0
 
   const emit = async (records: unknown[], overrides?: EmitOverrides): Promise<void> => {
     if (
@@ -91,6 +94,7 @@ export function createEmit(deps: EmitterDeps): Emitter {
           integrationId,
         })
         emitted += 1
+        if (overrides?.backfill) backfillEmitted += 1
         continue
       }
 
@@ -109,6 +113,7 @@ export function createEmit(deps: EmitterDeps): Emitter {
       }
 
       emitted += 1
+      if (overrides?.backfill) backfillEmitted += 1
     }
 
     if (shadowRecords.length > 0) {
@@ -118,7 +123,11 @@ export function createEmit(deps: EmitterDeps): Emitter {
     deps.log.debug({ count: records.length, total: emitted }, 'emitted records')
   }
 
-  return { emit, emittedCount: () => emitted }
+  return {
+    emit,
+    emittedCount: () => emitted,
+    liveEmittedCount: () => emitted - backfillEmitted,
+  }
 }
 
 function recordChannel(parsed: Record<string, unknown>): string | undefined {

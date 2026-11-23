@@ -10,6 +10,7 @@ import {
   getCountry,
   hasAttributeValue,
   normalizeCountryAttribute,
+  normalizeGeoAttributes,
 } from '@crowd/common'
 import {
   deleteMemberBotSuggestion,
@@ -97,6 +98,10 @@ export default class MemberAttributesService extends LoggerBase {
                 default: country,
               }
             }
+          }
+
+          if (data.country || data.geo) {
+            Object.assign(data, normalizeGeoAttributes(data.country, data.geo))
           }
 
           await updateMemberAttributes(qx, memberId, data)

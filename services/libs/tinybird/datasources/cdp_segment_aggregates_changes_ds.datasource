@@ -1,0 +1,32 @@
+DESCRIPTION >
+    The day's changes to the member and organization segment aggregates. cdp_segment_aggregates_changes_copy
+    writes the leaf keys that are new, changed, gone or moved under another parent since the fingerprint
+    (stage 'detected'); cdp_segment_aggregates_rollup_copy adds the rows to send for every level (stage
+    'ready'), which the daily aggregate sinks export to Postgres (linuxfoundation/lfx-cdp-insights-ops#1146).
+
+SCHEMA >
+    `kind` LowCardinality(String),
+    `level` LowCardinality(String),
+    `reason` LowCardinality(String),
+    `stage` LowCardinality(String),
+    `runDate` Date,
+    `segmentId` String,
+    `entityId` String,
+    `currentParent` String,
+    `sentParent` String,
+    `currentGrandparent` String,
+    `sentGrandparent` String,
+    `currentHash` UInt64,
+    `activityCount` UInt64,
+    `lastActive` DateTime64(3),
+    `activityTypes` Array(String),
+    `activeOn` Array(String),
+    `averageSentiment` Nullable(Float64),
+    `joinedAt` DateTime64(3),
+    `memberCount` UInt64,
+    `avgContributorEngagement` Int64,
+    `updatedAt` DateTime
+
+ENGINE MergeTree
+ENGINE_PARTITION_KEY runDate
+ENGINE_SORTING_KEY kind, stage, level, segmentId, entityId

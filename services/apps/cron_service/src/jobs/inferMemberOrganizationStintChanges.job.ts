@@ -111,7 +111,7 @@ const job: IJobDefinition = {
               { memberId },
               'Triggering member update workflow to refresh affiliations.',
             )
-            await signalMemberUpdate(temporal, memberId)
+            await signalMemberUpdate(temporal, memberId, 'stint-inference')
           }
         }
 

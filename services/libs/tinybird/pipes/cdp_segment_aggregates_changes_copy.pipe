@@ -1,0 +1,127 @@
+DESCRIPTION >
+    Daily at 05:25 UTC, after the v2 aggregate copies: compares every v2 leaf aggregate (member and
+    organization) with cdp_segment_aggregates_sent_ds once and replaces cdp_segment_aggregates_changes_ds
+    with the leaf keys that are new, changed, gone or moved under another parent (stage 'detected').
+    Writes nothing when v2 has fewer than 90% of the fingerprint's keys for members or for organizations (an empty or partial v2 would
+    otherwise send every key as gone). The leaf-hash nodes must stay identical to
+    cdp_segment_aggregates_sent_seed_copy (linuxfoundation/lfx-cdp-insights-ops#1146).
+
+NODE segment_hierarchy
+SQL >
+    SELECT
+        id, argMax(parentId, updatedAt) AS parentId, argMax(grandparentId, updatedAt) AS grandparentId
+    FROM segments
+    GROUP BY id
+
+NODE member_leaf
+SQL >
+    SELECT
+        'member' AS kind,
+        a.segmentId AS segmentId,
+        a.memberId AS entityId,
+        h.parentId AS parentId,
+        h.grandparentId AS grandparentId,
+        cityHash64(
+            finalizeAggregation(a.activityCountState),
+            finalizeAggregation(a.lastActiveState),
+            arraySort(finalizeAggregation(a.activityTypesState)),
+            arraySort(finalizeAggregation(a.activeOnState)),
+            hex(CAST(a.averageSentimentState AS String))
+        ) AS hash
+    FROM cdp_member_segment_aggregates_v2_ds a
+    LEFT JOIN segment_hierarchy h ON h.id = a.segmentId
+
+NODE organization_leaf
+SQL >
+    SELECT
+        'organization' AS kind,
+        a.segmentId AS segmentId,
+        a.organizationId AS entityId,
+        h.parentId AS parentId,
+        h.grandparentId AS grandparentId,
+        cityHash64(
+            finalizeAggregation(a.joinedAtState),
+            finalizeAggregation(a.lastActiveState),
+            arraySort(finalizeAggregation(a.activeOnState)),
+            finalizeAggregation(a.activityCountState),
+            finalizeAggregation(a.memberCountState),
+            a.memberSetHash,
+            hex(CAST(a.avgContributorEngagement AS String))
+        ) AS hash
+    FROM cdp_organization_segment_aggregates_v2_ds a
+    LEFT JOIN segment_hierarchy h ON h.id = a.segmentId
+    WHERE a.organizationId != ''
+
+NODE current_leaf
+SQL >
+    SELECT *
+    FROM member_leaf
+    UNION ALL
+    SELECT *
+    FROM organization_leaf
+
+NODE cdp_segment_aggregates_changes_copy_result
+SQL >
+    SELECT
+        kind,
+        'leaf' AS level,
+        multiIf(
+            inSent = 0, 'new', inCurrent = 0, 'gone', currentHash != sentHash, 'changed', 'moved'
+        ) AS reason,
+        'detected' AS stage,
+        today() AS runDate,
+        segmentId,
+        entityId,
+        currentParent,
+        sentParent,
+        currentGrandparent,
+        sentGrandparent,
+        currentHash,
+        toUInt64(0) AS activityCount,
+        toDateTime64(0, 3) AS lastActive,
+        CAST([], 'Array(String)') AS activityTypes,
+        CAST([], 'Array(String)') AS activeOn,
+        CAST(NULL, 'Nullable(Float64)') AS averageSentiment,
+        toDateTime64(0, 3) AS joinedAt,
+        toUInt64(0) AS memberCount,
+        toInt64(0) AS avgContributorEngagement,
+        now() AS updatedAt
+    FROM
+        (
+            SELECT
+                kind,
+                segmentId,
+                entityId,
+                countIf(src = 1) AS inCurrent,
+                countIf(src = 0) AS inSent,
+                anyIf(hash, src = 1) AS currentHash,
+                anyIf(hash, src = 0) AS sentHash,
+                anyIf(parentId, src = 1) AS currentParent,
+                anyIf(parentId, src = 0) AS sentParent,
+                anyIf(grandparentId, src = 1) AS currentGrandparent,
+                anyIf(grandparentId, src = 0) AS sentGrandparent
+            FROM
+                (
+                    SELECT kind, segmentId, entityId, parentId, grandparentId, hash, 1 AS src
+                    FROM current_leaf
+                    UNION ALL
+                    SELECT kind, segmentId, entityId, parentId, grandparentId, hash, 0 AS src
+                    FROM cdp_segment_aggregates_sent_ds
+                )
+            GROUP BY kind, segmentId, entityId
+            HAVING
+                inCurrent != inSent
+                OR currentHash != sentHash
+                OR currentParent != sentParent
+                OR currentGrandparent != sentGrandparent
+        )
+    WHERE
+        (SELECT count() FROM cdp_member_segment_aggregates_v2_ds)
+        >= 0.9 * (SELECT count() FROM cdp_segment_aggregates_sent_ds WHERE kind = 'member')
+        AND (SELECT count() FROM cdp_organization_segment_aggregates_v2_ds WHERE organizationId != '')
+        >= 0.9 * (SELECT count() FROM cdp_segment_aggregates_sent_ds WHERE kind = 'organization')
+
+TYPE COPY
+TARGET_DATASOURCE cdp_segment_aggregates_changes_ds
+COPY_MODE replace
+COPY_SCHEDULE 25 5 * * *

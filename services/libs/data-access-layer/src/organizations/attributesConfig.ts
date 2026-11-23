@@ -17,6 +17,7 @@ export const ORG_DB_FIELDS = [
   'importHash',
   'location',
   'country',
+  'geo',
   'isTeamOrganization',
   'isAffiliationBlocked',
   'type',
@@ -60,10 +61,21 @@ export const ORG_DB_ATTRIBUTES: OrgAttributeDef[] = [
     defaultColumn: 'country',
   },
   {
+    name: 'geo',
+    incomingType: OrganizationAttributeType.OBJECT,
+    type: OrganizationAttributeType.OBJECT,
+    defaultColumn: 'geo',
+  },
+  {
     name: 'type',
     incomingType: OrganizationAttributeType.STRING,
     type: OrganizationAttributeType.STRING,
     defaultColumn: 'type',
+  },
+  {
+    name: 'category',
+    incomingType: OrganizationAttributeType.STRING,
+    type: OrganizationAttributeType.STRING,
   },
   {
     name: 'employees',
@@ -247,6 +259,7 @@ export const ORG_DB_ATTRIBUTE_SOURCE_PRIORITY = [
   OrganizationAttributeSource.MEETINGS,
   OrganizationAttributeSource.COMMITTEES,
   OrganizationAttributeSource.LUMA,
+  OrganizationAttributeSource.SCHED,
   // legacy - keeping this for backward compatibility
   OrganizationAttributeSource.ENRICHMENT,
   OrganizationAttributeSource.GITHUB,

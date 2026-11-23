@@ -138,6 +138,7 @@ export async function executeSync(unitId: string): Promise<void> {
     event: 'sync_run_summary',
     durationMs: Date.now() - startedAt,
     emittedCount: emitter?.emittedCount() ?? 0,
+    liveEmittedCount: emitter?.liveEmittedCount() ?? 0,
     requestCount: http?.requestCount() ?? 0,
     complete: null as boolean | null,
     emitEnabled: unit.emitEnabled,
@@ -182,6 +183,7 @@ export async function executeSync(unitId: string): Promise<void> {
       acquireToken: () => pool.acquire(preferredEntryId),
       parkToken: pool.park,
       invalidateToken: pool.invalidate,
+      applyToken: manifest.applyToken,
       interpretResponse: manifest.interpretResponse,
       log,
     })

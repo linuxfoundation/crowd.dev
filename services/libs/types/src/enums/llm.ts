@@ -22,4 +22,5 @@ export enum LlmQueryType {
   PROJECT_EVALUATION = 'project_evaluation',
   ONBOARDING_REQUEST_PARSING = 'onboarding_request_parsing',
   LOCATION_COUNTRY = 'location_country',
+  ORGANIZATION_CLASSIFICATION = 'organization_classification',
 }

@@ -3,7 +3,7 @@ DESCRIPTION >
     - Reads from `activityRelations_collection_deduplicated_cleaned_bucket_8_ds` filtered to `collectionSlug = 'cncf'` (`cityHash64('cncf') % 10 = 8`, so all CNCF rows land in bucket 8).
     - Runs daily at 11:30 UTC, well after bucket 8's clean/enrich copy pipe (`activityRelations_collection_bucket_clean_enrich_copy_pipe_8.pipe`, scheduled 09:40 UTC) finishes, so it always reads that day's fresh full-replace of bucket 8. 11:30 also keeps it out of the busy 00:00-06:00 UTC copy window.
     - Full-replace, since the upstream bucket is itself a daily full recompute (not append-safe).
-    - Copies each contributor's and organization's place (country, else location) and whether the organization can appear in reports, so the country report pipes read one table instead of joining members and organizations per request.
+    - Copies each contributor's and organization's country code and whether the organization can appear in reports, so the country report pipes read one table instead of joining members and organizations per request.
 
 TAGS "Report"
 
@@ -13,17 +13,17 @@ SQL >
     FROM activityRelations_collection_deduplicated_cleaned_bucket_8_ds
     WHERE collectionSlug = 'cncf'
 
-NODE cncf_collection_activities_copy_member_places
+NODE cncf_collection_activities_copy_member_countries
 SQL >
-    SELECT id, upper(coalesce(nullIf(country, ''), location)) AS place
+    SELECT id, countryCode
     FROM members_sorted
     WHERE id IN (SELECT memberId FROM cncf_collection_activities_copy_rows)
 
-NODE cncf_collection_activities_copy_organization_places
+NODE cncf_collection_activities_copy_organization_countries
 SQL >
     SELECT
         id,
-        upper(coalesce(nullIf(country, ''), location)) AS place,
+        countryCode,
         toUInt8(isAffiliationBlocked = 0 AND displayName != 'Individual - No Account') AS listed
     FROM organizations FINAL
     WHERE id IN (SELECT organizationId FROM cncf_collection_activities_copy_rows)
@@ -37,12 +37,12 @@ SQL >
         a.platform AS platform,
         a.type AS type,
         a.segmentId AS segmentId,
-        m.place AS memberPlace,
-        o.place AS organizationPlace,
+        m.countryCode AS memberCountryCode,
+        o.countryCode AS organizationCountryCode,
         o.listed AS organizationListed
     FROM cncf_collection_activities_copy_rows a
-    LEFT JOIN cncf_collection_activities_copy_member_places m ON m.id = a.memberId
-    LEFT JOIN cncf_collection_activities_copy_organization_places o ON o.id = a.organizationId
+    LEFT JOIN cncf_collection_activities_copy_member_countries m ON m.id = a.memberId
+    LEFT JOIN cncf_collection_activities_copy_organization_countries o ON o.id = a.organizationId
 
 TYPE COPY
 TARGET_DATASOURCE cncf_collection_activities_ds

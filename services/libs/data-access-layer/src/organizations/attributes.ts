@@ -288,11 +288,13 @@ export async function recalculateOrgAttributeDefaults(
 
   const columnNames = Object.keys(columns)
   if (columnNames.length > 0) {
+    // NOW() is the transaction start, earlier than an updatedAt set by the app in the same
+    // transaction. Moving it back makes Tinybird keep the older row, which has the higher version.
     await qx.result(
       `
         UPDATE organizations
         SET ${columnNames.map((column) => `"${column}" = $(columns.${column})`).join(', ')},
-          "updatedAt" = NOW()
+          "updatedAt" = GREATEST("updatedAt", NOW())
         WHERE id = $(organizationId)
       `,
       { organizationId, columns },

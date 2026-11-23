@@ -1,4 +1,6 @@
-import { getCountry, groupBy, normalizeCountryName } from '@crowd/common'
+import { isEqual } from 'lodash'
+
+import { getCountryCode, getCountryName, groupBy, toGeo } from '@crowd/common'
 import { OrganizationAttributeSource, OrganizationAttributeType } from '@crowd/types'
 
 import {
@@ -46,7 +48,12 @@ export function prepareOrganizationData(
   existingOrg?: IDbOrganization,
   existingAttributes?: IDbOrgAttribute[],
 ): IPrepareOrgResult {
-  const incoming = { ...rawIncoming, country: normalizeCountryName(rawIncoming.country) }
+  const geo = toGeo(rawIncoming.country, rawIncoming.geo)
+  const incoming = {
+    ...rawIncoming,
+    country: geo && getCountryName(geo.countryCode),
+    geo,
+  }
 
   // validate source
   if (!ORG_DB_ATTRIBUTE_SOURCE_PRIORITY.includes(source as OrganizationAttributeSource)) {
@@ -207,15 +214,11 @@ export function prepareOrganizationData(
       att.default = att === defaultAttribute
     }
 
-    if (
-      defaultAttribute &&
-      attDef.defaultColumn &&
-      existingOrg &&
-      (existingOrg[attDef.defaultColumn] === undefined ||
-        existingOrg[attDef.defaultColumn] === null ||
-        existingOrg[attDef.defaultColumn] !== defaultAttribute.value)
-    ) {
-      orgRes[attDef.defaultColumn] = toDefaultColumnValue(attDef, defaultAttribute.value)
+    if (defaultAttribute && attDef.defaultColumn && existingOrg) {
+      const defaultValue = toDefaultColumnValue(attDef, defaultAttribute.value)
+      if (!isEqual(existingOrg[attDef.defaultColumn], defaultValue)) {
+        orgRes[attDef.defaultColumn] = defaultValue
+      }
     }
 
     for (const atts of Array.from(attributesBySource.values())) {
@@ -235,17 +238,29 @@ export function prepareOrganizationData(
       )?.value ??
       existingOrg?.location
 
-    const country = getCountry(location)
+    const countryCode = getCountryCode(location)
 
-    if (country) {
-      attributes.push({
-        name: 'country',
-        source: OrganizationAttributeSource.SYSTEM,
-        default: true,
-        value: country,
-      })
+    if (countryCode) {
+      const country = getCountryName(countryCode)
+      const geo = { countryCode }
+
+      attributes.push(
+        {
+          name: 'country',
+          source: OrganizationAttributeSource.SYSTEM,
+          default: true,
+          value: country,
+        },
+        {
+          name: 'geo',
+          source: OrganizationAttributeSource.SYSTEM,
+          default: true,
+          value: JSON.stringify(geo),
+        },
+      )
 
       orgRes.country = country
+      orgRes.geo = geo
     }
   }
 

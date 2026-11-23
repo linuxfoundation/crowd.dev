@@ -1,10 +1,10 @@
 DESCRIPTION >
     - `cncf_country_activities.pipe` returns the CNCF collection contributions that belong to one country, for the country report pipes (`cncf_country_*`).
     - A contribution belongs to the country when its contributor is located there, or when it was made through an organization headquartered there.
-    - A contributor is located in a country when the country on their profile, or else their location, names it. An organization is headquartered in a country when its country, or else its location, names it. Names are matched by containment, as in `contributors_geo_distribution.pipe`.
-    - Reads only `cncf_collection_activities_ds`, so it covers the CNCF collection only; the places it matches on are copied there daily by `cncf_collection_activities_copy.pipe`.
+    - A contributor is located in a country when the country code on their profile is that country's code; the same goes for an organization's country code.
+    - Reads only `cncf_collection_activities_ds`, so it covers the CNCF collection only; the country codes it matches on are copied there daily by `cncf_collection_activities_copy.pipe`.
     - Parameters:
-    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR'), resolved to a country name through `country_mapping`
+    - `countryCode`: Required ISO 3166-1 alpha-2 country code (e.g., 'FR')
     - `startDate`: Optional DateTime filter for activities after timestamp (e.g., '2024-01-01 00:00:00')
     - `endDate`: Optional DateTime filter for activities before timestamp (e.g., '2024-12-31 23:59:59')
     - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans inherited from `activityTypes_filtered` (defaults: code contributions only)
@@ -12,35 +12,27 @@ DESCRIPTION >
 
 TAGS "Report"
 
-NODE cncf_country_name
-SQL >
-    %
-    SELECT country
-    FROM country_mapping
-    WHERE
-        country_code
-        = {{
-            String(
-                countryCode,
-                description="ISO 3166-1 alpha-2 country code (e.g. 'FR')",
-                required=True,
-            )
-        }}
-    LIMIT 1
-
 NODE cncf_country_activities_result
 SQL >
     %
+    WITH
+        nullIf(
+            {{
+                String(
+                    countryCode,
+                    description="ISO 3166-1 alpha-2 country code (e.g. 'FR')",
+                    required=True,
+                )
+            }}, ''
+        ) AS selectedCountryCode
     SELECT
         memberId,
         organizationId,
         segmentId,
         timestamp,
         organizationListed,
-        position(memberPlace, nullIf(upper((SELECT country FROM cncf_country_name)), ''))
-        > 0 AS memberInCountry,
-        position(organizationPlace, nullIf(upper((SELECT country FROM cncf_country_name)), ''))
-        > 0 AS organizationInCountry
+        memberCountryCode = selectedCountryCode AS memberInCountry,
+        organizationCountryCode = selectedCountryCode AS organizationInCountry
     FROM cncf_collection_activities_ds
     WHERE
         memberId != ''

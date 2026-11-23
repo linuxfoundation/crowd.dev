@@ -43,7 +43,7 @@ export async function finishMemberMerging(
     step: MergeActionStep.MERGE_ASYNC_STARTED,
   })
   await finishMemberMergingUpdateActivities(secondaryId, primaryId)
-  await recalculateActivityAffiliationsOfMemberAsync(primaryId)
+  await recalculateActivityAffiliationsOfMemberAsync(primaryId, 'member-merge')
   await syncMember(primaryId)
   await syncRemoveMember(secondaryId)
 
@@ -79,8 +79,8 @@ export async function finishMemberUnmerging(
   await finishMemberUnmergingUpdateActivities(primaryId, secondaryId, identities)
   await syncMember(primaryId)
   await syncMember(secondaryId)
-  await recalculateActivityAffiliationsOfMemberAsync(primaryId)
-  await recalculateActivityAffiliationsOfMemberAsync(secondaryId)
+  await recalculateActivityAffiliationsOfMemberAsync(primaryId, 'member-unmerge')
+  await recalculateActivityAffiliationsOfMemberAsync(secondaryId, 'member-unmerge')
   await setMergeAction(primaryId, secondaryId, {
     state: 'unmerged' as MergeActionState,
     step: MergeActionStep.UNMERGE_DONE,

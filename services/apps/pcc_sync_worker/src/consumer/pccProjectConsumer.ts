@@ -8,12 +8,28 @@
  * a single failing row would lose all diagnostic breadcrumbs for the batch.
  */
 import { DEFAULT_TENANT_ID } from '@crowd/common'
-import { DbConnOrTx, DbConnection, WRITE_DB_CONFIG, getDbConnection } from '@crowd/database'
+import { DbConnOrTx, DbConnection, WRITE_DB_CONFIG, getDbConnection, pgpQx } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
 import { MetadataStore, S3Service, SnowflakeExportJob, buildPlatformFilter } from '@crowd/snowflake'
 
 import { parsePccRow } from '../parser'
 import type { CdpHierarchyTarget, ParsedPccProject } from '../parser'
+import {
+  addToCreationSummary,
+  creationSummaryCounts,
+  emptyCreationSummary,
+  loadCdpSegmentIndex,
+  planCreation,
+} from './creationPlan'
+import type { CdpSegmentIndex, CreationPlan } from './creationPlan'
+import { findExistingProjectCandidates, loadCdpSubprojectIndex } from './existingProjects'
+import type { CdpSubprojectIndex } from './existingProjects'
+import {
+  PROJECT_NOT_IN_PCC,
+  addPccProjectIdsOfRow,
+  findProjectsMissingFromPcc,
+} from './projectsMissingFromPcc'
+import { isSingleFileExport, resolveSyncErrorsNotReportedByExport } from './syncErrors'
 
 const log = getServiceChildLogger('pccProjectConsumer')
 
@@ -32,6 +48,8 @@ export class PccProjectConsumer {
   // claim so nothing is persisted, which means the same "oldest pending" job
   // would otherwise be re-claimed on every loop iteration → endless reprocessing.
   private readonly dryRunProcessedJobIds = new Set<number>()
+  private syncErrorWriteFailed = false
+  private readonly exportsWithUnrecordedSyncErrors = new Set<string>()
 
   constructor(
     private readonly metadataStore: MetadataStore,
@@ -97,6 +115,7 @@ export class PccProjectConsumer {
     log.info({ jobId: job.id, s3Path: job.s3Path, dryRun: this.dryRun }, 'Processing PCC job')
 
     const startTime = Date.now()
+    this.syncErrorWriteFailed = false
     let totalCount = 0
     let upsertedCount = 0
     let skippedCount = 0
@@ -104,16 +123,20 @@ export class PccProjectConsumer {
     let schemaMismatchCount = 0
     let schemaMismatchMatchedCount = 0 // SCHEMA_MISMATCH rows that still have a CDP segment match
     let missingProjectIdCount = 0
+    let possibleExistingCount = 0
+    const creationSummary = emptyCreationSummary()
 
     try {
       // Stream all rows and group by PROJECT_ID before processing.
-      // The export emits one row per (leaf, hierarchy_level) from the PROJECT_SPINE
-      // JOIN, so each leaf project produces N rows (one per ancestor level).
+      // The export emits one row per (leaf, hierarchy_level) pair, so each leaf
+      // project produces N rows (one per ancestor level).
       // PROJECT_ID is trimmed at the group-key boundary (PCC source data occasionally
       // carries surrounding whitespace) so the same logical project never splits
       // into multiple groups.
       const groups = new Map<string, Record<string, unknown>[]>()
+      const exportedPccProjectIds = new Set<string>()
       for await (const raw of this.s3Service.streamParquetRows(job.s3Path)) {
+        addPccProjectIdsOfRow(exportedPccProjectIds, raw as Record<string, unknown>)
         const rawId = (raw as Record<string, unknown>).PROJECT_ID
         const projectId = rawId == null ? '' : String(rawId).trim()
         if (!projectId) {
@@ -140,6 +163,12 @@ export class PccProjectConsumer {
           count: missingProjectIdCount,
         })
       }
+
+      const qx = pgpQx(this.db)
+      const [cdpSubprojects, cdpSegments] = await Promise.all([
+        loadCdpSubprojectIndex(qx),
+        loadCdpSegmentIndex(qx),
+      ])
 
       await this.db.tx(async (tx) => {
         for (const [, rows] of groups) {
@@ -186,7 +215,7 @@ export class PccProjectConsumer {
           }
 
           const { project } = parsed
-          const result = await this.processRow(tx, project)
+          const result = await this.processRow(tx, project, cdpSubprojects, cdpSegments)
 
           switch (result.action) {
             case 'UPSERTED':
@@ -195,10 +224,33 @@ export class PccProjectConsumer {
               break
             case 'SKIPPED':
               skippedCount++
+              if (result.possibleExisting) possibleExistingCount++
+              if (result.creationPlan) {
+                addToCreationSummary(creationSummary, result.creationPlan)
+                if (this.dryRun) {
+                  log.info(
+                    {
+                      pccProjectId: project.pccProjectId,
+                      pccSlug: project.pccSlug,
+                      name: project.name,
+                      status: project.status,
+                      creationTarget: project.creationTarget,
+                      creationPlan: result.creationPlan,
+                    },
+                    'PCC project missing in CDP',
+                  )
+                }
+              }
               break
           }
         }
       })
+
+      const missingFromPccCount = await this.reportProjectsMissingFromPcc(
+        job,
+        cdpSegments,
+        exportedPccProjectIds,
+      )
 
       const durationMs = Date.now() - startTime
       log.info(
@@ -209,11 +261,14 @@ export class PccProjectConsumer {
           total: totalCount,
           upserted: upsertedCount,
           skipped: skippedCount,
+          possibleExistingProject: possibleExistingCount,
           hierarchyMismatch: mismatchCount,
           schemaMismatch: schemaMismatchCount,
           schemaMismatchWithCdpMatch: schemaMismatchMatchedCount,
           schemaMismatchNoCdpMatch: schemaMismatchCount - schemaMismatchMatchedCount,
           missingProjectId: missingProjectIdCount,
+          missingFromPcc: missingFromPccCount,
+          creation: creationSummaryCounts(creationSummary),
         },
         'PCC job completed',
       )
@@ -232,6 +287,10 @@ export class PccProjectConsumer {
           skippedCount: skippedCount + schemaMismatchCount + missingProjectIdCount,
           processingDurationMs: durationMs,
         })
+        await this.resolveSyncErrorsNotReportedBy(
+          job,
+          missingFromPccCount === null ? [PROJECT_NOT_IN_PCC] : [],
+        )
       }
     } catch (err) {
       log.error({ jobId: job.id, err }, 'PCC job failed')
@@ -254,6 +313,61 @@ export class PccProjectConsumer {
     }
   }
 
+  private async reportProjectsMissingFromPcc(
+    job: SnowflakeExportJob,
+    cdpSegments: CdpSegmentIndex,
+    exportedPccProjectIds: Set<string>,
+  ): Promise<number | null> {
+    if (!job.exportStartedAt) return null
+    try {
+      const wholeExport = await isSingleFileExport(pgpQx(this.db), PLATFORM, job.exportStartedAt)
+      if (!wholeExport) {
+        log.warn(
+          { jobId: job.id },
+          'Skipped the PCC missing-project check: export has several files',
+        )
+        return null
+      }
+    } catch (err) {
+      log.error({ jobId: job.id, err }, 'Failed to check the PCC export for missing projects')
+      return null
+    }
+
+    const missing = findProjectsMissingFromPcc(cdpSegments, exportedPccProjectIds)
+    for (const { pccProjectId, subprojects } of missing) {
+      if (this.dryRun) log.info({ pccProjectId, subprojects }, 'CDP project missing in PCC')
+      await this.recordSyncError(pccProjectId, null, PROJECT_NOT_IN_PCC, {
+        reason: 'the PCC project is not in the export',
+        subprojects,
+      })
+    }
+    return missing.length
+  }
+
+  private async resolveSyncErrorsNotReportedBy(
+    job: SnowflakeExportJob,
+    errorTypesNotChecked: string[],
+  ): Promise<void> {
+    if (!job.exportStartedAt) return
+    const exportKey = String(job.exportStartedAt)
+    if (this.syncErrorWriteFailed) this.exportsWithUnrecordedSyncErrors.add(exportKey)
+    if (this.exportsWithUnrecordedSyncErrors.has(exportKey)) {
+      log.warn({ jobId: job.id }, 'Skipped resolving PCC sync errors: some were not recorded')
+      return
+    }
+    try {
+      const resolved = await resolveSyncErrorsNotReportedByExport(
+        pgpQx(this.db),
+        PLATFORM,
+        job.exportStartedAt,
+        errorTypesNotChecked,
+      )
+      log.info({ jobId: job.id, resolved }, 'Resolved PCC sync errors no longer reported')
+    } catch (err) {
+      log.error({ jobId: job.id, err }, 'Failed to resolve PCC sync errors no longer reported')
+    }
+  }
+
   private async releaseClaimBestEffort(jobId: number): Promise<void> {
     try {
       await this.metadataStore.releaseClaim(jobId)
@@ -269,11 +383,16 @@ export class PccProjectConsumer {
   private async processRow(
     tx: DbConnOrTx,
     project: ParsedPccProject,
-  ): Promise<{ action: 'UPSERTED'; hierarchyMismatch: boolean } | { action: 'SKIPPED' }> {
+    cdpSubprojects: CdpSubprojectIndex,
+    cdpSegments: CdpSegmentIndex,
+  ): Promise<
+    | { action: 'UPSERTED'; hierarchyMismatch: boolean }
+    | { action: 'SKIPPED'; possibleExisting: boolean; creationPlan?: CreationPlan }
+  > {
     // Step 1: segment_id from Snowflake ACTIVE_SEGMENTS JOIN
-    let segment = project.segmentIdFromSnowflake
-      ? await findSegmentById(tx, project.segmentIdFromSnowflake)
-      : null
+    const exportedSegmentIds = project.segmentIdsFromSnowflake
+    let segment =
+      exportedSegmentIds.length === 1 ? await findSegmentById(tx, exportedSegmentIds[0]) : null
 
     // Step 2: sourceId fallback
     if (!segment) {
@@ -296,14 +415,37 @@ export class PccProjectConsumer {
             candidates: fallback.candidates,
           },
         )
-        return { action: 'SKIPPED' }
+        return { action: 'SKIPPED', possibleExisting: false }
       }
       segment = fallback
     }
 
     // Step 3: no match → SKIP (Phase 1: project doesn't exist in CDP yet)
     if (!segment) {
-      return { action: 'SKIPPED' }
+      const candidates = findExistingProjectCandidates(
+        cdpSubprojects,
+        project.pccSlug,
+        project.name,
+      )
+      if (candidates.length === 0) {
+        return {
+          action: 'SKIPPED',
+          possibleExisting: false,
+          creationPlan: planCreation(project.creationTarget, cdpSegments),
+        }
+      }
+
+      log.warn(
+        { pccProjectId: project.pccProjectId, pccSlug: project.pccSlug, candidates },
+        'PCC project has no CDP match by ID but its slug or name exists in CDP',
+      )
+      await this.recordSyncError(
+        project.pccProjectId,
+        project.pccSlug,
+        'POSSIBLE_EXISTING_PROJECT',
+        { name: project.name, candidates },
+      )
+      return { action: 'SKIPPED', possibleExisting: true }
     }
 
     // Hierarchy mismatch detection: segment matched but parent/group differs.
@@ -425,6 +567,7 @@ export class PccProjectConsumer {
     try {
       await insertSyncError(this.db, externalProjectId, externalProjectSlug, errorType, details)
     } catch (err) {
+      this.syncErrorWriteFailed = true
       log.error(
         { err, externalProjectId, externalProjectSlug, errorType },
         'Failed to record sync error (best-effort)',

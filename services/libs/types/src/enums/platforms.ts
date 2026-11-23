@@ -30,6 +30,7 @@ export enum PlatformType {
   TNC = 'tnc',
   MEETINGS = 'meetings',
   LUMA = 'luma',
+  SCHED = 'sched',
   GITLAB = 'gitlab',
   FACEBOOK = 'facebook',
   OTHER = 'other',
@@ -38,6 +39,7 @@ export enum PlatformType {
   TIKTOK = 'tiktok',
   INSTAGRAM = 'instagram',
   CREDLY = 'credly',
+  SESSIONIZE = 'sessionize',
 }
 
 export type CodePlatform =
@@ -52,6 +54,7 @@ export const ALL_PLATFORM_TYPES = Object.keys(PlatformType) as PlatformType[]
 export const AUTO_MANAGED_INTEGRATION_PLATFORMS: PlatformType[] = [
   PlatformType.OCTOLENS,
   PlatformType.CREDLY,
+  PlatformType.SESSIONIZE,
 ]
 
 export enum IntegrationType {

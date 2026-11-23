@@ -36,6 +36,9 @@ catalogs:
     pg-promise:
       specifier: ^11.4.3
       version: 11.6.0
+    rate-limit-redis:
+      specifier: 3.1.0
+      version: 3.1.0
     tsx:
       specifier: ^4.20.3
       version: 4.23.12
@@ -342,6 +345,9 @@ importers:
       pg-promise:
         specifier: 'catalog:'
         version: 11.6.0
+      rate-limit-redis:
+        specifier: 'catalog:'
+        version: 3.1.0(express-rate-limit@6.5.1(express@4.17.1(supports-color@5.5.0)))
       sanitize-html:
         specifier: ^2.17.7
         version: 2.17.7
@@ -845,6 +851,9 @@ importers:
       '@crowd/common':
         specifier: workspace:*
         version: link:../../libs/common
+      '@crowd/common_services':
+        specifier: workspace:*
+        version: link:../../libs/common_services
       '@crowd/connectors':
         specifier: workspace:*
         version: link:../../libs/connectors
@@ -854,6 +863,9 @@ importers:
       '@crowd/database':
         specifier: workspace:*
         version: link:../../libs/database
+      '@crowd/integrations':
+        specifier: workspace:*
+        version: link:../../libs/integrations
       '@crowd/logging':
         specifier: workspace:*
         version: link:../../libs/logging
@@ -863,6 +875,9 @@ importers:
       '@crowd/project-onboarding':
         specifier: workspace:*
         version: link:../../libs/project-onboarding
+      '@crowd/queue':
+        specifier: workspace:*
+        version: link:../../libs/queue
       '@crowd/redis':
         specifier: workspace:*
         version: link:../../libs/redis
@@ -890,6 +905,9 @@ importers:
       axios:
         specifier: 'catalog:'
         version: 1.20.0(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+      moment-timezone:
+        specifier: ^0.5.34
+        version: 0.5.45
       tsx:
         specifier: ^4.7.1
         version: 4.23.12
@@ -1758,6 +1776,9 @@ importers:
         specifier: 'catalog:'
         version: 4.23.12
     devDependencies:
+      '@crowd/test-kit':
+        specifier: workspace:*
+        version: link:../../libs/test-kit
       nodemon:
         specifier: ^3.0.1
         version: 3.1.0
@@ -6568,11 +6589,11 @@ packages:
   '@types/pluralize@0.0.33':
     resolution: {integrity: sha512-JOqsl+ZoCpP4e8TDke9W79FDcSgPAR0l6pixx2JHkhnRjvShyYiAYw2LVsnA7K08Y6DeOnaU6ujmENO4os/cYg==}
 
-  '@types/qs@6.15.1':
-    resolution: {integrity: sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw==}
-
   '@types/q@1.5.8':
     resolution: {integrity: sha512-hroOstUScF6zhIi+5+x0dzqrHA1EJi+Irri6b1fxolMTqqHIV/Cg77EtnQcZqZCu8hR3mX2BzIxN4/GzI68Kfw==}
+
+  '@types/qs@6.15.1':
+    resolution: {integrity: sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw==}
 
   '@types/qs@6.9.15':
     resolution: {integrity: sha512-uXHQKES6DQKKCLh441Xv/dwxOq1TVS3JPUMlEqoEglvlhR6Mxnlew/Xq/LRVHpLyk7iK3zODe1qYHIMltO7XGg==}
@@ -11142,8 +11163,8 @@ packages:
     resolution: {integrity: sha512-N9EiLovGEQOJSPF26Ij7qUGvahfEnq0eeYZ02aigIedkmz1qZSwjnP9SBITHJuF/6MYbIW4HDN8zdYjsjqJKXQ==}
     engines: {node: '>=12.0.0'}
 
-  proxy-addr@2.0.7:
-    resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
+  proxy-addr@2.0.8:
+    resolution: {integrity: sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==}
     engines: {node: '>= 0.10'}
 
   proxy-from-env@1.1.0:
@@ -11276,6 +11297,12 @@ packages:
   range-parser@1.3.0:
     resolution: {integrity: sha512-hek2mFQpPuI4E1BBKrSto+BU3e3x4xuarsbiwr3+lf7p44juvFMV0XFWQAP3xUyqXA4RrXLIoaSUGbSt056ZMw==}
     engines: {node: '>= 0.6'}
+
+  rate-limit-redis@3.1.0:
+    resolution: {integrity: sha512-guCQGRQhsOlTR4VNHRnksMeet/3ImfdxIQgWP6In4FphJjUbORe0F4XeFshLnbc9xcuFUv9jZL44TgUMSz4XPQ==}
+    engines: {node: '>= 14.5.0'}
+    peerDependencies:
+      express-rate-limit: ^6
 
   rate-limiter-flexible@7.4.0:
     resolution: {integrity: sha512-IJopePGO6HnMWVdeLCihnxXZ0WCW0mxXiU5LE3bZ00GHESsCaAvgD8hN/ATIJeZhnrVdU5cfRyS1uV63Vmc4zg==}
@@ -17917,9 +17944,9 @@ snapshots:
 
   '@types/pluralize@0.0.33': {}
 
-  '@types/qs@6.15.1': {}
-
   '@types/q@1.5.8': {}
+
+  '@types/qs@6.15.1': {}
 
   '@types/qs@6.9.15': {}
 
@@ -20523,7 +20550,7 @@ snapshots:
       on-finished: 2.3.0
       parseurl: 1.3.3
       path-to-regexp: 0.1.7
-      proxy-addr: 2.0.7
+      proxy-addr: 2.0.8
       qs: 6.7.0
       range-parser: 1.2.1
       safe-buffer: 5.1.2
@@ -20559,7 +20586,7 @@ snapshots:
       on-finished: 2.4.1
       parseurl: 1.3.3
       path-to-regexp: 0.1.7
-      proxy-addr: 2.0.7
+      proxy-addr: 2.0.8
       qs: 6.11.0
       range-parser: 1.2.1
       safe-buffer: 5.2.1
@@ -20595,7 +20622,7 @@ snapshots:
       on-finished: 2.4.1
       parseurl: 1.3.3
       path-to-regexp: 0.1.12
-      proxy-addr: 2.0.7
+      proxy-addr: 2.0.8
       qs: 6.13.0
       range-parser: 1.2.1
       safe-buffer: 5.2.1
@@ -20630,7 +20657,7 @@ snapshots:
       on-finished: 2.4.1
       once: 1.4.0
       parseurl: 1.3.3
-      proxy-addr: 2.0.7
+      proxy-addr: 2.0.8
       qs: 6.16.0
       range-parser: 1.3.0
       router: 2.2.0(supports-color@8.1.1)
@@ -23247,7 +23274,7 @@ snapshots:
       '@types/node': 24.13.3
       long: 5.3.2
 
-  proxy-addr@2.0.7:
+  proxy-addr@2.0.8:
     dependencies:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
@@ -23392,6 +23419,10 @@ snapshots:
   range-parser@1.2.1: {}
 
   range-parser@1.3.0: {}
+
+  rate-limit-redis@3.1.0(express-rate-limit@6.5.1(express@4.17.1(supports-color@5.5.0))):
+    dependencies:
+      express-rate-limit: 6.5.1(express@4.17.1(supports-color@5.5.0))
 
   rate-limiter-flexible@7.4.0: {}
 
