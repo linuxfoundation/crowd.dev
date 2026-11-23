@@ -1,9 +1,10 @@
 import type { SessionizeConsoleEvent } from './consoleEvents'
 
-export const MATCHING_RULE_VERSION = 1
+export const MATCHING_RULE_VERSION = 2
 export const MATCH_WINDOW_DAYS = 21
 
 const MILLISECONDS_PER_DAY = 86_400_000
+const CVENT_EVENT_ID = /^lf[A-Za-z0-9]{16}$/
 
 const NAME_SYNONYMS = new Map<string, string>([
   ['na', 'north america'],
@@ -27,7 +28,7 @@ export type SubprojectLookup = (
   projectId: string | null,
 ) => string | null
 
-export type SessionizeHoldReason = 'no_match' | 'ambiguous' | 'no_segment'
+export type SessionizeHoldReason = 'no_match' | 'ambiguous' | 'not_cvent' | 'no_segment'
 
 export interface SessionizeMatchCandidate {
   eventId: string
@@ -120,6 +121,9 @@ export function matchSessionizeEvent(
   }
 
   const { catalogueEvent } = found[0]
+  if (!CVENT_EVENT_ID.test(catalogueEvent.eventId)) {
+    return held('not_cvent')
+  }
   const segmentId = subprojectFor(catalogueEvent.projectSlug, catalogueEvent.projectId)
   if (segmentId === null) {
     return held('no_segment', catalogueEvent.eventId)

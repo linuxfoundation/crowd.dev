@@ -217,7 +217,7 @@ describe('applySessionizeDecisions', () => {
     expect(summary).toEqual({
       listed: 4,
       matched: 1,
-      held: { no_match: 1, ambiguous: 1, no_segment: 1 },
+      held: { no_match: 1, ambiguous: 1, not_cvent: 0, no_segment: 1 },
       outcomes: { inserted: 2, updated: 0, unchanged: 1, protected: 1 },
       deactivated: 1,
     })
@@ -279,7 +279,7 @@ describe('computeSessionizeDecisions', () => {
     ])
     const catalogue = stubSource([
       {
-        eventId: 'ev-1',
+        eventId: 'lfFakeSummit000001',
         eventName: 'Fake Summit 2027',
         startDate: '2027-03-16',
         projectId: 'PROJ-1',
@@ -309,7 +309,7 @@ describe('computeSessionizeDecisions', () => {
         eventKey: '101',
         status: 'matched',
         holdReason: null,
-        cventEventId: 'ev-1',
+        cventEventId: 'lfFakeSummit000001',
         segmentId: 'seg-1',
       },
       {

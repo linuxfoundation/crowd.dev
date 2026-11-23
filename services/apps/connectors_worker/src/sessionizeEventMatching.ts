@@ -156,7 +156,7 @@ function emptySummary(): SessionizeMatchingSummary {
   return {
     listed: 0,
     matched: 0,
-    held: { no_match: 0, ambiguous: 0, no_segment: 0 },
+    held: { no_match: 0, ambiguous: 0, not_cvent: 0, no_segment: 0 },
     outcomes: { inserted: 0, updated: 0, unchanged: 0, protected: 0 },
     deactivated: 0,
   }
