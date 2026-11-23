@@ -55,7 +55,7 @@ export class EncryptionCodec implements PayloadCodec {
           throw new ValueError('Unable to decrypt Payload without encryption key id')
         }
 
-        const key =this.keys.get(decode(keyIdBytes)) ?? this.keys.get(this.defaultKeyId)
+        const key = this.keys.get(decode(keyIdBytes)) ?? this.keys.get(this.defaultKeyId)
         const decryptedPayloadBytes = await decrypt(payload.data, key)
         return temporal.api.common.v1.Payload.decode(decryptedPayloadBytes)
       }),
