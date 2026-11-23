@@ -4,6 +4,7 @@ import { createRateLimiter } from '@/api/apiRateLimiter'
 import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
 import { NotFoundError } from '@crowd/common'
+import type { RedisClient } from '@crowd/redis'
 
 import { AUTH0_CONFIG } from '../../../conf'
 import { oauth2Middleware } from '../middlewares/oauth2Middleware'
@@ -24,10 +25,10 @@ import { stewardshipsRouter } from './stewardships'
 
 const packagesRateLimiter = createRateLimiter({ max: 60, windowMs: 60 * 1000 })
 
-export function v1Router(): Router {
+export function v1Router({ redis }: { redis: RedisClient }): Router {
   const router = Router()
 
-  router.use('/members', oauth2Middleware(AUTH0_CONFIG), membersRouter())
+  router.use('/members', oauth2Middleware(AUTH0_CONFIG), membersRouter({ redis }))
   router.use('/organizations', oauth2Middleware(AUTH0_CONFIG), organizationsRouter())
   router.use('/affiliations', staticApiKeyMiddleware(), memberOrganizationAffiliationsRouter())
   router.use('/project-evaluation', staticApiKeyMiddleware(), projectEvaluationRouter())
