@@ -128,6 +128,7 @@
     "peopledatalabs": "~6.1.5",
     "pg": "^8.7.3",
     "pg-promise": "catalog:",
+    "rate-limit-redis": "catalog:",
     "sanitize-html": "^2.17.7",
     "sequelize": "6.37.8",
     "sequelize-cli-typescript": "^3.2.0-c",
