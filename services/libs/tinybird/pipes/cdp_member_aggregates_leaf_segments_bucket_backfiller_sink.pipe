@@ -18,7 +18,8 @@ SQL >
         if(
             isFinite(avgMerge(cdp_aggs.averageSentimentState)),
             avgMerge(cdp_aggs.averageSentimentState),
-            NULL
+            -- no score is sent as -1, as v1 did: the Kafka Connect transform rejects NULL
+            -1
         ) AS averageSentiment,
         now() AS updatedAt
     FROM cdp_member_segment_aggregates_v2_ds cdp_aggs
