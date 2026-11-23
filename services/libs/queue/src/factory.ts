@@ -11,7 +11,12 @@ export class QueueFactory {
   static createQueueService(config: IQueueClientConfig): IQueue {
     const log = getServiceChildLogger('queue-service-factory')
 
-    log.info({ config }, 'Creating kafka queue service...')
+    // config.extra holds the SASL settings (username and password), so log only the
+    // non-secret fields
+    log.info(
+      { brokers: config.brokers, clientId: config.clientId, hasExtra: !!config.extra },
+      'Creating kafka queue service...',
+    )
 
     return new KafkaQueueService(getKafkaClient(config), log)
   }
