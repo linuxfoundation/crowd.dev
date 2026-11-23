@@ -8,6 +8,8 @@ DESCRIPTION >
     - `limit`: Optional integer for the number of candidates, defaults to 5
     - Response: `slug`, `name`, `distance` (0 for an exact match), closest first
 
+TOKEN "insights-app-token" READ
+
 NODE project_slug_candidates_ranked
 SQL >
     %
