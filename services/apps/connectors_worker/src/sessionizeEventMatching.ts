@@ -24,7 +24,7 @@ import type { CatalogueSource } from './credlyTemplateResolve'
 const CVENT_CATALOGUE_QUERY = `
   SELECT EVENT_ID AS "eventId", EVENT_NAME AS "eventName",
          TO_VARCHAR(EVENT_START_DATE::date, 'YYYY-MM-DD') AS "startDate",
-         PROJECT_ID AS "projectId"
+         PROJECT_ID AS "projectId", SOURCE AS "source"
   FROM analytics.silver_dim.events
   WHERE EVENT_ID IS NOT NULL
   QUALIFY ROW_NUMBER() OVER (PARTITION BY EVENT_ID ORDER BY UPDATED_AT DESC NULLS LAST) = 1
@@ -36,6 +36,7 @@ interface CventCatalogueRow {
   eventName: string | null
   startDate: string | null
   projectId: string | null
+  source: string | null
 }
 
 type CompleteCventCatalogueRow = CventCatalogueRow & { eventName: string; startDate: string }
@@ -92,6 +93,7 @@ export async function loadCventCatalogue(
     startDate: row.startDate,
     projectId: row.projectId ?? null,
     projectSlug: null,
+    source: row.source ?? null,
   }))
 }
 
@@ -134,6 +136,7 @@ function toDecisionInput(decision: SessionizeEventDecision): ISessionizeEventDec
     status: decision.status,
     holdReason: decision.holdReason,
     cventEventId: decision.cventEventId,
+    catalogueSource: decision.catalogueSource,
     segmentId: decision.segmentId,
     rule: decision.rule,
     ruleVersion: decision.ruleVersion,
@@ -142,13 +145,17 @@ function toDecisionInput(decision: SessionizeEventDecision): ISessionizeEventDec
 }
 
 function reviewTarget(
-  row: Pick<ISessionizeEventDecisionInput, 'status' | 'holdReason' | 'segmentId' | 'cventEventId'>,
+  row: Pick<
+    ISessionizeEventDecisionInput,
+    'status' | 'holdReason' | 'segmentId' | 'cventEventId' | 'catalogueSource'
+  >,
 ) {
   return {
     status: row.status,
     holdReason: row.holdReason,
     segmentId: row.segmentId,
     cventEventId: row.cventEventId,
+    catalogueSource: row.catalogueSource,
   }
 }
 
@@ -156,7 +163,7 @@ function emptySummary(): SessionizeMatchingSummary {
   return {
     listed: 0,
     matched: 0,
-    held: { no_match: 0, ambiguous: 0, no_segment: 0 },
+    held: { no_match: 0, ambiguous: 0, not_cvent: 0, no_segment: 0 },
     outcomes: { inserted: 0, updated: 0, unchanged: 0, protected: 0 },
     deactivated: 0,
   }
