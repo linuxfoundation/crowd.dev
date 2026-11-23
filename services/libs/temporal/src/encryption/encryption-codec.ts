@@ -15,8 +15,6 @@ export class EncryptionCodec implements PayloadCodec {
     protected readonly defaultKeyId: string,
   ) {}
 
-  // Encrypts with the current key and also decrypts payloads written with the keys in
-  // CROWD_TEMPORAL_ENCRYPTION_KEYS_PREVIOUS, so the key can rotate while old payloads stay readable.
   static async create(keyId: string): Promise<EncryptionCodec> {
     const keys = new Map<string, crypto.CryptoKey>()
     for (const [previousKeyId, previousKey] of Object.entries(previousKeys())) {
@@ -57,8 +55,7 @@ export class EncryptionCodec implements PayloadCodec {
           throw new ValueError('Unable to decrypt Payload without encryption key id')
         }
 
-        // Unknown key ids fall back to the current key, which is how every id was decrypted before.
-        const key = this.keys.get(decode(keyIdBytes)) ?? this.keys.get(this.defaultKeyId)
+        const key =this.keys.get(decode(keyIdBytes)) ?? this.keys.get(this.defaultKeyId)
         const decryptedPayloadBytes = await decrypt(payload.data, key)
         return temporal.api.common.v1.Payload.decode(decryptedPayloadBytes)
       }),
@@ -66,7 +63,7 @@ export class EncryptionCodec implements PayloadCodec {
   }
 }
 
-// A JSON object of key id to key; the error never echoes the value, which holds key material.
+// The error must never include the raw value: it holds key material.
 function previousKeys(): Record<string, string> {
   const raw = process.env['CROWD_TEMPORAL_ENCRYPTION_KEYS_PREVIOUS']
   if (!raw) {
