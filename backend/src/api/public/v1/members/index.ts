@@ -1,9 +1,11 @@
 import { Router } from 'express'
+import RedisStore from 'rate-limit-redis'
 
 import { createRateLimiter } from '@/api/apiRateLimiter'
 import { requireScopes } from '@/api/public/middlewares/requireScopes'
 import { safeWrap } from '@/middlewares/errorMiddleware'
 import { SCOPES } from '@/security/scopes'
+import type { RedisClient } from '@crowd/redis'
 
 import { createMember } from './createMember'
 import { createMemberIdentity } from './identities/createMemberIdentity'
@@ -19,14 +21,18 @@ import { getMemberWorkExperiences } from './work-experiences/getMemberWorkExperi
 import { updateMemberWorkExperience } from './work-experiences/updateMemberWorkExperience'
 import { verifyMemberWorkExperience } from './work-experiences/verifyMemberWorkExperience'
 
-const resolveMemberRateLimiter = createRateLimiter({
-  max: 200,
-  windowMs: 60 * 1000,
-  keyGenerator: (req) => req.actor.id,
-})
-
-export function membersRouter(): Router {
+export function membersRouter({ redis }: { redis: RedisClient }): Router {
   const router = Router()
+
+  const resolveMemberRateLimiter = createRateLimiter({
+    max: 200,
+    windowMs: 60 * 1000,
+    keyGenerator: (req) => req.actor.id,
+    store: new RedisStore({
+      prefix: 'rate-limit:members-resolve:',
+      sendCommand: (...args: string[]) => redis.sendCommand(args),
+    }),
+  })
 
   router.post('/', requireScopes([SCOPES.WRITE_MEMBERS]), safeWrap(createMember))
 
