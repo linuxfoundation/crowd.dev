@@ -11,14 +11,23 @@ export class QueueFactory {
   static createQueueService(config: IQueueClientConfig): IQueue {
     const log = getServiceChildLogger('queue-service-factory')
 
-    // config.extra holds the SASL settings (username and password), so log only the
-    // non-secret fields
-    log.info(
-      { brokers: config.brokers, clientId: config.clientId, hasExtra: !!config.extra },
-      'Creating kafka queue service...',
-    )
+    log.info(toLoggableQueueConfig(config), 'Creating kafka queue service...')
 
     return new KafkaQueueService(getKafkaClient(config), log)
+  }
+}
+
+const toLoggableQueueConfig = (config: IQueueClientConfig) => ({
+  brokers: config.brokers,
+  clientId: config.clientId,
+  hasExtra: !!config.extra,
+})
+
+const parseKafkaExtra = (extra: string): object => {
+  try {
+    return JSON.parse(extra)
+  } catch {
+    throw new Error('CROWD_KAFKA_EXTRA is not valid JSON')
   }
 }
 
@@ -36,7 +45,7 @@ export const getKafkaClient = (config: IQueueClientConfig): Kafka => {
       initialRetryTime: 100,
       retries: 8,
     },
-    ...(config.extra ? JSON.parse(config.extra) : {}),
+    ...(config.extra ? parseKafkaExtra(config.extra) : {}),
   })
 
   return kafkaClient
