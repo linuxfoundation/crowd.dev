@@ -24,8 +24,9 @@ function cventEvent(
   eventName: string,
   startDate: string,
   projectSlug: string | null = 'example-project',
+  source: string | null = 'cvent',
 ): CventCatalogueEvent {
-  return { eventId, eventName, startDate, projectId: `${projectSlug}-id`, projectSlug }
+  return { eventId, eventName, startDate, projectId: `${projectSlug}-id`, projectSlug, source }
 }
 
 const subprojectFor = (projectSlug: string | null) =>
@@ -71,6 +72,7 @@ describe('matchSessionizeEvent', () => {
       status: 'matched',
       holdReason: null,
       cventEventId: 'cv-1',
+      catalogueSource: 'cvent',
       segmentId: 'segment-example',
       rule: 'exact_name',
       ruleVersion: MATCHING_RULE_VERSION,
@@ -81,6 +83,7 @@ describe('matchSessionizeEvent', () => {
         eventName: 'Example Cloud NativeCon North America 2025',
         startDate: '2025-11-10',
         projectId: 'example-project-id',
+        source: 'cvent',
         dayGap: 0,
       },
     ])
@@ -124,6 +127,25 @@ describe('matchSessionizeEvent', () => {
     expect(decision.evidence.candidates.map(({ eventId }) => eventId)).toEqual(['cv-1', 'cv-2'])
   })
 
+  it.each(['backfill', 'bevy', 'regfox', null])(
+    'holds a single candidate from source %s as not_cvent',
+    (source) => {
+      const decision = matchSessionizeEvent(
+        sessionizeEvent('Summit 2025', '2025-06-10'),
+        [cventEvent('cv-1', 'Summit 2025', '2025-06-10', 'example-project', source)],
+        subprojectFor,
+      )
+      expect(decision).toMatchObject({
+        status: 'held',
+        holdReason: 'not_cvent',
+        cventEventId: 'cv-1',
+        catalogueSource: source,
+        segmentId: null,
+        evidence: { candidates: [{ eventId: 'cv-1', source }] },
+      })
+    },
+  )
+
   it('holds with no_segment when the project has no subproject', () => {
     const decision = matchSessionizeEvent(
       sessionizeEvent('Summit 2025', '2025-06-10'),
@@ -134,6 +156,7 @@ describe('matchSessionizeEvent', () => {
       status: 'held',
       holdReason: 'no_segment',
       cventEventId: 'cv-9',
+      catalogueSource: 'cvent',
       segmentId: null,
       rule: null,
     })
