@@ -1,5 +1,4 @@
--- The default 20% scale factor waits for ~49M dead rows on 243M; 5M, as on "activityRelations",
--- keeps each run to one index pass with the 64 MB maintenance_work_mem.
+-- The default 20% scale factor waits for ~49M dead rows on 243M; vacuum at 5M, as on "activityRelations".
 alter table "memberSegmentsAgg" set (
   autovacuum_vacuum_scale_factor = 0,
   autovacuum_vacuum_threshold = 5000000,
