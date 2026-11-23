@@ -10,6 +10,7 @@ export interface ISessionizeEventDecisionInput {
   status: 'matched' | 'held'
   holdReason: string | null
   cventEventId: string | null
+  catalogueSource: string | null
   segmentId: string | null
   rule: string | null
   ruleVersion: number
@@ -38,7 +39,8 @@ export async function listSessionizeEventMappings(
     `
       SELECT "eventKey", "eventName", "eventStart"::text AS "eventStart",
              "eventEnd"::text AS "eventEnd", "cfpStart", "cfpEnd", status, "holdReason",
-             "cventEventId", "segmentId", rule, "ruleVersion", evidence, "reviewedAt",
+             "cventEventId", "catalogueSource", "segmentId", rule, "ruleVersion", evidence,
+             "reviewedAt",
              "lockedAt", "deactivatedAt"
       FROM integration."sessionizeEventMappings"
       ORDER BY "eventKey"
@@ -90,7 +92,8 @@ export async function upsertSessionizeEventDecision(
                (status IS DISTINCT FROM $(status)
                  OR "holdReason" IS DISTINCT FROM $(holdReason)
                  OR "segmentId" IS DISTINCT FROM $(segmentId)::uuid
-                 OR "cventEventId" IS DISTINCT FROM $(cventEventId)) AS "targetChanged",
+                 OR "cventEventId" IS DISTINCT FROM $(cventEventId)
+                 OR "catalogueSource" IS DISTINCT FROM $(catalogueSource)) AS "targetChanged",
                (rule IS DISTINCT FROM $(rule)
                  OR "ruleVersion" IS DISTINCT FROM $(ruleVersion)::int
                  OR evidence IS DISTINCT FROM $(evidence)::jsonb) AS "decisionChanged"
@@ -106,11 +109,13 @@ export async function upsertSessionizeEventDecision(
         `
           INSERT INTO integration."sessionizeEventMappings"
             ("eventKey", "eventName", "eventStart", "eventEnd", "cfpStart", "cfpEnd", status,
-             "holdReason", "cventEventId", "segmentId", rule, "ruleVersion", evidence)
+             "holdReason", "cventEventId", "catalogueSource", "segmentId", rule, "ruleVersion",
+             evidence)
           VALUES
             ($(eventKey), $(eventName), $(eventStart)::date, $(eventEnd)::date,
              $(cfpStart)::timestamp, $(cfpEnd)::timestamp, $(status), $(holdReason),
-             $(cventEventId), $(segmentId)::uuid, $(rule), $(ruleVersion), $(evidence)::jsonb)
+             $(cventEventId), $(catalogueSource), $(segmentId)::uuid, $(rule), $(ruleVersion),
+             $(evidence)::jsonb)
         `,
         values,
       )
@@ -138,6 +143,7 @@ export async function upsertSessionizeEventDecision(
             status = $(status),
             "holdReason" = $(holdReason),
             "cventEventId" = $(cventEventId),
+            "catalogueSource" = $(catalogueSource),
             "segmentId" = $(segmentId)::uuid,
             rule = $(rule),
             "ruleVersion" = $(ruleVersion),

@@ -24,8 +24,9 @@ function cventEvent(
   eventName: string,
   startDate: string,
   projectSlug: string | null = 'example-project',
+  source: string | null = 'cvent',
 ): CventCatalogueEvent {
-  return { eventId, eventName, startDate, projectId: `${projectSlug}-id`, projectSlug }
+  return { eventId, eventName, startDate, projectId: `${projectSlug}-id`, projectSlug, source }
 }
 
 const subprojectFor = (projectSlug: string | null) =>
@@ -62,38 +63,34 @@ describe('matchSessionizeEvent', () => {
     const decision = matchSessionizeEvent(
       sessionizeEvent('Example Cloud + NativeCon NA 2025', '2025-11-10'),
       [
-        cventEvent(
-          'lfExampleEvent0001',
-          'Example Cloud NativeCon North America 2025',
-          '2025-11-10',
-        ),
-        cventEvent('lfExampleEvent0002', 'Other Summit 2025', '2025-11-10'),
+        cventEvent('cv-1', 'Example Cloud NativeCon North America 2025', '2025-11-10'),
+        cventEvent('cv-2', 'Other Summit 2025', '2025-11-10'),
       ],
       subprojectFor,
     )
     expect(decision).toMatchObject({
       status: 'matched',
       holdReason: null,
-      cventEventId: 'lfExampleEvent0001',
+      cventEventId: 'cv-1',
+      catalogueSource: 'cvent',
       segmentId: 'segment-example',
       rule: 'exact_name',
       ruleVersion: MATCHING_RULE_VERSION,
     })
     expect(decision.evidence.candidates).toEqual([
       {
-        eventId: 'lfExampleEvent0001',
+        eventId: 'cv-1',
         eventName: 'Example Cloud NativeCon North America 2025',
         startDate: '2025-11-10',
         projectId: 'example-project-id',
+        source: 'cvent',
         dayGap: 0,
       },
     ])
   })
 
   it('accepts a candidate exactly 21 days away and holds at 22', () => {
-    const catalogue = (startDate: string) => [
-      cventEvent('lfExampleEvent0001', 'Summit 2025', startDate),
-    ]
+    const catalogue = (startDate: string) => [cventEvent('cv-1', 'Summit 2025', startDate)]
     const event = sessionizeEvent('Summit 2025', '2025-03-01')
     expect(matchSessionizeEvent(event, catalogue('2025-03-22'), subprojectFor).status).toBe(
       'matched',
@@ -106,7 +103,7 @@ describe('matchSessionizeEvent', () => {
   it('computes the day gap on calendar dates across a daylight-saving change', () => {
     const decision = matchSessionizeEvent(
       sessionizeEvent('Summit 2025', '2025-03-01'),
-      [cventEvent('lfExampleEvent0001', 'Summit 2025', '2025-03-09T23:30:00.000Z')],
+      [cventEvent('cv-1', 'Summit 2025', '2025-03-09T23:30:00.000Z')],
       subprojectFor,
     )
     expect(decision.evidence.candidates[0].dayGap).toBe(8)
@@ -116,8 +113,8 @@ describe('matchSessionizeEvent', () => {
     const decision = matchSessionizeEvent(
       sessionizeEvent('Summit 2025', '2025-06-10'),
       [
-        cventEvent('lfExampleEvent0001', 'Summit 2025', '2025-06-10', 'example-project'),
-        cventEvent('lfExampleEvent0002', 'Summit 2025', '2025-06-12', 'unknown'),
+        cventEvent('cv-1', 'Summit 2025', '2025-06-10', 'example-project'),
+        cventEvent('cv-2', 'Summit 2025', '2025-06-12', 'unknown'),
       ],
       subprojectFor,
     )
@@ -127,26 +124,24 @@ describe('matchSessionizeEvent', () => {
       cventEventId: null,
       segmentId: null,
     })
-    expect(decision.evidence.candidates.map(({ eventId }) => eventId)).toEqual([
-      'lfExampleEvent0001',
-      'lfExampleEvent0002',
-    ])
+    expect(decision.evidence.candidates.map(({ eventId }) => eventId)).toEqual(['cv-1', 'cv-2'])
   })
 
-  it.each(['-5', '12_34_example-project-id'])(
-    'holds a single non-Cvent candidate %s as not_cvent',
-    (eventId) => {
+  it.each(['backfill', 'bevy', 'regfox', null])(
+    'holds a single candidate from source %s as not_cvent',
+    (source) => {
       const decision = matchSessionizeEvent(
         sessionizeEvent('Summit 2025', '2025-06-10'),
-        [cventEvent(eventId, 'Summit 2025', '2025-06-10')],
+        [cventEvent('cv-1', 'Summit 2025', '2025-06-10', 'example-project', source)],
         subprojectFor,
       )
       expect(decision).toMatchObject({
         status: 'held',
         holdReason: 'not_cvent',
-        cventEventId: null,
+        cventEventId: 'cv-1',
+        catalogueSource: source,
         segmentId: null,
-        evidence: { candidates: [{ eventId }] },
+        evidence: { candidates: [{ eventId: 'cv-1', source }] },
       })
     },
   )
@@ -154,13 +149,14 @@ describe('matchSessionizeEvent', () => {
   it('holds with no_segment when the project has no subproject', () => {
     const decision = matchSessionizeEvent(
       sessionizeEvent('Summit 2025', '2025-06-10'),
-      [cventEvent('lfExampleEvent0009', 'Summit 2025', '2025-06-10', 'unknown')],
+      [cventEvent('cv-9', 'Summit 2025', '2025-06-10', 'unknown')],
       subprojectFor,
     )
     expect(decision).toMatchObject({
       status: 'held',
       holdReason: 'no_segment',
-      cventEventId: 'lfExampleEvent0009',
+      cventEventId: 'cv-9',
+      catalogueSource: 'cvent',
       segmentId: null,
       rule: null,
     })
@@ -170,7 +166,7 @@ describe('matchSessionizeEvent', () => {
   it('does not match across years', () => {
     const decision = matchSessionizeEvent(
       sessionizeEvent('Summit 2025', '2025-12-30'),
-      [cventEvent('lfExampleEvent0001', 'Summit 2026', '2026-01-05')],
+      [cventEvent('cv-1', 'Summit 2026', '2026-01-05')],
       subprojectFor,
     )
     expect(decision).toMatchObject({ status: 'held', holdReason: 'no_match' })
@@ -179,7 +175,7 @@ describe('matchSessionizeEvent', () => {
   it('never matches a name that normalizes to nothing', () => {
     const decision = matchSessionizeEvent(
       sessionizeEvent('Virtual', '2025-11-10'),
-      [cventEvent('lfExampleEvent0001', 'Virtual', '2025-11-10')],
+      [cventEvent('cv-1', 'Virtual', '2025-11-10')],
       subprojectFor,
     )
     expect(decision).toMatchObject({

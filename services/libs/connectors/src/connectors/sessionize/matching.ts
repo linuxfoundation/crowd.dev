@@ -4,7 +4,7 @@ export const MATCHING_RULE_VERSION = 2
 export const MATCH_WINDOW_DAYS = 21
 
 const MILLISECONDS_PER_DAY = 86_400_000
-const CVENT_EVENT_ID = /^lf[A-Za-z0-9]{16}$/
+const CVENT_SOURCE = 'cvent'
 
 const NAME_SYNONYMS = new Map<string, string>([
   ['na', 'north america'],
@@ -21,6 +21,7 @@ export interface CventCatalogueEvent {
   startDate: string
   projectId: string | null
   projectSlug: string | null
+  source: string | null
 }
 
 export type SubprojectLookup = (
@@ -35,6 +36,7 @@ export interface SessionizeMatchCandidate {
   eventName: string
   startDate: string
   projectId: string | null
+  source: string | null
   dayGap: number
 }
 
@@ -43,6 +45,7 @@ export interface SessionizeEventDecision {
   status: 'matched' | 'held'
   holdReason: SessionizeHoldReason | null
   cventEventId: string | null
+  catalogueSource: string | null
   segmentId: string | null
   rule: 'exact_name' | null
   ruleVersion: number
@@ -86,6 +89,7 @@ function findCandidates(
         eventName: entry.eventName,
         startDate: entry.startDate,
         projectId: entry.projectId,
+        source: entry.source,
         dayGap: dayGap(entry.startDate, event.eventStart),
       },
     }))
@@ -101,12 +105,13 @@ export function matchSessionizeEvent(
   const evidence = { candidates: found.map(({ candidate }) => candidate) }
   const held = (
     holdReason: SessionizeHoldReason,
-    cventEventId: string | null = null,
+    candidate: CventCatalogueEvent | null = null,
   ): SessionizeEventDecision => ({
     event,
     status: 'held',
     holdReason,
-    cventEventId,
+    cventEventId: candidate?.eventId ?? null,
+    catalogueSource: candidate?.source ?? null,
     segmentId: null,
     rule: null,
     ruleVersion: MATCHING_RULE_VERSION,
@@ -121,18 +126,19 @@ export function matchSessionizeEvent(
   }
 
   const { catalogueEvent } = found[0]
-  if (!CVENT_EVENT_ID.test(catalogueEvent.eventId)) {
-    return held('not_cvent')
+  if (catalogueEvent.source !== CVENT_SOURCE) {
+    return held('not_cvent', catalogueEvent)
   }
   const segmentId = subprojectFor(catalogueEvent.projectSlug, catalogueEvent.projectId)
   if (segmentId === null) {
-    return held('no_segment', catalogueEvent.eventId)
+    return held('no_segment', catalogueEvent)
   }
   return {
     event,
     status: 'matched',
     holdReason: null,
     cventEventId: catalogueEvent.eventId,
+    catalogueSource: catalogueEvent.source,
     segmentId,
     rule: 'exact_name',
     ruleVersion: MATCHING_RULE_VERSION,
