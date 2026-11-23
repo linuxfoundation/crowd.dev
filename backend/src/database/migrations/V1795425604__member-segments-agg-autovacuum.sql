@@ -1,6 +1,5 @@
--- At the default scale factor autovacuum waits for ~49M dead rows on 243M. The aggregate backfill
--- rewrites ~49M rows a night and the daily sinks keep updating, so vacuum at 5M dead rows instead,
--- as on "activityRelations" (one index pass with the 64 MB maintenance_work_mem).
+-- The default 20% scale factor waits for ~49M dead rows on 243M; 5M, as on "activityRelations",
+-- keeps each run to one index pass with the 64 MB maintenance_work_mem.
 alter table "memberSegmentsAgg" set (
   autovacuum_vacuum_scale_factor = 0,
   autovacuum_vacuum_threshold = 5000000,
