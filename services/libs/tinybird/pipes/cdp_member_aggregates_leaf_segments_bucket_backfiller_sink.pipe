@@ -23,9 +23,10 @@ SQL >
         ) AS averageSentiment,
         now() AS updatedAt
     FROM cdp_member_segment_aggregates_v2_ds cdp_aggs
-    {% if defined(bucket_id) %}
-        WHERE
-            cityHash64(segmentId) % 5
+    WHERE
+        1 = 1
+        {% if defined(bucket_id) %}
+            AND cityHash64(segmentId) % 5
             = {{
                 UInt8(
                     bucket_id,
@@ -34,7 +35,20 @@ SQL >
                     required=False,
                 )
             }}
-    {% end %}
+        {% end %}
+        {% if defined(part) %}
+            AND cityHash64(memberId)
+            % {{
+                UInt16(
+                    parts, 10, description="Number of parts the bucket is split into", required=False
+                )
+            }}
+            = {{
+                UInt16(
+                    part, 0, description="Part of the bucket to send, 0 to parts - 1", required=False
+                )
+            }}
+        {% end %}
     GROUP BY segmentId, memberId
 
 TYPE SINK
