@@ -25,16 +25,17 @@ SQL >
     {% if Boolean(count, false) %}
         SELECT count(insightsProjects_filtered.id) from insightsProjects_filtered
     {% else %}
-        SELECT *
+        SELECT insightsProjects_filtered.*, project_segment.sourceId AS sourceId
         FROM insightsProjects_filtered
         -- segments is sorted by (slug, id), so FINAL keeps a row per slug for a renamed segment.
-        -- Grouping by id joins one row per project.
+        -- Grouping by id joins one row per project; ClickHouse 25.8 rejects USING on its aliased key.
         LEFT JOIN
             (
-                SELECT id AS segmentId, argMax(sourceId, updatedAt) AS sourceId
+                SELECT id AS segmentKey, argMax(sourceId, updatedAt) AS sourceId
                 FROM segments
                 GROUP BY id
-            ) AS project_segment USING (segmentId)
+            ) AS project_segment
+            ON project_segment.segmentKey = insightsProjects_filtered.segmentId
         order by
             {{
                 column(
