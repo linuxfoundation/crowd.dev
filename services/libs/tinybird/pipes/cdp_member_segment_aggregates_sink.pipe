@@ -16,7 +16,8 @@ SQL >
         lastActive,
         activityTypes,
         activeOn,
-        averageSentiment,
+        -- no score is sent as -1, as v1 did: the Kafka Connect transform rejects NULL
+        coalesce(averageSentiment, -1) AS averageSentiment,
         now() AS updatedAt
     FROM
         (
