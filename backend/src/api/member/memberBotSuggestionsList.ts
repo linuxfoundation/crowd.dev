@@ -1,9 +1,5 @@
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { Error400 } from '@crowd/common'
-import {
-  fetchMemberBotSuggestionsBySegment,
-  fetchMemberProfile,
-} from '@crowd/data-access-layer/src/members'
+import { fetchMemberBotSuggestions, fetchMemberProfile } from '@crowd/data-access-layer/src/members'
 
 import Permissions from '../../security/permissions'
 import PermissionChecker from '../../services/user/permissionChecker'
@@ -25,20 +21,14 @@ import PermissionChecker from '../../services/user/permissionChecker'
 export default async (req, res) => {
   new PermissionChecker(req).validateHas(Permissions.values.memberRead)
 
-  const segmentId = SequelizeRepository.getSegmentIds(req)[0]
-  if (!segmentId) {
-    throw new Error400(req.language, 'member.segmentsRequired')
-  }
-
   const qx = SequelizeRepository.getQueryExecutor(req)
   const detail = String(req.query.detail) === 'true'
 
-  const payload = await fetchMemberBotSuggestionsBySegment(
-    qx,
-    segmentId,
-    Number(req.query.limit ?? 20),
-    Number(req.query.offset ?? 0),
-  )
+  const payload = await fetchMemberBotSuggestions(qx, {
+    segmentId: req.query.segments?.[0],
+    limit: Number(req.query.limit ?? 20),
+    offset: Number(req.query.offset ?? 0),
+  })
 
   if (detail && payload.rows.length > 0) {
     payload.rows = await Promise.all(

@@ -92,17 +92,26 @@ export async function deleteFakeOrganizationSuggestion(
 
 export async function findFakeOrganizationSuggestions(
   qx: QueryExecutor,
-  segmentId: string,
-  limit: number,
-  offset: number,
+  { segmentId, limit, offset }: { segmentId?: string; limit: number; offset: number },
 ): Promise<PageData<FakeOrganizationSuggestion> & { hasMore: boolean }> {
   const params = { segmentId, limit, offset }
 
+  const activity = segmentId
+    ? {
+        join: `JOIN "organizationSegmentsAgg" osa
+          ON osa."organizationId" = fos."organizationId"
+         AND osa."segmentId" = $(segmentId)`,
+        count: 'osa."activityCount"',
+      }
+    : {
+        join: `LEFT JOIN "organizationsGlobalActivityCount" gac
+          ON gac."organizationId" = fos."organizationId"`,
+        count: 'COALESCE(gac.total_count_estimate, 0)',
+      }
+
   const from = `
     FROM "fakeOrganizationSuggestions" fos
-    JOIN "organizationSegmentsAgg" osa
-      ON osa."organizationId" = fos."organizationId"
-     AND osa."segmentId" = $(segmentId)
+    ${activity.join}
     JOIN organizations o
       ON o.id = fos."organizationId"
      AND o."deletedAt" IS NULL
@@ -115,9 +124,9 @@ export async function findFakeOrganizationSuggestions(
         fos."organizationId",
         o."displayName",
         o.logo,
-        osa."activityCount"
+        ${activity.count} AS "activityCount"
       ${from}
-      ORDER BY osa."activityCount" DESC, fos."organizationId"
+      ORDER BY "activityCount" DESC, fos."organizationId"
       LIMIT $(limit) OFFSET $(offset)
       `,
       params,
