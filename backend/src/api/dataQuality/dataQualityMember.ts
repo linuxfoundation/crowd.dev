@@ -1,3 +1,4 @@
+import { getRequestedSegmentIds } from '@/middlewares/segmentMiddleware'
 import DataQualityService from '@/services/dataQualityService'
 
 import Permissions from '../../security/permissions'
@@ -18,15 +19,7 @@ import PermissionChecker from '../../services/user/permissionChecker'
 export default async (req, res) => {
   new PermissionChecker(req).validateHas(Permissions.values.memberRead)
 
-  const segmentId = req.query.segments?.length > 0 ? req.query.segments[0] : null
-  if (!segmentId) {
-    await req.responseHandler.error(req, res, {
-      code: 400,
-      message: 'Segment ID is required',
-    })
-    return
-  }
-
+  const segmentId = getRequestedSegmentIds(req)[0]
   const payload = await new DataQualityService(req).findMemberIssues(req.query, segmentId)
 
   await req.responseHandler.success(req, res, payload)
