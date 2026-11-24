@@ -1,4 +1,5 @@
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { getRequestedSegmentIds } from '@/middlewares/segmentMiddleware'
 import { findFakeOrganizationSuggestions } from '@crowd/data-access-layer/src/organizations'
 
 import Permissions from '../../security/permissions'
@@ -20,7 +21,7 @@ import PermissionChecker from '../../services/user/permissionChecker'
 export default async (req, res) => {
   new PermissionChecker(req).validateHas(Permissions.values.organizationRead)
 
-  const segmentId = req.query.segments?.[0]
+  const segmentId = getRequestedSegmentIds(req)[0]
   const qx = SequelizeRepository.getQueryExecutor(req)
   const detail = String(req.query.detail) === 'true'
 

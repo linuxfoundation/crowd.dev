@@ -1,4 +1,5 @@
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
+import { getRequestedSegmentIds } from '@/middlewares/segmentMiddleware'
 import { fetchMemberBotSuggestions, fetchMemberProfile } from '@crowd/data-access-layer/src/members'
 
 import Permissions from '../../security/permissions'
@@ -25,7 +26,7 @@ export default async (req, res) => {
   const detail = String(req.query.detail) === 'true'
 
   const payload = await fetchMemberBotSuggestions(qx, {
-    segmentId: req.query.segments?.[0],
+    segmentId: getRequestedSegmentIds(req)[0],
     limit: Number(req.query.limit ?? 20),
     offset: Number(req.query.offset ?? 0),
   })

@@ -9,10 +9,7 @@ export async function segmentMiddleware(req: Request, _res: Response, next: Next
     const options = req as unknown as IRepositoryOptions
     const segmentRepository = new SegmentRepository(options)
 
-    const querySegments = toStringArray(req.query.segments)
-    const bodySegments = toStringArray((req.body as Record<string, unknown>)?.segments)
-
-    const segmentIds = querySegments.length > 0 ? querySegments : bodySegments
+    const segmentIds = getRequestedSegmentIds(req)
 
     if (segmentIds.length > 0) {
       options.currentSegments = await segmentRepository.findInIds(segmentIds)
@@ -25,6 +22,15 @@ export async function segmentMiddleware(req: Request, _res: Response, next: Next
   } catch (error) {
     next(error)
   }
+}
+
+/** Segment IDs the caller sent, from the query string or else the body, without the fallback. */
+export function getRequestedSegmentIds(req: Request): string[] {
+  const querySegments = toStringArray(req.query.segments)
+
+  return querySegments.length > 0
+    ? querySegments
+    : toStringArray((req.body as Record<string, unknown>)?.segments)
 }
 
 /**
