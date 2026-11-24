@@ -24,7 +24,6 @@ export async function segmentMiddleware(req: Request, _res: Response, next: Next
   }
 }
 
-/** Segment IDs the caller sent, from the query string or else the body, without the fallback. */
 export function getRequestedSegmentIds(req: Request): string[] {
   const querySegments = toStringArray(req.query.segments)
 
