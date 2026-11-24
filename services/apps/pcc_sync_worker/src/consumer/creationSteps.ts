@@ -6,11 +6,16 @@ import type { CdpSegmentIndex, CreationPlan } from './creationPlan'
 
 export type CreationEndpoint = 'projectGroup' | 'project' | 'subproject'
 
+export interface ParentSegment {
+  slug: string
+  name: string
+}
+
 export interface CreationStep {
   endpoint: CreationEndpoint
   node: PccHierarchyNode
-  parentSlug?: string
-  grandparentSlug?: string
+  parent?: ParentSegment
+  grandparent?: ParentSegment
 }
 
 // The backend creates the levels below with the same name: a project group comes with its
@@ -25,9 +30,13 @@ export function creationStepKey(step: CreationStep): string {
   return `${step.endpoint}:${step.node.pccProjectId}`
 }
 
-function slugInCdp(index: CdpSegmentIndex, type: SegmentType, node: PccHierarchyNode): string {
+function asParent(
+  index: CdpSegmentIndex,
+  type: SegmentType,
+  node: PccHierarchyNode,
+): ParentSegment {
   const [linked] = findLinkedSegments(index, type, node.pccProjectId)
-  return linked?.slug ?? node.slug
+  return { slug: linked?.slug ?? node.slug, name: linked?.name ?? node.name }
 }
 
 export function buildCreationSteps(
@@ -47,18 +56,18 @@ export function buildCreationSteps(
   const needs = (type: SegmentType, node: PccHierarchyNode) =>
     missing.has(typedKey(type, node.pccProjectId))
 
-  const groupSlug = slugInCdp(index, SegmentType.PROJECT_GROUP, target.group)
-  const projectSlug = slugInCdp(index, SegmentType.PROJECT, target.project)
+  const group = asParent(index, SegmentType.PROJECT_GROUP, target.group)
+  const project = asParent(index, SegmentType.PROJECT, target.project)
 
   if (needs(SegmentType.PROJECT_GROUP, target.group)) {
     add({ endpoint: 'projectGroup', node: target.group })
   }
   if (needs(SegmentType.PROJECT, target.project)) {
-    add({ endpoint: 'project', node: target.project, parentSlug: groupSlug })
+    add({ endpoint: 'project', node: target.project, parent: group })
   }
   for (const node of target.subprojects) {
     if (needs(SegmentType.SUB_PROJECT, node)) {
-      add({ endpoint: 'subproject', node, parentSlug: projectSlug, grandparentSlug: groupSlug })
+      add({ endpoint: 'subproject', node, parent: project, grandparent: group })
     }
   }
 
