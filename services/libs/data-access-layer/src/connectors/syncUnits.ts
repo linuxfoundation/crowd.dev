@@ -156,6 +156,33 @@ export async function recordRunSuccess(
   )
 }
 
+export async function recordRunFinished(
+  qx: QueryExecutor,
+  id: string,
+  data: ISyncRunSuccess,
+): Promise<void> {
+  await qx.result(
+    `UPDATE integration.sync_units
+     SET watermark = $(watermark)::jsonb,
+         "emittedCount" = $(emittedCount),
+         status = CASE WHEN status = 'active' THEN 'paused' ELSE status END,
+         "lastRunAt" = now(),
+         "lastSuccessAt" = now(),
+         "consecutiveFailures" = 0,
+         "lastErrorClass" = NULL,
+         "lastErrorMessage" = NULL,
+         "lastRunComplete" = true,
+         "lockedAt" = NULL,
+         "updatedAt" = now()
+     WHERE id = $(id)`,
+    {
+      id,
+      watermark: JSON.stringify(data.watermark),
+      emittedCount: data.emittedCount,
+    },
+  )
+}
+
 export async function recordRunPartial(
   qx: QueryExecutor,
   id: string,

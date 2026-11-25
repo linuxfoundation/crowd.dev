@@ -24,6 +24,7 @@ import {
   mergeSyncUnitWatermark,
   reassertUnitClaim,
   recordRunFailure,
+  recordRunFinished,
   recordRunTimeout,
   renewRunningUnitLease,
   reviveDeadLetteredSyncUnits,
@@ -928,6 +929,85 @@ describe('recordRunTimeout', () => {
     await recordRunTimeout(qx, id, 'sync run timed out (START_TO_CLOSE)', minutesAgo(10))
 
     expect((await readRun(qx, id)).status).toBe('active')
+  })
+})
+
+describe('recordRunFinished', () => {
+  const NEXT_RUN_AT = '2026-12-01T08:00:00.000Z'
+  const LOCKED_AT = '2026-11-25T09:00:00.000Z'
+
+  async function createRunningUnit(qx: QueryExecutor, status: string): Promise<string> {
+    const integrationId = await createIntegration(qx, { platform: 'sessionize' })
+    const id = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-1001',
+      syncName: 'eventExport',
+      platform: 'sessionize',
+      status,
+      watermark: { cursor: 'before' },
+      lockedAt: LOCKED_AT,
+    })
+    await qx.result(
+      `UPDATE integration.sync_units
+       SET "nextRunAt" = $(nextRunAt)::timestamptz,
+           "consecutiveFailures" = 2,
+           "lastErrorClass" = 'provider.unavailable',
+           "lastErrorMessage" = 'sessionize unavailable'
+       WHERE id = $(id)`,
+      { id, nextRunAt: NEXT_RUN_AT },
+    )
+    return id
+  }
+
+  async function readRun(qx: QueryExecutor, id: string) {
+    return qx.selectOne(
+      `SELECT status, watermark, "emittedCount", "nextRunAt", "lockedAt", "consecutiveFailures",
+              "lastErrorClass", "lastErrorMessage", "lastRunComplete",
+              "lastRunAt" IS NOT NULL AS "ran", "lastSuccessAt" IS NOT NULL AS "succeeded"
+       FROM integration.sync_units WHERE id = $(id)`,
+      { id },
+    )
+  }
+
+  test('records the run as a complete success, pauses the unit and keeps nextRunAt', async ({
+    qx,
+  }) => {
+    const id = await createRunningUnit(qx, 'active')
+
+    await recordRunFinished(qx, id, {
+      watermark: { cursor: 'after' },
+      emittedCount: 7,
+      complete: true,
+    })
+
+    const run = await readRun(qx, id)
+    expect(new Date(run.nextRunAt).toISOString()).toBe(NEXT_RUN_AT)
+    expect(run).toMatchObject({
+      status: 'paused',
+      watermark: { cursor: 'after' },
+      emittedCount: 7,
+      lockedAt: null,
+      consecutiveFailures: 0,
+      lastErrorClass: null,
+      lastErrorMessage: null,
+      lastRunComplete: true,
+      ran: true,
+      succeeded: true,
+    })
+  })
+
+  test('leaves a decommissioned unit decommissioned', async ({ qx }) => {
+    const id = await createRunningUnit(qx, 'decommissioned')
+
+    await recordRunFinished(qx, id, {
+      watermark: { cursor: 'after' },
+      emittedCount: 7,
+      complete: true,
+    })
+
+    expect(await readRun(qx, id)).toMatchObject({
+      status: 'decommissioned',
+      lastRunComplete: true,
+    })
   })
 })
 

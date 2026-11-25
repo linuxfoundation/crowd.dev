@@ -73,6 +73,9 @@ export interface SyncOutcome {
   complete: boolean
   // Only meaningful with complete: false; the next run then waits for the sync's normal cadence.
   resumeAtCadence?: boolean
+  // Both only meaningful with complete: true.
+  nextRunAt?: Date
+  finished?: boolean
 }
 
 export interface SyncDefinition<TDeps = undefined> {
