@@ -191,6 +191,28 @@ describe('interpretSessionizeResponse', () => {
   it('leaves non-redirect responses to the default classification', () => {
     expect(interpretSessionizeResponse({ status: 200, headers: {}, data: '' })).toBeNull()
   })
+
+  it.each([
+    ['a text', LOGIN_PAGE],
+    ['a binary', Buffer.from(LOGIN_PAGE)],
+  ])('treats %s sign-in page served as a 200 as a rejected session', (_, data) => {
+    const error = interpretSessionizeResponse({ status: 200, headers: {}, data })
+
+    expect(error).toBeInstanceOf(ProviderAuthError)
+  })
+
+  it.each([
+    ['a spreadsheet', Buffer.concat([Buffer.from('PK\x03\x04'), Buffer.alloc(64)])],
+    ['the events page', '<div id="tab-activated"><table></table></div>'],
+  ])('accepts %s served as a 200', (_, data) => {
+    expect(interpretSessionizeResponse({ status: 200, headers: {}, data })).toBeNull()
+  })
+
+  it('inspects only the first 8 KB of a binary body', () => {
+    const data = Buffer.concat([Buffer.alloc(8 * 1024, ' '), Buffer.from(LOGIN_PAGE)])
+
+    expect(interpretSessionizeResponse({ status: 200, headers: {}, data })).toBeNull()
+  })
 })
 
 describe('session renewal through the http client', () => {

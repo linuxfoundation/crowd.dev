@@ -29,6 +29,7 @@ const TRANSIENT_ERROR_CLASSES = new Set(['provider.unavailable', 'provider.rate_
 const ANTI_FORGERY_TOKEN_PATTERN =
   /<form[^>]*action="\/login\/classic"[^>]*>[\s\S]*?name="__RequestVerificationToken"[^>]*value="([^"]+)"/
 const SIGN_IN_FORM_PATTERN = /<form[^>]*action="\/login\/classic"/
+const SIGN_IN_PAGE_SNIFF_BYTES = 8 * 1024
 
 const log = getServiceChildLogger('sessionizeSession')
 
@@ -99,6 +100,11 @@ export function applySessionizeCookie(
 export function interpretSessionizeResponse(response: HttpResponse): ConnectorError | null {
   if (isLoginRedirect(response.status, response.headers.location)) {
     return new ProviderAuthError('sessionize session rejected, redirected to the login page', {
+      status: response.status,
+    })
+  }
+  if (response.status === 200 && servesSignInForm(response.data)) {
+    return new ProviderAuthError('sessionize session rejected, served the sign-in page', {
       status: response.status,
     })
   }
@@ -217,6 +223,16 @@ function isSignInRefusal(response: SessionizeResponse): boolean {
     typeof response.data === 'string' &&
     SIGN_IN_FORM_PATTERN.test(response.data)
   )
+}
+
+function servesSignInForm(data: unknown): boolean {
+  if (typeof data === 'string') {
+    return SIGN_IN_FORM_PATTERN.test(data)
+  }
+  if (Buffer.isBuffer(data)) {
+    return SIGN_IN_FORM_PATTERN.test(data.subarray(0, SIGN_IN_PAGE_SNIFF_BYTES).toString('utf8'))
+  }
+  return false
 }
 
 function isLoginRedirect(status: number, location: string | undefined): boolean {
