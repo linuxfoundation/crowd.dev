@@ -8,8 +8,6 @@ DESCRIPTION >
     - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans (defaults: code contributions only)
     - Response: `contributorCount`, `contributionCount`, `organizationCount` (organizations headquartered in the country), `inCountryAtCountryOrganizationCount`, `inCountryElsewhereCount`, `abroadAtCountryOrganizationCount`
 
-TOKEN "insights-app-token" READ
-
 TAGS "Report"
 
 NODE cncf_country_summary_by_member

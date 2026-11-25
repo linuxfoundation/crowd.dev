@@ -8,8 +8,6 @@ DESCRIPTION >
     "Repositories tracked" KPI for the same day.
     - No parameters — this pipe is not scope-filtered.
 
-TOKEN "insights-app-token" READ
-
 TAGS "Insights, Widget", "Health"
 
 NODE health_score_report_category_coverage_endpoint
