@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs'
 
 import type { ConnectorHttp } from '../../http/client'
 import { ProviderContractError } from '../../http/errors'
+import type { ConnectorErrorOptions } from '../../http/errors'
 import { SESSIONIZE_BASE_URL } from './session'
 
 export const SESSIONIZE_ALL_SESSIONS_PATH = (eventKey: string) =>
@@ -17,8 +18,8 @@ export interface ExportSheet {
 
 const ZIP_SIGNATURE = Buffer.from([0x50, 0x4b, 0x03, 0x04])
 
-function contractError(message: string): ProviderContractError {
-  return new ProviderContractError(`sessionize export: ${message}`)
+function contractError(message: string, options?: ConnectorErrorOptions): ProviderContractError {
+  return new ProviderContractError(`sessionize export: ${message}`, options)
 }
 
 function asBuffer(body: unknown): Buffer | null {
@@ -76,36 +77,58 @@ function normalizeCell(value: ExcelJS.CellValue): ExportCell {
   throw contractError('cell holds a formula without a result')
 }
 
-function readRow(row: ExcelJS.Row, width: number): ExportCell[] {
-  return Array.from({ length: width }, (_, index) => normalizeCell(row.getCell(index + 1).value))
+function readCells(row: ExcelJS.Row, from: number, to: number): ExportCell[] {
+  return Array.from({ length: Math.max(to - from + 1, 0) }, (_, index) =>
+    normalizeCell(row.getCell(from + index).value),
+  )
+}
+
+function headerWidth(headerRow: ExcelJS.Row): number {
+  const cells = readCells(headerRow, 1, headerRow.cellCount)
+  let width = cells.length
+  while (width > 0 && cells[width - 1] === null) {
+    width--
+  }
+  return width
+}
+
+async function loadWorkbook(file: Buffer): Promise<ExcelJS.Workbook> {
+  const workbook = new ExcelJS.Workbook()
+  try {
+    await workbook.xlsx.load(file)
+  } catch (err) {
+    throw contractError('file is not a readable xlsx workbook', {
+      cause: { name: err instanceof Error ? err.name : typeof err },
+    })
+  }
+  return workbook
 }
 
 export async function readExportSheet(file: Buffer): Promise<ExportSheet> {
-  const workbook = new ExcelJS.Workbook()
-  await workbook.xlsx.load(file)
+  const workbook = await loadWorkbook(file)
   const sheet = workbook.worksheets[0]
   if (!sheet) {
     throw contractError('workbook has no worksheet')
   }
   const headerRow = sheet.getRow(1)
-  const width = headerRow.cellCount
+  const width = headerWidth(headerRow)
   if (width === 0) {
     throw contractError(`worksheet "${sheet.name}" has no header row`)
   }
   const rows: ExportCell[][] = []
   for (let number = 2; number <= sheet.rowCount; number++) {
     const row = sheet.getRow(number)
-    if (row.cellCount > width) {
-      throw contractError(`row ${number} has cells beyond the ${width} header columns`)
+    if (readCells(row, width + 1, row.cellCount).some((cell) => cell !== null)) {
+      throw contractError(`row ${number} has values beyond the ${width} header columns`)
     }
-    const cells = readRow(row, width)
+    const cells = readCells(row, 1, width)
     if (cells.some((cell) => cell !== null)) {
       rows.push(cells)
     }
   }
   return {
     sheetNames: workbook.worksheets.map((worksheet) => worksheet.name),
-    headers: readRow(headerRow, width).map((cell) => (cell === null ? '' : String(cell))),
+    headers: readCells(headerRow, 1, width).map((cell) => (cell === null ? '' : String(cell))),
     rows,
   }
 }

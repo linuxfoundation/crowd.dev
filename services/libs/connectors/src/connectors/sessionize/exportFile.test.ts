@@ -69,16 +69,32 @@ describe('readExportSheet', () => {
     const submitted = new Date(Date.UTC(2027, 0, 12, 9, 30))
     const file = await workbookFile((workbook) => {
       const sessions = workbook.addWorksheet('Accepted sessions')
-      sessions.addRow(['Session Id', ' Title ', 'Speakers', 'Owner', 'Submitted', 'Notes'])
+      sessions.addRow([
+        'Session Id',
+        ' Title ',
+        'Speakers',
+        'Owner',
+        'Submitted',
+        'Confirmed',
+        'Notes',
+      ])
       sessions.addRow([
         101,
         { richText: [{ text: 'Scaling ' }, { font: { bold: true }, text: 'Example' }] },
         { text: 'Ada Example', hyperlink: 'https://example.org/ada' },
         '  ada@example.org  ',
         submitted,
+        false,
         '',
       ])
-      sessions.addRow([102, 'Second talk', null, 'bob@example.org', submitted, 'keep'])
+      sessions.addRow(['  ', null, ''])
+      sessions.addRow([102, 'Second talk', null, 'bob@example.org', submitted, true, 'keep'])
+      sessions.getCell('I1').font = { bold: true }
+      sessions.getCell('J2').fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFFFF00' },
+      }
       workbook.addWorksheet('Speakers').addRow(['Speaker Id'])
     })
 
@@ -91,25 +107,48 @@ describe('readExportSheet', () => {
       'Speakers',
       'Owner',
       'Submitted',
+      'Confirmed',
       'Notes',
     ])
     expect(sheet.rows).toEqual([
-      [101, 'Scaling Example', 'Ada Example', 'ada@example.org', submitted, null],
-      [102, 'Second talk', null, 'bob@example.org', submitted, 'keep'],
+      [101, 'Scaling Example', 'Ada Example', 'ada@example.org', submitted, 'false', null],
+      [102, 'Second talk', null, 'bob@example.org', submitted, 'true', 'keep'],
     ])
     expect(sheet.rows[0][4]).toBeInstanceOf(Date)
   })
 
-  it.each([
-    ['has no worksheet', () => undefined],
-    [
-      'has a first worksheet without a header row',
-      (w: ExcelJS.Workbook) => w.addWorksheet('Empty'),
-    ],
-  ])('refuses a workbook that %s', async (_, build) => {
-    const file = await workbookFile(build)
+  const workbookWith = (build: (workbook: ExcelJS.Workbook) => void) => () => workbookFile(build)
 
-    await expect(readExportSheet(file)).rejects.toBeInstanceOf(ProviderContractError)
+  it.each([
+    ['has no worksheet', workbookWith(() => undefined)],
+    ['has a first worksheet without a header row', workbookWith((w) => w.addWorksheet('Empty'))],
+    [
+      'has a value beyond the header columns',
+      workbookWith((w) => {
+        const sheet = w.addWorksheet('Sessions')
+        sheet.addRow(['Id'])
+        sheet.addRow([1, 'stray'])
+      }),
+    ],
+    [
+      'has an error cell',
+      workbookWith((w) => {
+        const sheet = w.addWorksheet('Sessions')
+        sheet.addRow(['Id'])
+        sheet.addRow([{ error: '#N/A' }])
+      }),
+    ],
+    [
+      'is a zip but not an xlsx',
+      async () => Buffer.concat([Buffer.from('PK\x03\x04'), Buffer.from('secret-export-detail')]),
+    ],
+  ])('refuses a workbook that %s', async (_, file) => {
+    const err = await readExportSheet(await file()).catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(ProviderContractError)
+    expect(JSON.stringify({ message: (err as Error).message, err })).not.toContain(
+      'secret-export-detail',
+    )
   })
 })
 
