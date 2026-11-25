@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createHttpClient } from '../../http/client'
 import type { IPooledToken } from '../../http/client'
-import { ProviderAuthError, ProviderUnavailableError } from '../../http/errors'
+import {
+  ConnectorCodeError,
+  ProviderAuthError,
+  ProviderUnavailableError,
+  RateLimitError,
+} from '../../http/errors'
 import type { TokenPool } from '../../pool/tokenPool'
 import type { Credential } from '../../types'
 import {
@@ -160,6 +165,33 @@ describe('signInToSessionize', () => {
     expect(logMocks.warn).toHaveBeenCalledTimes(SESSIONIZE_SIGN_IN_MAX_ATTEMPTS)
     expectNoSecret(err)
   })
+
+  it.each([
+    ['a 5xx', 503, ProviderUnavailableError, 1],
+    ['a 429', 429, RateLimitError, 1],
+    ['a 5xx with the default', 503, ProviderUnavailableError, undefined],
+  ])(
+    'stops after the attempts it is given when the login page answers %s',
+    async (_, status, errorType, maxAttempts) => {
+      mockedRequest.mockResolvedValue(reply(status, ''))
+
+      const err = await signInToSessionize(CREDENTIAL, maxAttempts).catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(errorType)
+      expect(mockedRequest).toHaveBeenCalledTimes(maxAttempts ?? SESSIONIZE_SIGN_IN_MAX_ATTEMPTS)
+      expect(mockedRequest.mock.calls.every(([config]) => config.method === 'GET')).toBe(true)
+    },
+  )
+
+  it.each([0, -1, 1.5])(
+    'refuses %s attempts as a code error before calling sessionize',
+    async (maxAttempts) => {
+      await expect(signInToSessionize(CREDENTIAL, maxAttempts)).rejects.toBeInstanceOf(
+        ConnectorCodeError,
+      )
+      expect(mockedRequest).not.toHaveBeenCalled()
+    },
+  )
 
   it('rejects a credential of the wrong kind before calling sessionize', async () => {
     const credly: Credential = {

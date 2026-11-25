@@ -42,8 +42,13 @@ export interface ExportProbeFailure {
   message?: string
 }
 
+const SHAPE_PUNCTUATION = new Set(`-_.:/@+,()#&'" `)
+
 export function valueShape(value: string): string {
-  return value.replace(/\p{Nd}/gu, '9').replace(/\p{L}/gu, 'A')
+  return value
+    .replace(/\p{L}\p{M}*|\p{M}+/gu, 'A')
+    .replace(/\p{N}/gu, '9')
+    .replace(/[^A9\s]/gu, (char) => (SHAPE_PUNCTUATION.has(char) ? char : '?'))
 }
 
 function normalizeHeader(header: string): string {

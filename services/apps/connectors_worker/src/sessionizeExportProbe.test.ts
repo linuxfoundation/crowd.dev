@@ -33,6 +33,19 @@ describe('valueShape', () => {
   it('replaces every digit with 9 and every letter with A, keeping the rest', () => {
     expect(valueShape('2026-03-14T09:30:00Z')).toBe('9999-99-99A99:99:99A')
     expect(valueShape('Zoë 3/4')).toBe('AAA 9/9')
+    expect(valueShape('ada.example@example.org')).toBe('AAA.AAAAAAA@AAAAAAA.AAA')
+  })
+
+  it.each([
+    ['a Devanagari word', 'देवनागरी', 'AAAAA'],
+    ['a decomposed accented word', 'Jose\u0301', 'AAAA'],
+    ['non-decimal numerals', 'Ⅻ ½ ²', '9 9 9'],
+    ['symbols outside the allow-list', 'a€b;c\u200d', 'A?A?A?'],
+  ])('masks %s without keeping any of its characters', (_, value, shape) => {
+    expect(valueShape(value)).toBe(shape)
+    for (const char of value.replace(/\s/gu, '')) {
+      expect(valueShape(value)).not.toContain(char)
+    }
   })
 })
 

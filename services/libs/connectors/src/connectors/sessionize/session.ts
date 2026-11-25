@@ -5,6 +5,7 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import type { HttpResponse, IPooledToken } from '../../http/client'
 import {
+  ConnectorCodeError,
   ConnectorError,
   ProviderAuthError,
   ProviderUnavailableError,
@@ -43,10 +44,14 @@ interface SessionizeResponse {
 
 export async function signInToSessionize(
   credential: Credential,
+  maxAttempts = SESSIONIZE_SIGN_IN_MAX_ATTEMPTS,
 ): Promise<{ token: string; expiresAt: string }> {
   assertCredentialKind(credential, 'sessionize-organizer-account')
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new ConnectorCodeError(`sessionize sign-in needs at least 1 attempt, got ${maxAttempts}`)
+  }
   let lastError: ConnectorError | undefined
-  for (let attempt = 1; attempt <= SESSIONIZE_SIGN_IN_MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await requestSession(credential)
     } catch (err) {
@@ -58,13 +63,13 @@ export async function signInToSessionize(
         {
           event: 'sessionize_sign_in_retry',
           attempt,
-          maxAttempts: SESSIONIZE_SIGN_IN_MAX_ATTEMPTS,
+          maxAttempts,
           errorClass: err.errorClass,
           status: err.options?.status,
         },
         'sessionize sign-in failed with a transient error',
       )
-      if (attempt < SESSIONIZE_SIGN_IN_MAX_ATTEMPTS) {
+      if (attempt < maxAttempts) {
         await timeout(RETRY_BACKOFF_BASE_MS * 2 ** (attempt - 1))
       }
     }

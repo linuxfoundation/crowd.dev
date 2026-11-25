@@ -77,7 +77,7 @@ async function signInOnce(
   credential: ReturnType<typeof getPlatformCredential>,
 ): Promise<{ cookie: string } | { failure: ExportProbeFailure }> {
   try {
-    return { cookie: (await signInToSessionize(credential)).token }
+    return { cookie: (await signInToSessionize(credential, 1)).token }
   } catch (err) {
     return { failure: describeProbeFailure(err) }
   }
