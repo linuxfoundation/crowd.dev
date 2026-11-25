@@ -22,13 +22,23 @@ import {
   planCreation,
 } from './creationPlan'
 import type { CdpSegmentIndex, CreationPlan } from './creationPlan'
+import type { ProjectToCreate } from './creationRun'
 import { findExistingProjectCandidates, loadCdpSubprojectIndex } from './existingProjects'
 import type { CdpSubprojectIndex } from './existingProjects'
+import {
+  PROJECT_CREATION_FAILED,
+  createMissingProjects,
+  readCreationSettings,
+  toProjectToCreate,
+} from './missingProjectCreation'
+import type { CreationSettings } from './missingProjectCreation'
 import {
   PROJECT_NOT_IN_PCC,
   addPccProjectIdsOfRow,
   findProjectsMissingFromPcc,
 } from './projectsMissingFromPcc'
+import { createSegment, readBackendApiConfig } from './segmentCreationClient'
+import type { BackendApiConfig } from './segmentCreationClient'
 import { isSingleFileExport, resolveSyncErrorsNotReportedByExport } from './syncErrors'
 
 const log = getServiceChildLogger('pccProjectConsumer')
@@ -57,6 +67,8 @@ export class PccProjectConsumer {
     private readonly db: DbConnection,
     private readonly pollingIntervalMs: number,
     readonly dryRun: boolean = false,
+    private readonly creation: CreationSettings = { mode: 'off', maxProjectsPerRun: 0 },
+    private readonly backendApi: BackendApiConfig | null = null,
   ) {
     this.currentPollingIntervalMs = pollingIntervalMs
   }
@@ -125,6 +137,7 @@ export class PccProjectConsumer {
     let missingProjectIdCount = 0
     let possibleExistingCount = 0
     const creationSummary = emptyCreationSummary()
+    const projectsToCreate: ProjectToCreate[] = []
 
     try {
       // Stream all rows and group by PROJECT_ID before processing.
@@ -227,6 +240,8 @@ export class PccProjectConsumer {
               if (result.possibleExisting) possibleExistingCount++
               if (result.creationPlan) {
                 addToCreationSummary(creationSummary, result.creationPlan)
+                const toCreate = toProjectToCreate(project, result.creationPlan, cdpSegments)
+                if (toCreate) projectsToCreate.push(toCreate)
                 if (this.dryRun) {
                   log.info(
                     {
@@ -278,6 +293,7 @@ export class PccProjectConsumer {
         // set by claimOldestPendingJob), so release it so a real run can pick
         // it up later. Otherwise dry-run jobs are permanently stuck.
         await this.releaseClaimBestEffort(job.id)
+        await this.createMissingProjects(job, projectsToCreate)
       } else {
         await this.metadataStore.markCompleted(job.id, {
           transformedCount: upsertedCount,
@@ -287,6 +303,7 @@ export class PccProjectConsumer {
           skippedCount: skippedCount + schemaMismatchCount + missingProjectIdCount,
           processingDurationMs: durationMs,
         })
+        await this.createMissingProjects(job, projectsToCreate)
         await this.resolveSyncErrorsNotReportedBy(
           job,
           missingFromPccCount === null ? [PROJECT_NOT_IN_PCC] : [],
@@ -310,6 +327,32 @@ export class PccProjectConsumer {
           log.error({ jobId: job.id, updateErr }, 'Failed to mark job as failed')
         }
       }
+    }
+  }
+
+  // Runs after the job is closed and never throws: a failed creation must not fail the sync.
+  private async createMissingProjects(
+    job: SnowflakeExportJob,
+    projects: ProjectToCreate[],
+  ): Promise<void> {
+    if (this.creation.mode === 'off') return
+    const { backendApi } = this
+    const mode = this.dryRun || !backendApi ? 'dry-run' : this.creation.mode
+
+    try {
+      const summary = await createMissingProjects(projects, {
+        mode,
+        maxProjects: this.creation.maxProjectsPerRun,
+        createStep: async (step, status) => {
+          if (!backendApi) return { outcome: 'failed', httpStatus: null, error: 'no backend' }
+          return createSegment(backendApi, step, status)
+        },
+        recordFailure: ({ pccProjectId, pccSlug, details }) =>
+          this.recordSyncError(pccProjectId, pccSlug, PROJECT_CREATION_FAILED, details),
+      })
+      log.info({ jobId: job.id, ...summary }, 'PCC project creation completed')
+    } catch (err) {
+      log.error({ jobId: job.id, err }, 'PCC project creation failed')
     }
   }
 
@@ -839,5 +882,22 @@ export async function createPccProjectConsumer(dryRun = false): Promise<PccProje
   const s3Service = new S3Service()
   const pollingIntervalMs = 10_000 // 10 seconds
 
-  return new PccProjectConsumer(metadataStore, s3Service, db, pollingIntervalMs, dryRun)
+  const creation = readCreationSettings()
+  const backendApi = creation.mode === 'on' ? readBackendApiConfig() : null
+  if (creation.mode === 'on' && !backendApi) {
+    log.error(
+      'PCC project creation is on but the backend URL or token is missing: running it as a dry run',
+    )
+  }
+  log.info({ creation }, 'PCC project creation settings')
+
+  return new PccProjectConsumer(
+    metadataStore,
+    s3Service,
+    db,
+    pollingIntervalMs,
+    dryRun,
+    creation,
+    backendApi,
+  )
 }
