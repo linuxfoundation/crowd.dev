@@ -1,6 +1,7 @@
 import { createTokenPool, findManifest, mapWithConcurrency } from '@crowd/connectors'
 import {
   claimDueUnits,
+  countRunningUnits,
   renewRunningUnitLease,
   rescheduleUnit,
 } from '@crowd/data-access-layer/src/connectors'
@@ -10,6 +11,7 @@ import { RedisCache } from '@crowd/redis'
 import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
 
 import { svc } from '../main'
+import { applyRunCaps } from '../runCap'
 import { shortDeferRunAt } from '../scheduling'
 import type { IAdmissionResult, IDispatchCounts, StartRunResult } from '../types'
 
@@ -31,17 +33,50 @@ export async function admitByBudget(units: IClaimedUnit[]): Promise<IAdmissionRe
     })
     return pool.hasHeadroom(manifest?.runCostEstimate ?? DEFAULT_RUN_ESTIMATE)
   })
-  const result = {
+  const byHeadroom = {
     admitted: units.filter((_, index) => headrooms[index]),
     deferred: units.filter((_, index) => !headrooms[index]),
   }
-  if (result.deferred.length > 0) {
+  if (byHeadroom.deferred.length > 0) {
     svc.log.info(
-      { unitIds: result.deferred.map((unit) => unit.id) },
+      { unitIds: byHeadroom.deferred.map((unit) => unit.id) },
       'units deferred: no token headroom',
     )
   }
-  return result
+
+  const caps = runCapsOf(byHeadroom.admitted)
+  const cappedPlatforms = Object.keys(caps)
+  if (cappedPlatforms.length === 0) {
+    return byHeadroom
+  }
+
+  const running = await countRunningUnits(
+    dbStoreQx(svc.postgres.writer),
+    cappedPlatforms,
+    units.map((unit) => unit.id),
+  )
+  const byRunCap = applyRunCaps(byHeadroom.admitted, caps, running)
+  if (byRunCap.deferred.length > 0) {
+    svc.log.info(
+      { unitIds: byRunCap.deferred.map((unit) => unit.id) },
+      'units deferred: platform run cap',
+    )
+  }
+  return {
+    admitted: byRunCap.admitted,
+    deferred: [...byHeadroom.deferred, ...byRunCap.deferred],
+  }
+}
+
+function runCapsOf(units: IClaimedUnit[]): Record<string, number> {
+  const caps: Record<string, number> = {}
+  for (const platform of new Set(units.map((unit) => unit.platform))) {
+    const cap = findManifest(platform)?.maxConcurrentRuns
+    if (cap !== undefined) {
+      caps[platform] = cap
+    }
+  }
+  return caps
 }
 
 // A lapsed lease may belong to a run still in flight, so that claim is kept instead of released.

@@ -126,6 +126,7 @@ interface ManifestBase<TDeps> {
   mintToken?: (credential: Credential) => TokenMinter
   probeBudget?: BudgetProbe
   runCostEstimate?: number
+  maxConcurrentRuns?: number
   applyToken?: TokenApplier
   interpretResponse?: ResponseInterpreter
   // Every emit of every sync passes both segmentId and integrationId overrides, so the run may

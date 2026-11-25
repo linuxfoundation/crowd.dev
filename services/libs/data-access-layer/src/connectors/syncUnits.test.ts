@@ -7,6 +7,7 @@ import { withQx } from '@crowd/test-kit/db'
 import { recordShadowRecords } from './shadowRecords'
 import {
   claimDueUnits,
+  countRunningUnits,
   countUndrainedDecommissionedSyncUnits,
   decommissionAllSyncUnits,
   decommissionSyncUnitsForChannelIds,
@@ -1076,5 +1077,64 @@ describe('getEmittingChannelNamesForIntegrations', () => {
     qx,
   }) => {
     expect(await getEmittingChannelNamesForIntegrations(qx, [])).toEqual({})
+  })
+})
+
+describe('countRunningUnits', () => {
+  test('counts units per platform whose claim lease is live, leaving out the given units', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const running = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-a',
+      syncName: 'sessions',
+      platform: 'sessionize',
+    })
+    const lapsed = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-b',
+      syncName: 'sessions',
+      platform: 'sessionize',
+    })
+    const idle = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-c',
+      syncName: 'sessions',
+      platform: 'sessionize',
+    })
+    const excluded = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-d',
+      syncName: 'sessions',
+      platform: 'sessionize',
+    })
+    const otherPlatform = await createSyncUnit(qx, integrationId, {
+      channelName: 'repo',
+      syncName: 'issues',
+      platform: 'github',
+    })
+    const notAsked = await createSyncUnit(qx, integrationId, {
+      channelName: 'badge',
+      syncName: 'badges',
+      platform: 'credly',
+    })
+    await setClaimState(qx, running, { lockedAgo: '4 minutes', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, lapsed, { lockedAgo: '6 minutes', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, idle, { lockedAgo: null, nextRunAgo: '0 minutes' })
+    await setClaimState(qx, excluded, { lockedAgo: '0 minutes', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, otherPlatform, { lockedAgo: '1 minute', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, notAsked, { lockedAgo: '1 minute', nextRunAgo: '0 minutes' })
+
+    expect(await countRunningUnits(qx, ['sessionize', 'github'], [excluded])).toEqual({
+      sessionize: 1,
+      github: 1,
+    })
+  })
+
+  test('returns nothing for no platforms without querying', async () => {
+    const qx = {
+      select: () => {
+        throw new Error('queried')
+      },
+    } as unknown as QueryExecutor
+
+    expect(await countRunningUnits(qx, [], [])).toEqual({})
   })
 })

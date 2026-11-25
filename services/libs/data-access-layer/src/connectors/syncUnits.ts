@@ -87,6 +87,26 @@ export async function claimDueUnits(qx: QueryExecutor, limit: number): Promise<I
   )
 }
 
+export async function countRunningUnits(
+  qx: QueryExecutor,
+  platforms: string[],
+  excludeUnitIds: string[],
+): Promise<Record<string, number>> {
+  if (platforms.length === 0) return {}
+
+  const rows: { platform: string; running: number }[] = await qx.select(
+    `SELECT platform, count(*)::int AS running
+     FROM integration.sync_units
+     WHERE platform = ANY($(platforms)::text[])
+       AND "lockedAt" IS NOT NULL
+       AND "lockedAt" >= now() - $(leaseMinutes) * interval '1 minute'
+       AND id <> ALL($(excludeUnitIds)::uuid[])
+     GROUP BY platform`,
+    { platforms, excludeUnitIds, leaseMinutes: CLAIM_LEASE_MINUTES },
+  )
+  return Object.fromEntries(rows.map((row) => [row.platform, row.running]))
+}
+
 export async function rescheduleUnit(
   qx: QueryExecutor,
   id: string,
