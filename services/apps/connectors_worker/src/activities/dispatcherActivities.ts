@@ -12,6 +12,7 @@ import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal
 
 import { svc } from '../main'
 import { applyRunCaps } from '../runCap'
+import { RUNNING_LOCK_MAX_AGE_MINUTES } from '../runLimits'
 import { shortDeferRunAt } from '../scheduling'
 import type { IAdmissionResult, IDispatchCounts, StartRunResult } from '../types'
 
@@ -54,6 +55,7 @@ export async function admitByBudget(units: IClaimedUnit[]): Promise<IAdmissionRe
     dbStoreQx(svc.postgres.writer),
     cappedPlatforms,
     units.map((unit) => unit.id),
+    RUNNING_LOCK_MAX_AGE_MINUTES,
   )
   const byRunCap = applyRunCaps(byHeadroom.admitted, units, caps, running)
   if (byRunCap.deferred.length > 0) {

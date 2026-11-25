@@ -1081,7 +1081,7 @@ describe('getEmittingChannelNamesForIntegrations', () => {
 })
 
 describe('countRunningUnits', () => {
-  test('counts locked units per platform, however old the lock, leaving out the given units', async ({
+  test('counts units per platform locked within the longest run, whatever their status, leaving out the given units', async ({
     qx,
   }) => {
     const integrationId = await createIntegration(qx)
@@ -1105,6 +1105,17 @@ describe('countRunningUnits', () => {
       syncName: 'sessions',
       platform: 'sessionize',
     })
+    const stale = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-e',
+      syncName: 'sessions',
+      platform: 'sessionize',
+    })
+    const decommissioned = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-f',
+      syncName: 'sessions',
+      platform: 'sessionize',
+      status: 'decommissioned',
+    })
     const otherPlatform = await createSyncUnit(qx, integrationId, {
       channelName: 'repo',
       syncName: 'issues',
@@ -1119,11 +1130,13 @@ describe('countRunningUnits', () => {
     await setClaimState(qx, lapsed, { lockedAgo: '6 minutes', nextRunAgo: '0 minutes' })
     await setClaimState(qx, idle, { lockedAgo: null, nextRunAgo: '0 minutes' })
     await setClaimState(qx, excluded, { lockedAgo: '0 minutes', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, stale, { lockedAgo: '66 minutes', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, decommissioned, { lockedAgo: '1 minute', nextRunAgo: '0 minutes' })
     await setClaimState(qx, otherPlatform, { lockedAgo: '1 minute', nextRunAgo: '0 minutes' })
     await setClaimState(qx, notAsked, { lockedAgo: '1 minute', nextRunAgo: '0 minutes' })
 
-    expect(await countRunningUnits(qx, ['sessionize', 'github'], [excluded])).toEqual({
-      sessionize: 2,
+    expect(await countRunningUnits(qx, ['sessionize', 'github'], [excluded], 65)).toEqual({
+      sessionize: 3,
       github: 1,
     })
   })
@@ -1135,6 +1148,6 @@ describe('countRunningUnits', () => {
       },
     } as unknown as QueryExecutor
 
-    expect(await countRunningUnits(qx, [], [])).toEqual({})
+    expect(await countRunningUnits(qx, [], [], 65)).toEqual({})
   })
 })

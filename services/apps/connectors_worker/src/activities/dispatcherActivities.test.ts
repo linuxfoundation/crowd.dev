@@ -129,6 +129,7 @@ describe('admitByBudget', () => {
       {},
       ['sessionize'],
       [first.id, UNIT.id, second.id],
+      65,
     )
   })
 

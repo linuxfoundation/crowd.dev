@@ -91,6 +91,7 @@ export async function countRunningUnits(
   qx: QueryExecutor,
   platforms: string[],
   excludeUnitIds: string[],
+  maxRunMinutes: number,
 ): Promise<Record<string, number>> {
   if (platforms.length === 0) return {}
 
@@ -99,9 +100,10 @@ export async function countRunningUnits(
      FROM integration.sync_units
      WHERE platform = ANY($(platforms)::text[])
        AND "lockedAt" IS NOT NULL
+       AND "lockedAt" >= now() - $(maxRunMinutes) * interval '1 minute'
        AND id <> ALL($(excludeUnitIds)::uuid[])
      GROUP BY platform`,
-    { platforms, excludeUnitIds },
+    { platforms, excludeUnitIds, maxRunMinutes },
   )
   return Object.fromEntries(rows.map((row) => [row.platform, row.running]))
 }
