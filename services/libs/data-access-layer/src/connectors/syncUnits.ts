@@ -99,10 +99,9 @@ export async function countRunningUnits(
      FROM integration.sync_units
      WHERE platform = ANY($(platforms)::text[])
        AND "lockedAt" IS NOT NULL
-       AND "lockedAt" >= now() - $(leaseMinutes) * interval '1 minute'
        AND id <> ALL($(excludeUnitIds)::uuid[])
      GROUP BY platform`,
-    { platforms, excludeUnitIds, leaseMinutes: CLAIM_LEASE_MINUTES },
+    { platforms, excludeUnitIds },
   )
   return Object.fromEntries(rows.map((row) => [row.platform, row.running]))
 }

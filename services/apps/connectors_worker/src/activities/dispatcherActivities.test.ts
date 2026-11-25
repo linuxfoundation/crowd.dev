@@ -132,7 +132,18 @@ describe('admitByBudget', () => {
     )
   })
 
-  it('counts a lease-lapsed unit deferred for headroom as running', async () => {
+  it('admits a lease-lapsed unit into a free slot so a dead run can be replaced', async () => {
+    mocks.countRunningUnits.mockResolvedValue({})
+    const fresh = sessionizeUnit('event-1')
+    const lapsed = { ...sessionizeUnit('event-2'), leaseLapsed: true }
+
+    expect(await admitByBudget([fresh, lapsed])).toEqual({
+      admitted: [lapsed],
+      deferred: [fresh],
+    })
+  })
+
+  it('keeps a slot for a lease-lapsed unit deferred for headroom', async () => {
     mocks.countRunningUnits.mockResolvedValue({})
     const lapsed = { ...sessionizeUnit('event-1'), leaseLapsed: true }
     const fresh = sessionizeUnit('event-2')

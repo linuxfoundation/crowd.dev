@@ -1081,7 +1081,7 @@ describe('getEmittingChannelNamesForIntegrations', () => {
 })
 
 describe('countRunningUnits', () => {
-  test('counts units per platform whose claim lease is live, leaving out the given units', async ({
+  test('counts locked units per platform, however old the lock, leaving out the given units', async ({
     qx,
   }) => {
     const integrationId = await createIntegration(qx)
@@ -1123,7 +1123,7 @@ describe('countRunningUnits', () => {
     await setClaimState(qx, notAsked, { lockedAgo: '1 minute', nextRunAgo: '0 minutes' })
 
     expect(await countRunningUnits(qx, ['sessionize', 'github'], [excluded])).toEqual({
-      sessionize: 1,
+      sessionize: 2,
       github: 1,
     })
   })

@@ -11,7 +11,7 @@ import { RedisCache } from '@crowd/redis'
 import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
 
 import { svc } from '../main'
-import { addLeaseLapsedUnits, applyRunCaps } from '../runCap'
+import { applyRunCaps } from '../runCap'
 import { shortDeferRunAt } from '../scheduling'
 import type { IAdmissionResult, IDispatchCounts, StartRunResult } from '../types'
 
@@ -50,16 +50,12 @@ export async function admitByBudget(units: IClaimedUnit[]): Promise<IAdmissionRe
     return byHeadroom
   }
 
-  const running = addLeaseLapsedUnits(
-    await countRunningUnits(
-      dbStoreQx(svc.postgres.writer),
-      cappedPlatforms,
-      units.map((unit) => unit.id),
-    ),
-    units,
-    caps,
+  const running = await countRunningUnits(
+    dbStoreQx(svc.postgres.writer),
+    cappedPlatforms,
+    units.map((unit) => unit.id),
   )
-  const byRunCap = applyRunCaps(byHeadroom.admitted, caps, running)
+  const byRunCap = applyRunCaps(byHeadroom.admitted, units, caps, running)
   if (byRunCap.deferred.length > 0) {
     svc.log.info(
       { unitIds: byRunCap.deferred.map((unit) => unit.id) },
