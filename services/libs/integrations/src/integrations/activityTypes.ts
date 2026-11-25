@@ -16,6 +16,7 @@ import { JiraActivityType } from './jira/types'
 import { LinkedinActivityType } from './linkedin/types'
 import { MailingListActivityType } from './mailinglist/types'
 import { RedditActivityType } from './reddit/types'
+import { SessionizeActivityType } from './sessionize/types'
 import { SlackActivityType } from './slack/types'
 import { StackOverflowActivityType } from './stackoverflow/types'
 import { TwitterActivityType } from './twitter/types'
@@ -148,6 +149,15 @@ const mentionActivityType = (platformLabel: string) => ({
     channel: '',
   },
   calculateSentiment: true,
+})
+
+const sessionActivityType = (text: string) => ({
+  display: {
+    default: text,
+    short: text,
+    channel: '',
+  },
+  calculateSentiment: false,
 })
 
 export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
@@ -1590,5 +1600,9 @@ export const DEFAULT_ACTIVITY_TYPE_SETTINGS: DefaultActivityTypes = {
       'let the badge expire:',
       'let a badge expire',
     ),
+  },
+  [PlatformType.SESSIONIZE]: {
+    [SessionizeActivityType.SUBMITTED_SESSION]: sessionActivityType('submitted a session'),
+    [SessionizeActivityType.SPOKE_AT_SESSION]: sessionActivityType('spoke at a session'),
   },
 }
