@@ -34,8 +34,6 @@ DESCRIPTION >
     IN-1253 State 2) is a display decision made by the frontend, not this pipe.
     - Parameters: `slug` (required, the calling project's slug), `repos` (required array of repo URLs).
 
-TOKEN "insights-app-token" READ
-
 TAGS "Insights, Widget", "Project", "Health"
 
 NODE repo_health_score_v2_breakdown_category_totals

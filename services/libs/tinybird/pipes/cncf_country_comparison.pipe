@@ -14,8 +14,6 @@ DESCRIPTION >
     - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans inherited from `activityTypes_filtered` (defaults: code contributions only)
     - Response: optional `startDate`, `endDate`, then `{country,region,world}{Contributor,Contribution,Organization}Count`
 
-TOKEN "insights-app-token" READ
-
 TAGS "Report"
 
 NODE cncf_country_comparison_located
