@@ -8,6 +8,7 @@ import type { ProjectToCreate } from './creationRun'
 import type { CreationStep } from './creationSteps'
 import {
   createMissingProjects,
+  effectiveCreationMode,
   readCreationSettings,
   toProjectToCreate,
 } from './missingProjectCreation'
@@ -77,6 +78,22 @@ describe('readCreationSettings', () => {
   })
 })
 
+describe('effectiveCreationMode', () => {
+  test.each([
+    { mode: 'off', syncIsDryRun: false, hasBackendApi: true, expected: 'off' },
+    { mode: 'off', syncIsDryRun: true, hasBackendApi: true, expected: 'off' },
+    { mode: 'dry-run', syncIsDryRun: false, hasBackendApi: false, expected: 'dry-run' },
+    { mode: 'on', syncIsDryRun: false, hasBackendApi: true, expected: 'on' },
+    { mode: 'on', syncIsDryRun: true, hasBackendApi: true, expected: 'dry-run' },
+    { mode: 'on', syncIsDryRun: false, hasBackendApi: false, expected: 'dry-run' },
+  ] as const)(
+    '$mode with sync dry run $syncIsDryRun and backend $hasBackendApi is $expected',
+    ({ mode, syncIsDryRun, hasBackendApi, expected }) => {
+      expect(effectiveCreationMode(mode, syncIsDryRun, hasBackendApi)).toBe(expected)
+    },
+  )
+})
+
 describe('toProjectToCreate', () => {
   const emptyCdp = buildCdpSegmentIndex([])
 
@@ -136,6 +153,7 @@ describe('createMissingProjects', () => {
       mode: 'on',
       creatable: 3,
       created: 2,
+      createdPccProjectIds: ['pcc-a', 'pcc-b'],
       failed: 0,
       waitingForFailedLevel: 0,
       notAttempted: 1,

@@ -28,6 +28,7 @@ import type { CdpSubprojectIndex } from './existingProjects'
 import {
   PROJECT_CREATION_FAILED,
   createMissingProjects,
+  effectiveCreationMode,
   readCreationSettings,
   toProjectToCreate,
 } from './missingProjectCreation'
@@ -39,7 +40,11 @@ import {
 } from './projectsMissingFromPcc'
 import { createSegment, readBackendApiConfig } from './segmentCreationClient'
 import type { BackendApiConfig } from './segmentCreationClient'
-import { isSingleFileExport, resolveSyncErrorsNotReportedByExport } from './syncErrors'
+import {
+  isSingleFileExport,
+  resolveSyncErrorsNotReportedByExport,
+  resolveSyncErrorsOfProjects,
+} from './syncErrors'
 
 const log = getServiceChildLogger('pccProjectConsumer')
 
@@ -138,6 +143,7 @@ export class PccProjectConsumer {
     let possibleExistingCount = 0
     const creationSummary = emptyCreationSummary()
     const projectsToCreate: ProjectToCreate[] = []
+    const syncedPccProjectIds: string[] = []
 
     try {
       // Stream all rows and group by PROJECT_ID before processing.
@@ -233,6 +239,7 @@ export class PccProjectConsumer {
           switch (result.action) {
             case 'UPSERTED':
               upsertedCount++
+              syncedPccProjectIds.push(project.pccProjectId)
               if (result.hierarchyMismatch) mismatchCount++
               break
             case 'SKIPPED':
@@ -303,11 +310,15 @@ export class PccProjectConsumer {
           skippedCount: skippedCount + schemaMismatchCount + missingProjectIdCount,
           processingDurationMs: durationMs,
         })
-        await this.createMissingProjects(job, projectsToCreate)
-        await this.resolveSyncErrorsNotReportedBy(
-          job,
-          missingFromPccCount === null ? [PROJECT_NOT_IN_PCC] : [],
-        )
+        const createdPccProjectIds = await this.createMissingProjects(job, projectsToCreate)
+        await this.resolveCreationFailuresOfProjectsInCdp(job, [
+          ...syncedPccProjectIds,
+          ...createdPccProjectIds,
+        ])
+        await this.resolveSyncErrorsNotReportedBy(job, [
+          PROJECT_CREATION_FAILED,
+          ...(missingFromPccCount === null ? [PROJECT_NOT_IN_PCC] : []),
+        ])
       }
     } catch (err) {
       log.error({ jobId: job.id, err }, 'PCC job failed')
@@ -334,10 +345,10 @@ export class PccProjectConsumer {
   private async createMissingProjects(
     job: SnowflakeExportJob,
     projects: ProjectToCreate[],
-  ): Promise<void> {
-    if (this.creation.mode === 'off') return
+  ): Promise<string[]> {
     const { backendApi } = this
-    const mode = this.dryRun || !backendApi ? 'dry-run' : this.creation.mode
+    const mode = effectiveCreationMode(this.creation.mode, this.dryRun, backendApi !== null)
+    if (mode === 'off') return []
 
     try {
       const summary = await createMissingProjects(projects, {
@@ -351,8 +362,27 @@ export class PccProjectConsumer {
           this.recordSyncError(pccProjectId, pccSlug, PROJECT_CREATION_FAILED, details),
       })
       log.info({ jobId: job.id, ...summary }, 'PCC project creation completed')
+      return summary.createdPccProjectIds
     } catch (err) {
       log.error({ jobId: job.id, err }, 'PCC project creation failed')
+      return []
+    }
+  }
+
+  private async resolveCreationFailuresOfProjectsInCdp(
+    job: SnowflakeExportJob,
+    pccProjectIds: string[],
+  ): Promise<void> {
+    if (pccProjectIds.length === 0) return
+    try {
+      const resolved = await resolveSyncErrorsOfProjects(
+        pgpQx(this.db),
+        PROJECT_CREATION_FAILED,
+        pccProjectIds,
+      )
+      log.info({ jobId: job.id, resolved }, 'Resolved PCC creation failures of projects now in CDP')
+    } catch (err) {
+      log.error({ jobId: job.id, err }, 'Failed to resolve PCC creation failures')
     }
   }
 

@@ -33,6 +33,15 @@ export function readCreationSettings(env: NodeJS.ProcessEnv = process.env): Crea
   return { mode, maxProjectsPerRun }
 }
 
+export function effectiveCreationMode(
+  mode: CreationMode,
+  syncIsDryRun: boolean,
+  hasBackendApi: boolean,
+): CreationMode {
+  if (mode === 'off') return 'off'
+  return syncIsDryRun || !hasBackendApi ? 'dry-run' : mode
+}
+
 export function toProjectToCreate(
   project: ParsedPccProject,
   plan: CreationPlan,
@@ -72,6 +81,7 @@ export interface MissingProjectCreationSummary {
   mode: Exclude<CreationMode, 'off'>
   creatable: number
   created: number
+  createdPccProjectIds: string[]
   failed: number
   waitingForFailedLevel: number
   notAttempted: number
@@ -154,6 +164,7 @@ export async function createMissingProjects(
     mode: options.mode,
     creatable: projects.length,
     created: 0,
+    createdPccProjectIds: [],
     failed: 0,
     waitingForFailedLevel: 0,
     notAttempted: projects.length,
@@ -172,7 +183,10 @@ export async function createMissingProjects(
 
   for (const outcome of result.outcomes) {
     await reportOutcome(outcome, options.recordFailure)
-    if (outcome.outcome === 'created') summary.created++
+    if (outcome.outcome === 'created') {
+      summary.created++
+      summary.createdPccProjectIds.push(outcome.project.pccProjectId)
+    }
     if (outcome.outcome === 'failed') summary.failed++
     if (outcome.outcome === 'waiting_for_failed_level') summary.waitingForFailedLevel++
   }
