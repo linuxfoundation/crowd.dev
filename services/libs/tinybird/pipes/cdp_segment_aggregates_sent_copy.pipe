@@ -1,0 +1,87 @@
+DESCRIPTION >
+    Daily at 06:30 UTC, after the daily aggregate sinks: replaces cdp_segment_aggregates_sent_ds with what
+    was sent: yesterday's hashes, with the leaf rows sent today (stage 'ready' in
+    cdp_segment_aggregates_changes_ds, hashed by the rollup from the values it sent) replacing theirs, and
+    gone keys removed. Per kind: only when every detected leaf of that kind got a ready row and that
+    kind's sink ran ok after the rollup and wrote at least as many rows; otherwise that kind keeps
+    yesterday's hashes and the next run sends its changes again
+    (linuxfoundation/lfx-cdp-insights-ops#1146).
+
+NODE sent_leaves
+SQL >
+    SELECT kind, segmentId, entityId, reason, currentParent, currentGrandparent, currentHash
+    FROM cdp_segment_aggregates_changes_ds
+    WHERE stage = 'ready' AND runDate = today() AND level = 'leaf'
+    ORDER BY updatedAt DESC
+    LIMIT 1 BY kind, segmentId, entityId
+
+NODE kind_counts
+SQL >
+    SELECT
+        kind,
+        if(
+            kind = 'member',
+            'cdp_member_segment_aggregates_sink',
+            'cdp_organization_segment_aggregates_sink'
+        ) AS sink,
+        countIf(stage = 'detected') AS detected,
+        uniqExactIf((segmentId, entityId), stage = 'ready' AND level = 'leaf') AS readyLeaves,
+        uniqExactIf((segmentId, entityId), stage = 'ready') AS ready,
+        maxIf(updatedAt, stage = 'ready') AS readyAt
+    FROM cdp_segment_aggregates_changes_ds
+    WHERE runDate = today() AND (stage = 'ready' OR level = 'leaf')
+    GROUP BY kind
+
+NODE sink_runs
+SQL >
+    SELECT pipe_name, timestamp, written_rows
+    FROM tinybird.sinks_ops_log
+    WHERE
+        timestamp >= toStartOfDay(now())
+        AND result = 'ok'
+        AND pipe_name
+        IN ('cdp_member_segment_aggregates_sink', 'cdp_organization_segment_aggregates_sink')
+
+NODE kinds_sent
+SQL >
+    SELECT kind
+    FROM
+        (
+            SELECT
+                c.kind,
+                c.detected,
+                c.readyLeaves,
+                max(r.timestamp >= c.readyAt AND r.written_rows >= c.ready) AS sinkOk
+            FROM kind_counts c
+            LEFT JOIN sink_runs r ON r.pipe_name = c.sink
+            GROUP BY c.kind, c.detected, c.readyLeaves
+        )
+    WHERE detected = 0 OR (readyLeaves = detected AND sinkOk)
+
+NODE cdp_segment_aggregates_sent_copy_result
+SQL >
+    SELECT kind, segmentId, entityId, parentId, grandparentId, hash, updatedAt
+    FROM cdp_segment_aggregates_sent_ds
+    WHERE kind NOT IN (SELECT kind FROM kinds_sent)
+    UNION ALL
+    SELECT kind, segmentId, entityId, parentId, grandparentId, hash, updatedAt
+    FROM cdp_segment_aggregates_sent_ds
+    WHERE
+        kind IN (SELECT kind FROM kinds_sent)
+        AND (kind, segmentId, entityId) NOT IN (SELECT kind, segmentId, entityId FROM sent_leaves)
+    UNION ALL
+    SELECT
+        kind,
+        segmentId,
+        entityId,
+        currentParent AS parentId,
+        currentGrandparent AS grandparentId,
+        currentHash AS hash,
+        now() AS updatedAt
+    FROM sent_leaves
+    WHERE kind IN (SELECT kind FROM kinds_sent) AND reason != 'gone'
+
+TYPE COPY
+TARGET_DATASOURCE cdp_segment_aggregates_sent_ds
+COPY_MODE replace
+COPY_SCHEDULE 30 6 * * *

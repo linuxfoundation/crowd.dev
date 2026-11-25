@@ -75,7 +75,8 @@ to an LLM through `LlmService` (query type `member_bot_validation`, model and se
 ## 3. Manual review
 
 `GET /member/bot-suggestions` (`backend/src/api/member/memberBotSuggestionsList.ts`) lists
-suggestions per project, highest confidence first. Reviewers work through them in the Data Quality
+suggestions for the requested project group or project, or across all of them when no segment is
+sent, highest confidence first. Reviewers work through them in the Data Quality
 Copilot's bot suggestions tab (`frontend/src/modules/data-quality/`) and on the member profile
 (`frontend/src/modules/member/components/member-bot-suggestions.vue`). "Mark as bot" and "Ignore
 suggestion" both set a `custom` value on `isBot` through the member attributes API.

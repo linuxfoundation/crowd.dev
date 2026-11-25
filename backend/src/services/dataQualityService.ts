@@ -31,8 +31,8 @@ export default class DataQualityService extends LoggerBase {
   async findMemberIssues(params: IDataQualityParams, segmentId: string) {
     const qx = SequelizeRepository.getQueryExecutor(this.options)
 
-    const limit = params.limit || 10
-    const offset = params.offset || 0
+    const limit = Number(params.limit) || 10
+    const offset = Number(params.offset) || 0
 
     switch (params.type) {
       case IDataQualityType.NO_WORK_EXPERIENCE:

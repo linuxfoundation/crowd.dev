@@ -1,6 +1,6 @@
 DESCRIPTION >
     Recomputes the organization segment aggregates from the deduplicated served layer into cdp_organization_segment_aggregates_v2_ds,
-    replacing it. Unlike cdp_organization_segment_aggregates_MV, which counts every write of a relation,
+    replacing it. Unlike the v1 aggregates it replaced, which counted every write of a relation,
     this counts each activity once and follows moves and merges. Relations deleted in Postgres are
     counted until the erasure or cleanup scripts remove them from the served layer. -1 (no score)
     is left out of the engagement average.
@@ -18,6 +18,7 @@ SQL >
         groupArrayDistinctState(platform) AS activeOnState,
         countState(activityId) AS activityCountState,
         countDistinctState(memberId) as memberCountState,
+        groupBitXor(DISTINCT cityHash64(memberId)) AS memberSetHash,
         avgStateIf(score, score != -1) AS avgContributorEngagement,
         maxState(act.updatedAt) as lastActivityUpdatedAtState,
         max(act.updatedAt) as updatedAt

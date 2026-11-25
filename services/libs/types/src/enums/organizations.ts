@@ -19,6 +19,7 @@ export enum OrganizationSource {
   COMMITTEES = 'committees',
   LUMA = 'luma',
   SCHED = 'sched',
+  SESSIONIZE = 'sessionize',
 }
 
 export enum OrganizationMergeSuggestionType {
@@ -53,6 +54,7 @@ export enum OrganizationAttributeSource {
   COMMITTEES = 'committees',
   LUMA = 'luma',
   SCHED = 'sched',
+  SESSIONIZE = 'sessionize',
   // legacy - keeping this for backward compatibility
   ENRICHMENT = 'enrichment',
   GITHUB = 'github',

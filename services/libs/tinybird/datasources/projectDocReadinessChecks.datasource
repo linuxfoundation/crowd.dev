@@ -1,0 +1,31 @@
+DESCRIPTION >
+    - `projectDocReadinessChecks` holds the per-check afdocs results behind a project's AI documentation readiness score, replicated from Postgres via Sequin.
+    - One row per `projectId` + `checkId`; `projectId` joins to `insightsProjects`.id and to `projectDocReadiness`.projectId.
+    - `category` is the scoring category of the check; `status` is one of pass, warn, fail, skip, error; `message` is the human-readable result; `durationMs` is not populated yet and is always NULL.
+    - `details` is the raw afdocs detail JSON as a string, cut to about 32 KB by the worker before insert, so it may not parse as JSON; extract values with string functions.
+    - Postgres deletes and re-inserts a project's checks on every scoring and those deletes are not applied here, so checks dropped by a later scoring stay in this datasource.
+    - Reader rule: read with FINAL and keep only the rows whose `scoredAt` equals the max `scoredAt` of that `projectId`; every row of one scoring shares the same `scoredAt`.
+    - Postgres also clears a project's checks when a run fails on a different docs URL or with none, and a scoring can return no checks. Read `projectDocReadiness` FINAL and show checks only when gate conditions 1-3 all hold.
+    - Gate 1: the project has an `ok` run, and the checks' max `scoredAt` equals the `updatedAt` of the newest `ok` run (both are set in one transaction).
+    - Gate 2: that run and every later run (by `runDate`) have the same docs URL after normalizing it like `normalizeUrl` in `services/apps/docs_readiness_worker/src/discovery/http.ts` (`https://` added when no scheme, lowercase scheme and host, a bare host gets a trailing `/`, `#fragment` dropped, then one trailing `/` dropped from the whole URL unless the path is just `/`).
+    - Gate 3: the latest run's `error` is not `no-docs-url` or `repo-only`.
+    - The gate is approximate when a project is scored more than once on one `runDate`, because `projectDocReadiness` keeps one row per project per day.
+
+TAGS "Project metadata"
+
+SCHEMA >
+    `projectId` String `json:$.record.projectId`,
+    `checkId` String `json:$.record.checkId`,
+    `category` String `json:$.record.category`,
+    `status` String `json:$.record.status`,
+    `message` String `json:$.record.message` DEFAULT '',
+    `details` String `json:$.record.details` DEFAULT '',
+    `durationMs` Nullable(Int32) `json:$.record.durationMs`,
+    `scoredAt` DateTime64(3) `json:$.record.scoredAt`,
+    `createdAt` DateTime64(3) `json:$.record.createdAt`,
+    `updatedAt` DateTime64(3) `json:$.record.updatedAt`
+
+ENGINE ReplacingMergeTree
+ENGINE_PARTITION_KEY tuple()
+ENGINE_SORTING_KEY projectId, checkId
+ENGINE_VER updatedAt

@@ -120,20 +120,28 @@ export async function fetchBotCandidateMembers(qx: QueryExecutor, limit = 100): 
   return rows.map((r) => r.memberId)
 }
 
-export async function fetchMemberBotSuggestionsBySegment(
+export async function fetchMemberBotSuggestions(
   qx: QueryExecutor,
-  segmentId: string,
-  limit: number,
-  offset: number,
+  { segmentId, limit, offset }: { segmentId?: string; limit: number; offset: number },
 ): Promise<PageData<IDbMemberBotSuggestionBySegment> & { hasMore: boolean }> {
   const params = { segmentId, limit, offset }
+
+  const activity = segmentId
+    ? {
+        join: `INNER JOIN "memberSegmentsAgg" msa ON mbs."memberId" = msa."memberId"
+          AND msa."segmentId" = $(segmentId)`,
+        count: 'msa."activityCount"',
+      }
+    : {
+        join: `LEFT JOIN "membersGlobalActivityCount" gac ON gac."memberId" = mbs."memberId"`,
+        count: 'COALESCE(gac.total_count, 0)',
+      }
 
   const createQuery = (fields: string) => `
     SELECT
       ${fields}
     FROM "memberBotSuggestions" mbs
-    INNER JOIN "memberSegmentsAgg" msa ON mbs."memberId" = msa."memberId"
-    AND msa."segmentId" = $(segmentId)
+    ${activity.join}
     INNER JOIN "members" m ON mbs."memberId" = m.id
     WHERE mbs.confidence > 0
   `
@@ -144,12 +152,12 @@ export async function fetchMemberBotSuggestionsBySegment(
     ${createQuery(`
       mbs."memberId",
       mbs.confidence,
-      msa."activityCount",
+      ${activity.count} AS "activityCount",
       m."displayName",
       m.attributes -> 'avatarUrl' ->> 'default' AS "avatarUrl",
       m.attributes
     `)}
-    ORDER BY mbs.confidence DESC, msa."activityCount" DESC, mbs."memberId"
+    ORDER BY mbs.confidence DESC, "activityCount" DESC, mbs."memberId"
     LIMIT $(limit) OFFSET $(offset)
   `
 

@@ -41,7 +41,10 @@ type Resolution =
   | { state: 'missing' }
   | { state: 'blocked'; plan: CreationPlan }
 
-function typedKey(type: SegmentType, key: string): string {
+// The backend creates a project group together with a project and a sub-project of the same name.
+const LEVELS_CREATED_WITH_A_GROUP = [SegmentType.PROJECT, SegmentType.SUB_PROJECT]
+
+export function typedKey(type: SegmentType, key: string): string {
   return `${type}:${key}`
 }
 
@@ -65,6 +68,14 @@ export function buildCdpSegmentIndex(segments: CdpSegment[]): CdpSegmentIndex {
   return index
 }
 
+export function findLinkedSegments(
+  index: CdpSegmentIndex,
+  type: SegmentType,
+  pccProjectId: string,
+): CdpSegment[] {
+  return index.bySourceId.get(typedKey(type, pccProjectId)) ?? []
+}
+
 function blocked(reason: CreationBlockReason, details: Record<string, unknown>): Resolution {
   return { state: 'blocked', plan: { action: 'BLOCKED', reason, details } }
 }
@@ -80,7 +91,7 @@ function resolve(
   parent: Parent,
   levelsOfNode: Set<SegmentType>,
 ): Resolution {
-  const linked = index.bySourceId.get(typedKey(type, node.pccProjectId)) ?? []
+  const linked = findLinkedSegments(index, type, node.pccProjectId)
 
   if (linked.length > 1) {
     return blocked('AMBIGUOUS_PCC_ID', { type, node, segments: describe(linked) })
@@ -148,15 +159,20 @@ export function planCreation(
   const segments: PlannedSegment[] = []
   const levelsOf = (node: PccHierarchyNode) => levelsInTarget(target, node.pccProjectId)
 
-  const group = resolve(
-    index,
-    SegmentType.PROJECT_GROUP,
-    target.group,
-    'none',
-    levelsOf(target.group),
-  )
+  const groupLevels = levelsOf(target.group)
+  const group = resolve(index, SegmentType.PROJECT_GROUP, target.group, 'none', groupLevels)
   if (group.state === 'blocked') return group.plan
-  if (group.state === 'missing') segments.push({ ...target.group, type: SegmentType.PROJECT_GROUP })
+  if (group.state === 'missing') {
+    segments.push({ ...target.group, type: SegmentType.PROJECT_GROUP })
+
+    if (target.project.pccProjectId !== target.group.pccProjectId) {
+      for (const type of LEVELS_CREATED_WITH_A_GROUP) {
+        const counterpart = resolve(index, type, target.group, 'missing', groupLevels)
+        if (counterpart.state === 'blocked') return counterpart.plan
+        segments.push({ ...target.group, type })
+      }
+    }
+  }
 
   const project = resolve(
     index,

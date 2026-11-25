@@ -59,6 +59,7 @@ const SYSTEM_VERIFIERS = new Set<string>([
   'credly',
   'luma',
   'sched',
+  'sessionize',
   'lf-auth0',
   'lfxOne',
 ]);
@@ -74,6 +75,7 @@ const SOURCE_LABELS: Record<string, string> = {
   [OrganizationSource.COMMITTEES]: 'Committees',
   [OrganizationSource.LUMA]: 'Luma',
   [OrganizationSource.SCHED]: 'Sched',
+  [OrganizationSource.SESSIONIZE]: 'Sessionize',
 };
 
 export const getVerificationStatus = (entity: VerificationEntity): VerificationStatus => {

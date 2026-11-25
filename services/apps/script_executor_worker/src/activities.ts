@@ -19,6 +19,8 @@ import {
 import {
   deleteOrphanMembersSegmentsAgg,
   deleteOrphanOrganizationSegmentsAgg,
+  deleteZeroActivityMembersSegmentsAgg,
+  deleteZeroActivityOrganizationsSegmentsAgg,
   getOrphanMembersSegmentsAgg,
   getOrphanOrganizationSegmentsAgg,
   startOrphanCleanupRun,
@@ -103,6 +105,8 @@ export {
   deleteOrphanMembersSegmentsAgg,
   getOrphanOrganizationSegmentsAgg,
   deleteOrphanOrganizationSegmentsAgg,
+  deleteZeroActivityMembersSegmentsAgg,
+  deleteZeroActivityOrganizationsSegmentsAgg,
   findMemberWorkExperienceWithEpochDates,
   updateMemberWorkExperience,
 }

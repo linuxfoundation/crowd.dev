@@ -43,13 +43,15 @@ const anuketProject = segment(SegmentType.PROJECT, ANUKET, { parentId: lfnGroup.
 const anuketSubproject = segment(SegmentType.SUB_PROJECT, ANUKET, { parentId: anuketProject.id })
 
 describe('planCreation', () => {
-  test('creates the three levels when nothing exists in CDP', () => {
+  test('plans the project and sub-project the backend creates with a new group', () => {
     const plan = planCreation(ANUKET_RC1, buildCdpSegmentIndex([]))
 
     expect(plan).toEqual({
       action: 'CREATE',
       segments: [
         { ...LFN, type: SegmentType.PROJECT_GROUP },
+        { ...LFN, type: SegmentType.PROJECT },
+        { ...LFN, type: SegmentType.SUB_PROJECT },
         { ...ANUKET, type: SegmentType.PROJECT },
         { ...ANUKET, type: SegmentType.SUB_PROJECT },
         { ...RC1, type: SegmentType.SUB_PROJECT },
@@ -186,12 +188,39 @@ describe('planCreation', () => {
     })
   })
 
-  test('ignores a segment of another level with the same slug', () => {
+  test('blocks a new group when a project has its slug', () => {
     const projectNamedLikeGroup = segment(SegmentType.PROJECT, null, { slug: 'lfn', name: 'LFN' })
 
     expect(planCreation(ANUKET_RC1, buildCdpSegmentIndex([projectNamedLikeGroup]))).toMatchObject({
-      action: 'CREATE',
+      action: 'BLOCKED',
+      reason: 'SLUG_OR_NAME_TAKEN',
+      details: {
+        type: SegmentType.PROJECT,
+        node: LFN,
+        segments: [{ id: projectNamedLikeGroup.id }],
+      },
     })
+  })
+
+  test('blocks a new group when a sub-project has its name', () => {
+    const subprojectNamedLikeGroup = segment(SegmentType.SUB_PROJECT, null, {
+      slug: 'networking',
+      name: LFN.name,
+    })
+    const index = buildCdpSegmentIndex([subprojectNamedLikeGroup])
+
+    expect(planCreation(ANUKET_RC1, index)).toMatchObject({
+      action: 'BLOCKED',
+      reason: 'SLUG_OR_NAME_TAKEN',
+      details: { type: SegmentType.SUB_PROJECT, node: LFN },
+    })
+  })
+
+  test('ignores a project with the slug of a group that already exists', () => {
+    const projectNamedLikeGroup = segment(SegmentType.PROJECT, null, { slug: 'lfn', name: 'LFN' })
+    const index = buildCdpSegmentIndex([lfnGroup, projectNamedLikeGroup])
+
+    expect(planCreation(ANUKET_RC1, index)).toMatchObject({ action: 'CREATE' })
   })
 })
 
@@ -207,7 +236,7 @@ describe('creation summary', () => {
     expect(creationSummaryCounts(summary)).toEqual({
       creatableProjects: 2,
       blockedProjects: { INCOMPLETE_PCC_DATA: 1 },
-      segmentsToCreate: { projectGroup: 1, project: 1, subproject: 3 },
+      segmentsToCreate: { projectGroup: 1, project: 2, subproject: 4 },
     })
   })
 })

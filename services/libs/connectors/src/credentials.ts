@@ -14,7 +14,11 @@ export async function getCredential(qx: QueryExecutor, integrationId: string): P
     throw new Error(`integration ${integrationId} not found`)
   }
 
-  switch (integration.platform) {
+  return getPlatformCredential(integration.platform)
+}
+
+export function getPlatformCredential(platform: string): Credential {
+  switch (platform) {
     case 'github':
     case 'github-nango':
       return githubAppCredential()
@@ -25,7 +29,7 @@ export async function getCredential(qx: QueryExecutor, integrationId: string): P
     case 'sessionize':
       return sessionizeOrganizerAccountCredential()
     default:
-      throw new Error(`unsupported platform ${integration.platform}`)
+      throw new Error(`unsupported platform ${platform}`)
   }
 }
 
@@ -88,6 +92,10 @@ function credlyOAuthClientCredential(): Credential {
     kind: 'credly-oauth-client',
     data: { clientId, clientSecret, organizationId },
   }
+}
+
+export function isSessionizeCredentialConfigured(): boolean {
+  return Boolean(process.env.CROWD_SESSIONIZE_USERNAME && process.env.CROWD_SESSIONIZE_PASSWORD)
 }
 
 function sessionizeOrganizerAccountCredential(): Credential {

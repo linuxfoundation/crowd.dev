@@ -87,6 +87,27 @@ export async function claimDueUnits(qx: QueryExecutor, limit: number): Promise<I
   )
 }
 
+export async function countRunningUnits(
+  qx: QueryExecutor,
+  platforms: string[],
+  excludeUnitIds: string[],
+  maxRunMinutes: number,
+): Promise<Record<string, number>> {
+  if (platforms.length === 0) return {}
+
+  const rows: { platform: string; running: number }[] = await qx.select(
+    `SELECT platform, count(*)::int AS running
+     FROM integration.sync_units
+     WHERE platform = ANY($(platforms)::text[])
+       AND "lockedAt" IS NOT NULL
+       AND "lockedAt" >= now() - $(maxRunMinutes) * interval '1 minute'
+       AND id <> ALL($(excludeUnitIds)::uuid[])
+     GROUP BY platform`,
+    { platforms, excludeUnitIds, maxRunMinutes },
+  )
+  return Object.fromEntries(rows.map((row) => [row.platform, row.running]))
+}
+
 export async function rescheduleUnit(
   qx: QueryExecutor,
   id: string,
@@ -152,6 +173,33 @@ export async function recordRunSuccess(
       emittedCount: data.emittedCount,
       complete: data.complete,
       nextRunAt,
+    },
+  )
+}
+
+export async function recordRunFinished(
+  qx: QueryExecutor,
+  id: string,
+  data: ISyncRunSuccess,
+): Promise<void> {
+  await qx.result(
+    `UPDATE integration.sync_units
+     SET watermark = $(watermark)::jsonb,
+         "emittedCount" = $(emittedCount),
+         status = CASE WHEN status = 'active' THEN 'paused' ELSE status END,
+         "lastRunAt" = now(),
+         "lastSuccessAt" = now(),
+         "consecutiveFailures" = 0,
+         "lastErrorClass" = NULL,
+         "lastErrorMessage" = NULL,
+         "lastRunComplete" = true,
+         "lockedAt" = NULL,
+         "updatedAt" = now()
+     WHERE id = $(id)`,
+    {
+      id,
+      watermark: JSON.stringify(data.watermark),
+      emittedCount: data.emittedCount,
     },
   )
 }

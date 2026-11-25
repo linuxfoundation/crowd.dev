@@ -73,6 +73,9 @@ export interface SyncOutcome {
   complete: boolean
   // Only meaningful with complete: false; the next run then waits for the sync's normal cadence.
   resumeAtCadence?: boolean
+  // Both only meaningful with complete: true.
+  nextRunAt?: Date
+  finished?: boolean
 }
 
 export interface SyncDefinition<TDeps = undefined> {
@@ -123,6 +126,7 @@ interface ManifestBase<TDeps> {
   mintToken?: (credential: Credential) => TokenMinter
   probeBudget?: BudgetProbe
   runCostEstimate?: number
+  maxConcurrentRuns?: number
   applyToken?: TokenApplier
   interpretResponse?: ResponseInterpreter
   // Every emit of every sync passes both segmentId and integrationId overrides, so the run may

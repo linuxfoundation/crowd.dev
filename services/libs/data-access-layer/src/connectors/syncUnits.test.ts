@@ -7,6 +7,7 @@ import { withQx } from '@crowd/test-kit/db'
 import { recordShadowRecords } from './shadowRecords'
 import {
   claimDueUnits,
+  countRunningUnits,
   countUndrainedDecommissionedSyncUnits,
   decommissionAllSyncUnits,
   decommissionSyncUnitsForChannelIds,
@@ -24,6 +25,7 @@ import {
   mergeSyncUnitWatermark,
   reassertUnitClaim,
   recordRunFailure,
+  recordRunFinished,
   recordRunTimeout,
   renewRunningUnitLease,
   reviveDeadLetteredSyncUnits,
@@ -931,6 +933,85 @@ describe('recordRunTimeout', () => {
   })
 })
 
+describe('recordRunFinished', () => {
+  const NEXT_RUN_AT = '2026-12-01T08:00:00.000Z'
+  const LOCKED_AT = '2026-11-25T09:00:00.000Z'
+
+  async function createRunningUnit(qx: QueryExecutor, status: string): Promise<string> {
+    const integrationId = await createIntegration(qx, { platform: 'sessionize' })
+    const id = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-1001',
+      syncName: 'eventExport',
+      platform: 'sessionize',
+      status,
+      watermark: { cursor: 'before' },
+      lockedAt: LOCKED_AT,
+    })
+    await qx.result(
+      `UPDATE integration.sync_units
+       SET "nextRunAt" = $(nextRunAt)::timestamptz,
+           "consecutiveFailures" = 2,
+           "lastErrorClass" = 'provider.unavailable',
+           "lastErrorMessage" = 'sessionize unavailable'
+       WHERE id = $(id)`,
+      { id, nextRunAt: NEXT_RUN_AT },
+    )
+    return id
+  }
+
+  async function readRun(qx: QueryExecutor, id: string) {
+    return qx.selectOne(
+      `SELECT status, watermark, "emittedCount", "nextRunAt", "lockedAt", "consecutiveFailures",
+              "lastErrorClass", "lastErrorMessage", "lastRunComplete",
+              "lastRunAt" IS NOT NULL AS "ran", "lastSuccessAt" IS NOT NULL AS "succeeded"
+       FROM integration.sync_units WHERE id = $(id)`,
+      { id },
+    )
+  }
+
+  test('records the run as a complete success, pauses the unit and keeps nextRunAt', async ({
+    qx,
+  }) => {
+    const id = await createRunningUnit(qx, 'active')
+
+    await recordRunFinished(qx, id, {
+      watermark: { cursor: 'after' },
+      emittedCount: 7,
+      complete: true,
+    })
+
+    const run = await readRun(qx, id)
+    expect(new Date(run.nextRunAt).toISOString()).toBe(NEXT_RUN_AT)
+    expect(run).toMatchObject({
+      status: 'paused',
+      watermark: { cursor: 'after' },
+      emittedCount: 7,
+      lockedAt: null,
+      consecutiveFailures: 0,
+      lastErrorClass: null,
+      lastErrorMessage: null,
+      lastRunComplete: true,
+      ran: true,
+      succeeded: true,
+    })
+  })
+
+  test('leaves a decommissioned unit decommissioned', async ({ qx }) => {
+    const id = await createRunningUnit(qx, 'decommissioned')
+
+    await recordRunFinished(qx, id, {
+      watermark: { cursor: 'after' },
+      emittedCount: 7,
+      complete: true,
+    })
+
+    expect(await readRun(qx, id)).toMatchObject({
+      status: 'decommissioned',
+      lastRunComplete: true,
+    })
+  })
+})
+
 describe('getEmittingChannelNamesForIntegrations', () => {
   test('returns emitting, active channels once per repo, per integration', async ({ qx }) => {
     const integrationId = await createIntegration(qx, { platform: 'github-nango' })
@@ -996,5 +1077,77 @@ describe('getEmittingChannelNamesForIntegrations', () => {
     qx,
   }) => {
     expect(await getEmittingChannelNamesForIntegrations(qx, [])).toEqual({})
+  })
+})
+
+describe('countRunningUnits', () => {
+  test('counts units per platform locked within the longest run, whatever their status, leaving out the given units', async ({
+    qx,
+  }) => {
+    const integrationId = await createIntegration(qx)
+    const running = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-a',
+      syncName: 'sessions',
+      platform: 'sessionize',
+    })
+    const lapsed = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-b',
+      syncName: 'sessions',
+      platform: 'sessionize',
+    })
+    const idle = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-c',
+      syncName: 'sessions',
+      platform: 'sessionize',
+    })
+    const excluded = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-d',
+      syncName: 'sessions',
+      platform: 'sessionize',
+    })
+    const stale = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-e',
+      syncName: 'sessions',
+      platform: 'sessionize',
+    })
+    const decommissioned = await createSyncUnit(qx, integrationId, {
+      channelName: 'event-f',
+      syncName: 'sessions',
+      platform: 'sessionize',
+      status: 'decommissioned',
+    })
+    const otherPlatform = await createSyncUnit(qx, integrationId, {
+      channelName: 'repo',
+      syncName: 'issues',
+      platform: 'github',
+    })
+    const notAsked = await createSyncUnit(qx, integrationId, {
+      channelName: 'badge',
+      syncName: 'badges',
+      platform: 'credly',
+    })
+    await setClaimState(qx, running, { lockedAgo: '4 minutes', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, lapsed, { lockedAgo: '6 minutes', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, idle, { lockedAgo: null, nextRunAgo: '0 minutes' })
+    await setClaimState(qx, excluded, { lockedAgo: '0 minutes', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, stale, { lockedAgo: '66 minutes', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, decommissioned, { lockedAgo: '1 minute', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, otherPlatform, { lockedAgo: '1 minute', nextRunAgo: '0 minutes' })
+    await setClaimState(qx, notAsked, { lockedAgo: '1 minute', nextRunAgo: '0 minutes' })
+
+    expect(await countRunningUnits(qx, ['sessionize', 'github'], [excluded], 65)).toEqual({
+      sessionize: 3,
+      github: 1,
+    })
+  })
+
+  test('returns nothing for no platforms without querying', async () => {
+    const qx = {
+      select: () => {
+        throw new Error('queried')
+      },
+    } as unknown as QueryExecutor
+
+    expect(await countRunningUnits(qx, [], [], 65)).toEqual({})
   })
 })
