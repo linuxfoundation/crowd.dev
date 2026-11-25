@@ -197,4 +197,14 @@ describe('downloadSessionizeExport', () => {
     expect(mockedRequest).toHaveBeenCalledTimes(2)
     expect(invalidateToken).toHaveBeenCalledTimes(2)
   })
+  it('requests a failing export no more often than the attempts it is given', async () => {
+    mockedRequest.mockResolvedValue(reply(503, Buffer.from('')))
+
+    const err = await downloadSessionizeExport(staticSessionHttp(), path, 2).catch(
+      (e: unknown) => e,
+    )
+
+    expect(err).toMatchObject({ errorClass: 'provider.unavailable' })
+    expect(mockedRequest).toHaveBeenCalledTimes(2)
+  })
 })

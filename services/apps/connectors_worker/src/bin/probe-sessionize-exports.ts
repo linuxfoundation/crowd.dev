@@ -6,7 +6,7 @@ import {
   readExportSheet,
 } from '@crowd/connectors/src/connectors/sessionize/exportFile'
 import { signInToSessionize } from '@crowd/connectors/src/connectors/sessionize/session'
-import { createSessionizeSessionHttp } from '@crowd/connectors/src/connectors/sessionize/sessionHttp'
+import { createSessionizeFixedSessionHttp } from '@crowd/connectors/src/connectors/sessionize/sessionHttp'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { listSessionizeEventMappings } from '@crowd/data-access-layer/src/sessionize'
@@ -25,6 +25,8 @@ import {
 } from '../sessionizeExportProbe'
 
 const log = getServiceLogger()
+
+const EXPORT_MAX_ATTEMPTS = 2
 
 const USAGE =
   'Usage: probe-sessionize-exports [--event <key>]... [--path <template with {eventKey}>] [--date-header <name>]... [--pace-ms <n>]'
@@ -71,14 +73,13 @@ async function eventKeysOrExit(args: ExportProbeArgs): Promise<string[]> {
   }
 }
 
-async function signInFailure(
+async function signInOnce(
   credential: ReturnType<typeof getPlatformCredential>,
-): Promise<ExportProbeFailure | null> {
+): Promise<{ cookie: string } | { failure: ExportProbeFailure }> {
   try {
-    await signInToSessionize(credential)
-    return null
+    return { cookie: (await signInToSessionize(credential)).token }
   } catch (err) {
-    return describeProbeFailure(err)
+    return { failure: describeProbeFailure(err) }
   }
 }
 
@@ -88,7 +89,11 @@ async function probeEvent(
   eventKey: string,
 ): Promise<ProbeLine> {
   try {
-    const file = await downloadSessionizeExport(http, exportPath(args.pathTemplate, eventKey))
+    const file = await downloadSessionizeExport(
+      http,
+      exportPath(args.pathTemplate, eventKey),
+      EXPORT_MAX_ATTEMPTS,
+    )
     const sheet = await readExportSheet(file)
     return { eventKey, outcome: 'xlsx', summary: summarizeExport(sheet, args.dateHeaders) }
   } catch (err) {
@@ -106,15 +111,15 @@ async function main(): Promise<boolean> {
   const eventKeys = await eventKeysOrExit(args)
   const totals: Record<ProbeLine['outcome'], number> = { xlsx: 0, failed: 0 }
 
-  const failedSignIn = await signInFailure(credential)
-  if (failedSignIn) {
-    log.error(failedSignIn, 'sessionize sign-in failed, no export was requested')
-    printLine({ totals: { ...totals, notProbed: eventKeys.length }, signIn: failedSignIn })
+  const session = await signInOnce(credential)
+  if ('failure' in session) {
+    log.error(session.failure, 'sessionize sign-in failed, no export was requested')
+    printLine({ totals: { ...totals, notProbed: eventKeys.length }, signIn: session.failure })
     return false
   }
   log.info({ events: eventKeys.length, pathTemplate: args.pathTemplate }, 'probing exports')
 
-  const http = createSessionizeSessionHttp(credential)
+  const http = createSessionizeFixedSessionHttp(session.cookie)
   let runState = PROBE_RUN_START
   for (const [index, eventKey] of eventKeys.entries()) {
     if (index > 0) {

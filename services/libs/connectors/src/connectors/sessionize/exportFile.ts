@@ -32,10 +32,20 @@ function asBuffer(body: unknown): Buffer | null {
   return null
 }
 
-export async function downloadSessionizeExport(http: ConnectorHttp, path: string): Promise<Buffer> {
+export async function downloadSessionizeExport(
+  http: ConnectorHttp,
+  path: string,
+  maxAttempts?: number,
+): Promise<Buffer> {
   const url = SESSIONIZE_BASE_URL + path
   const request = { method: 'GET', url }
-  const body = asBuffer(await http.request<unknown>({ ...request, responseType: 'arraybuffer' }))
+  const body = asBuffer(
+    await http.request<unknown>(
+      { ...request, responseType: 'arraybuffer' },
+      undefined,
+      maxAttempts,
+    ),
+  )
   if (!body) {
     throw contractError(`${path} body is not binary`).withContext({ request })
   }
