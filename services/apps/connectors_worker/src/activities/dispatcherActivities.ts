@@ -8,10 +8,14 @@ import {
 import type { IClaimedUnit } from '@crowd/data-access-layer/src/connectors'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { RedisCache } from '@crowd/redis'
-import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
+import {
+  WorkflowIdConflictPolicy,
+  WorkflowIdReusePolicy,
+  WorkflowNotFoundError,
+} from '@crowd/temporal'
 
 import { svc } from '../main'
-import { applyRunCaps } from '../runCap'
+import { applyRunCaps, releaseOrphan } from '../runCap'
 import { RUNNING_LOCK_MAX_AGE_MINUTES } from '../runLimits'
 import { shortDeferRunAt } from '../scheduling'
 import type { IAdmissionResult, IDispatchCounts, StartRunResult } from '../types'
@@ -45,19 +49,22 @@ export async function admitByBudget(units: IClaimedUnit[]): Promise<IAdmissionRe
     )
   }
 
-  const caps = runCapsOf(byHeadroom.admitted)
+  const caps = runCapsOf(units)
   const cappedPlatforms = Object.keys(caps)
   if (cappedPlatforms.length === 0) {
     return byHeadroom
   }
 
+  const liveUnitIds = await findLiveLapsedUnitIds(
+    units.filter((unit) => unit.leaseLapsed && caps[unit.platform] !== undefined),
+  )
   const running = await countRunningUnits(
     dbStoreQx(svc.postgres.writer),
     cappedPlatforms,
     units.map((unit) => unit.id),
     RUNNING_LOCK_MAX_AGE_MINUTES,
   )
-  const byRunCap = applyRunCaps(byHeadroom.admitted, units, caps, running)
+  const byRunCap = applyRunCaps(byHeadroom.admitted, units, caps, running, liveUnitIds)
   if (byRunCap.deferred.length > 0) {
     svc.log.info(
       { unitIds: byRunCap.deferred.map((unit) => unit.id) },
@@ -66,7 +73,27 @@ export async function admitByBudget(units: IClaimedUnit[]): Promise<IAdmissionRe
   }
   return {
     admitted: byRunCap.admitted,
-    deferred: [...byHeadroom.deferred, ...byRunCap.deferred],
+    deferred: [
+      ...byHeadroom.deferred.map((unit) => releaseOrphan(unit, caps, liveUnitIds)),
+      ...byRunCap.deferred,
+    ],
+  }
+}
+
+async function findLiveLapsedUnitIds(lapsedUnits: IClaimedUnit[]): Promise<Set<string>> {
+  const live = await mapWithConcurrency(lapsedUnits, BUDGET_PROBE_CONCURRENCY, isRunLive)
+  return new Set(lapsedUnits.filter((_, index) => live[index]).map((unit) => unit.id))
+}
+
+async function isRunLive(unit: IClaimedUnit): Promise<boolean> {
+  try {
+    const { status } = await svc.temporal.workflow.getHandle(syncRunWorkflowId(unit)).describe()
+    return status.name === 'RUNNING'
+  } catch (err) {
+    if (err instanceof WorkflowNotFoundError) {
+      return false
+    }
+    throw err
   }
 }
 
