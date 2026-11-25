@@ -1,6 +1,6 @@
 import type { SessionizeConsoleEvent } from './consoleEvents'
 
-export const MATCHING_RULE_VERSION = 2
+export const MATCHING_RULE_VERSION = 3
 export const MATCH_WINDOW_DAYS = 21
 
 const MILLISECONDS_PER_DAY = 86_400_000
@@ -121,14 +121,16 @@ export function matchSessionizeEvent(
   if (found.length === 0) {
     return held('no_match')
   }
-  if (found.length > 1) {
+
+  const cventFound = found.filter(({ catalogueEvent }) => catalogueEvent.source === CVENT_SOURCE)
+  if (cventFound.length > 1) {
     return held('ambiguous')
   }
-
-  const { catalogueEvent } = found[0]
-  if (catalogueEvent.source !== CVENT_SOURCE) {
-    return held('not_cvent', catalogueEvent)
+  if (cventFound.length === 0) {
+    return found.length === 1 ? held('not_cvent', found[0].catalogueEvent) : held('ambiguous')
   }
+
+  const { catalogueEvent } = cventFound[0]
   const segmentId = subprojectFor(catalogueEvent.projectSlug, catalogueEvent.projectId)
   if (segmentId === null) {
     return held('no_segment', catalogueEvent)
