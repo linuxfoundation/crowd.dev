@@ -140,9 +140,27 @@ export function summarizeExport(sheet: ExportSheet, dateHeaders: string[]): Expo
 }
 
 const RUN_STOPPING_ERROR_CLASSES = new Set(['provider.auth', 'provider.rate_limit'])
+const MAX_CONSECUTIVE_UNAVAILABLE = 2
 
-export function stopsProbeRun(errorClass: string | undefined): boolean {
-  return errorClass !== undefined && RUN_STOPPING_ERROR_CLASSES.has(errorClass)
+export interface ProbeRunState {
+  consecutiveUnavailable: number
+  stop: boolean
+}
+
+export const PROBE_RUN_START: ProbeRunState = { consecutiveUnavailable: 0, stop: false }
+
+export function nextProbeRunState(
+  state: ProbeRunState,
+  failureClass: string | undefined,
+): ProbeRunState {
+  const consecutiveUnavailable =
+    failureClass === 'provider.unavailable' ? state.consecutiveUnavailable + 1 : 0
+  return {
+    consecutiveUnavailable,
+    stop:
+      (failureClass !== undefined && RUN_STOPPING_ERROR_CLASSES.has(failureClass)) ||
+      consecutiveUnavailable >= MAX_CONSECUTIVE_UNAVAILABLE,
+  }
 }
 
 export function describeProbeFailure(err: unknown): ExportProbeFailure {

@@ -5,6 +5,7 @@ import {
   downloadSessionizeExport,
   readExportSheet,
 } from '@crowd/connectors/src/connectors/sessionize/exportFile'
+import { signInToSessionize } from '@crowd/connectors/src/connectors/sessionize/session'
 import { createSessionizeSessionHttp } from '@crowd/connectors/src/connectors/sessionize/sessionHttp'
 import { WRITE_DB_CONFIG, getDbConnection } from '@crowd/data-access-layer/src/database'
 import { pgpQx } from '@crowd/data-access-layer/src/queryExecutor'
@@ -15,10 +16,11 @@ import {
   ExportProbeArgs,
   ExportProbeFailure,
   ExportProbeSummary,
+  PROBE_RUN_START,
   describeProbeFailure,
   exportPath,
+  nextProbeRunState,
   parseExportProbeArgs,
-  stopsProbeRun,
   summarizeExport,
 } from '../sessionizeExportProbe'
 
@@ -57,6 +59,29 @@ async function matchedEventKeys(): Promise<string[]> {
     .map((mapping) => mapping.eventKey)
 }
 
+async function eventKeysOrExit(args: ExportProbeArgs): Promise<string[]> {
+  if (args.eventKeys.length > 0) {
+    return args.eventKeys
+  }
+  try {
+    return await matchedEventKeys()
+  } catch (err) {
+    log.error({ err }, 'Could not list the matched sessionize events')
+    process.exit(1)
+  }
+}
+
+async function signInFailure(
+  credential: ReturnType<typeof getPlatformCredential>,
+): Promise<ExportProbeFailure | null> {
+  try {
+    await signInToSessionize(credential)
+    return null
+  } catch (err) {
+    return describeProbeFailure(err)
+  }
+}
+
 async function probeEvent(
   http: ConnectorHttp,
   args: ExportProbeArgs,
@@ -78,11 +103,19 @@ function printLine(line: object): void {
 async function main(): Promise<boolean> {
   const args = parseArgsOrExit()
   const credential = loadCredential()
-  const eventKeys = args.eventKeys.length > 0 ? args.eventKeys : await matchedEventKeys()
+  const eventKeys = await eventKeysOrExit(args)
+  const totals: Record<ProbeLine['outcome'], number> = { xlsx: 0, failed: 0 }
+
+  const failedSignIn = await signInFailure(credential)
+  if (failedSignIn) {
+    log.error(failedSignIn, 'sessionize sign-in failed, no export was requested')
+    printLine({ totals: { ...totals, notProbed: eventKeys.length }, signIn: failedSignIn })
+    return false
+  }
   log.info({ events: eventKeys.length, pathTemplate: args.pathTemplate }, 'probing exports')
 
   const http = createSessionizeSessionHttp(credential)
-  const totals: Record<ProbeLine['outcome'], number> = { xlsx: 0, failed: 0 }
+  let runState = PROBE_RUN_START
   for (const [index, eventKey] of eventKeys.entries()) {
     if (index > 0) {
       await timeout(args.paceMs)
@@ -90,9 +123,11 @@ async function main(): Promise<boolean> {
     const line = await probeEvent(http, args, eventKey)
     totals[line.outcome] += 1
     printLine(line)
-    if (line.outcome === 'failed' && stopsProbeRun(line.errorClass)) {
+    const failureClass = line.outcome === 'failed' ? line.errorClass : undefined
+    runState = nextProbeRunState(runState, failureClass)
+    if (runState.stop) {
       const notProbed = eventKeys.length - index - 1
-      log.error({ errorClass: line.errorClass, notProbed }, 'stopping the probe run')
+      log.error({ errorClass: failureClass, notProbed }, 'stopping the probe run')
       printLine({ totals: { ...totals, notProbed } })
       return false
     }

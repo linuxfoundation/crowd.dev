@@ -6,8 +6,9 @@ import type { ExportSheet } from '@crowd/connectors/src/connectors/sessionize/ex
 import {
   describeProbeFailure,
   exportPath,
+  PROBE_RUN_START,
+  nextProbeRunState,
   parseExportProbeArgs,
-  stopsProbeRun,
   summarizeExport,
   valueShape,
 } from './sessionizeExportProbe'
@@ -207,15 +208,39 @@ describe('exportPath', () => {
   })
 })
 
-describe('stopsProbeRun', () => {
+describe('nextProbeRunState', () => {
+  function stopsAfter(outcomes: (string | undefined)[]): boolean[] {
+    let state = PROBE_RUN_START
+    return outcomes.map((failureClass) => {
+      state = nextProbeRunState(state, failureClass)
+      return state.stop
+    })
+  }
+
   it.each([
-    ['provider.auth', true],
-    ['provider.rate_limit', true],
-    ['provider.contract', false],
-    ['provider.unavailable', false],
-    ['TypeError', false],
-    [undefined, false],
-  ])('stops the run after a %s failure: %s', (errorClass, stops) => {
-    expect(stopsProbeRun(errorClass)).toBe(stops)
+    [['provider.auth'], [true]],
+    [['provider.rate_limit'], [true]],
+    [
+      [undefined, 'provider.unavailable', undefined],
+      [false, false, false],
+    ],
+    [
+      ['provider.unavailable', 'provider.unavailable'],
+      [false, true],
+    ],
+    [
+      ['provider.unavailable', undefined, 'provider.unavailable'],
+      [false, false, false],
+    ],
+    [
+      ['provider.unavailable', 'provider.contract', 'provider.unavailable'],
+      [false, false, false],
+    ],
+    [
+      ['provider.contract', 'provider.contract', 'TypeError', 'TypeError'],
+      [false, false, false, false],
+    ],
+  ])('after %j stops at %j', (outcomes, stops) => {
+    expect(stopsAfter(outcomes)).toEqual(stops)
   })
 })
