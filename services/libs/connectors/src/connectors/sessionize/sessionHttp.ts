@@ -19,6 +19,9 @@ export function createSessionizeSessionHttp(credential: Credential): ConnectorHt
 
   return createHttpClient({
     acquireToken: async (): Promise<IPooledToken> => {
+      if (rateLimitedUntil && rateLimitedUntil.getTime() <= Date.now()) {
+        rateLimitedUntil = null
+      }
       if (rateLimitedUntil) {
         throw new RateLimitError('sessionize rate limited the organizer console', {
           resumeAt: rateLimitedUntil,

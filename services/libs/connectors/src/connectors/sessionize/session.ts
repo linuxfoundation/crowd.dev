@@ -29,7 +29,7 @@ const TRANSIENT_ERROR_CLASSES = new Set(['provider.unavailable', 'provider.rate_
 const ANTI_FORGERY_TOKEN_PATTERN =
   /<form[^>]*action="\/login\/classic"[^>]*>[\s\S]*?name="__RequestVerificationToken"[^>]*value="([^"]+)"/
 const SIGN_IN_FORM_PATTERN = /<form[^>]*action="\/login\/classic"/
-const SIGN_IN_PAGE_SNIFF_BYTES = 8 * 1024
+const ZIP_SIGNATURE = Buffer.from([0x50, 0x4b, 0x03, 0x04])
 
 const log = getServiceChildLogger('sessionizeSession')
 
@@ -230,7 +230,10 @@ function servesSignInForm(data: unknown): boolean {
     return SIGN_IN_FORM_PATTERN.test(data)
   }
   if (Buffer.isBuffer(data)) {
-    return SIGN_IN_FORM_PATTERN.test(data.subarray(0, SIGN_IN_PAGE_SNIFF_BYTES).toString('utf8'))
+    if (data.subarray(0, ZIP_SIGNATURE.length).equals(ZIP_SIGNATURE)) {
+      return false
+    }
+    return SIGN_IN_FORM_PATTERN.test(data.toString('utf8'))
   }
   return false
 }

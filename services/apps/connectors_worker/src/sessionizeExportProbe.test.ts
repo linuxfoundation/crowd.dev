@@ -7,6 +7,7 @@ import {
   describeProbeFailure,
   exportPath,
   parseExportProbeArgs,
+  stopsProbeRun,
   summarizeExport,
   valueShape,
 } from './sessionizeExportProbe'
@@ -203,5 +204,18 @@ describe('exportPath', () => {
     expect(exportPath('/app/organizer/export/excel/{eventKey}/Accepted', '12662')).toBe(
       '/app/organizer/export/excel/12662/Accepted',
     )
+  })
+})
+
+describe('stopsProbeRun', () => {
+  it.each([
+    ['provider.auth', true],
+    ['provider.rate_limit', true],
+    ['provider.contract', false],
+    ['provider.unavailable', false],
+    ['TypeError', false],
+    [undefined, false],
+  ])('stops the run after a %s failure: %s', (errorClass, stops) => {
+    expect(stopsProbeRun(errorClass)).toBe(stops)
   })
 })

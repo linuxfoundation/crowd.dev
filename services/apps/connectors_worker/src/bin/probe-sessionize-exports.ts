@@ -18,6 +18,7 @@ import {
   describeProbeFailure,
   exportPath,
   parseExportProbeArgs,
+  stopsProbeRun,
   summarizeExport,
 } from '../sessionizeExportProbe'
 
@@ -89,8 +90,14 @@ async function main(): Promise<boolean> {
     const line = await probeEvent(http, args, eventKey)
     totals[line.outcome] += 1
     printLine(line)
+    if (line.outcome === 'failed' && stopsProbeRun(line.errorClass)) {
+      const notProbed = eventKeys.length - index - 1
+      log.error({ errorClass: line.errorClass, notProbed }, 'stopping the probe run')
+      printLine({ totals: { ...totals, notProbed } })
+      return false
+    }
   }
-  printLine({ totals })
+  printLine({ totals: { ...totals, notProbed: 0 } })
   return totals.failed === 0
 }
 

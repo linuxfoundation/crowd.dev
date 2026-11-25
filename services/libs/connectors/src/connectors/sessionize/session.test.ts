@@ -208,8 +208,16 @@ describe('interpretSessionizeResponse', () => {
     expect(interpretSessionizeResponse({ status: 200, headers: {}, data })).toBeNull()
   })
 
-  it('inspects only the first 8 KB of a binary body', () => {
-    const data = Buffer.concat([Buffer.alloc(8 * 1024, ' '), Buffer.from(LOGIN_PAGE)])
+  it('finds the sign-in form deep inside a binary login page', () => {
+    const data = Buffer.concat([Buffer.alloc(11 * 1024 + 206, ' '), Buffer.from(LOGIN_PAGE)])
+
+    expect(interpretSessionizeResponse({ status: 200, headers: {}, data })).toBeInstanceOf(
+      ProviderAuthError,
+    )
+  })
+
+  it('never scans a spreadsheet for the sign-in form', () => {
+    const data = Buffer.concat([Buffer.from('PK\x03\x04'), Buffer.from(LOGIN_PAGE)])
 
     expect(interpretSessionizeResponse({ status: 200, headers: {}, data })).toBeNull()
   })

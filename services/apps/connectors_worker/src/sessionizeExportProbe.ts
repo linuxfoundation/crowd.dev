@@ -139,6 +139,12 @@ export function summarizeExport(sheet: ExportSheet, dateHeaders: string[]): Expo
   }
 }
 
+const RUN_STOPPING_ERROR_CLASSES = new Set(['provider.auth', 'provider.rate_limit'])
+
+export function stopsProbeRun(errorClass: string | undefined): boolean {
+  return errorClass !== undefined && RUN_STOPPING_ERROR_CLASSES.has(errorClass)
+}
+
 export function describeProbeFailure(err: unknown): ExportProbeFailure {
   if (err instanceof ConnectorError) {
     return { errorClass: err.errorClass, message: err.message }
