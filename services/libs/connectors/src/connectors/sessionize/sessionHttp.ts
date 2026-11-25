@@ -58,6 +58,8 @@ export function createSessionizeSessionHttp(credential: Credential): ConnectorHt
 }
 
 export function createSessionizeFixedSessionHttp(cookie: string): ConnectorHttp {
+  let lastStatus: number | undefined
+  let rejectedStatus: number | undefined
   let rejected = false
   const rateLimit = createRateLimitGate()
 
@@ -65,7 +67,8 @@ export function createSessionizeFixedSessionHttp(cookie: string): ConnectorHttp 
     acquireToken: async (): Promise<IPooledToken> => {
       if (rejected) {
         throw new ProviderAuthError(
-          'sessionize rejected the session and this client does not renew it',
+          `sessionize rejected the session (status ${rejectedStatus}) and this client does not renew it`,
+          { status: rejectedStatus },
         )
       }
       rateLimit.check()
@@ -74,9 +77,13 @@ export function createSessionizeFixedSessionHttp(cookie: string): ConnectorHttp 
     parkToken: async (_tokenId, resumeAt) => rateLimit.park(resumeAt),
     invalidateToken: async () => {
       rejected = true
+      rejectedStatus = lastStatus
     },
     applyToken: applySessionizeCookie,
-    interpretResponse: interpretSessionizeResponse,
+    interpretResponse: (response) => {
+      lastStatus = response.status
+      return interpretSessionizeResponse(response)
+    },
     log,
   })
 }

@@ -82,15 +82,27 @@ describe('createSessionizeFixedSessionHttp', () => {
     expect(signInToSessionize).not.toHaveBeenCalled()
   })
 
-  it('fails as an auth error once the session is rejected, without signing in again', async () => {
-    mockedRequest.mockResolvedValue({ status: 302, headers: { location: '/login' }, data: '' })
-    const http = createSessionizeFixedSessionHttp('made-up-fixed-cookie')
+  it.each([
+    [302, { location: '/login?ReturnUrl=%2Fmade-up-secret' }],
+    [403, {}],
+  ])(
+    'fails as an auth error naming status %s once the session is rejected, without signing in again',
+    async (status, headers) => {
+      mockedRequest.mockResolvedValue({ status, headers, data: '' })
+      const http = createSessionizeFixedSessionHttp('made-up-fixed-cookie')
 
-    await expect(http.request(request)).rejects.toBeInstanceOf(ProviderAuthError)
-    await expect(http.request(request)).rejects.toBeInstanceOf(ProviderAuthError)
-    expect(mockedRequest).toHaveBeenCalledTimes(1)
-    expect(signInToSessionize).not.toHaveBeenCalled()
-  })
+      for (let i = 0; i < 2; i++) {
+        const err = await http.request(request).catch((e: unknown) => e)
+        expect(err).toBeInstanceOf(ProviderAuthError)
+        expect(err).toMatchObject({
+          message: `sessionize rejected the session (status ${status}) and this client does not renew it`,
+          options: { status },
+        })
+      }
+      expect(mockedRequest).toHaveBeenCalledTimes(1)
+      expect(signInToSessionize).not.toHaveBeenCalled()
+    },
+  )
 
   it('refuses requests while rate limited and serves them again once the limit has passed', async () => {
     mockedRequest

@@ -22,6 +22,7 @@ export interface ExportProbeSummary {
   sheetNames: string[]
   rowCount: number
   missingRequiredColumns: string[]
+  headersTrusted: boolean
   headers: string[]
   statusCounts: Record<string, number>
   dateColumns: Record<string, { cellTypes: Record<string, number>; shapes: Record<string, number> }>
@@ -104,10 +105,16 @@ function filled(cells: ExportCell[]): ExportCell[] {
 
 export function summarizeExport(sheet: ExportSheet, dateHeaders: string[]): ExportProbeSummary {
   const normalizedHeaders = new Set(sheet.headers.map(normalizeHeader))
+  const missingRequiredColumns = REQUIRED_COLUMNS.filter(
+    (column) => !normalizedHeaders.has(normalizeHeader(column)),
+  )
+  const headersTrusted = missingRequiredColumns.length === 0
   const statusCounts: Record<string, number> = {}
   const statusIndex = columnIndex(sheet.headers, (header) => header === 'status')
-  for (const status of filled(columnCells(sheet, statusIndex))) {
-    increment(statusCounts, String(status))
+  if (headersTrusted) {
+    for (const status of filled(columnCells(sheet, statusIndex))) {
+      increment(statusCounts, String(status))
+    }
   }
 
   const dateColumns: ExportProbeSummary['dateColumns'] = {}
@@ -125,10 +132,9 @@ export function summarizeExport(sheet: ExportSheet, dateHeaders: string[]): Expo
   return {
     sheetNames: sheet.sheetNames,
     rowCount: sheet.rows.length,
-    missingRequiredColumns: REQUIRED_COLUMNS.filter(
-      (column) => !normalizedHeaders.has(normalizeHeader(column)),
-    ),
-    headers: sheet.headers,
+    missingRequiredColumns,
+    headersTrusted,
+    headers: headersTrusted ? sheet.headers : sheet.headers.map(valueShape),
     statusCounts,
     dateColumns,
     linkedin: {

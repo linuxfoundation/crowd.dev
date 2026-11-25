@@ -93,6 +93,7 @@ describe('summarizeExport', () => {
       sheetNames: ['Sessions', 'Notes'],
       rowCount: 6,
       missingRequiredColumns: [],
+      headersTrusted: true,
       headers: HEADERS,
       statusCounts: { Accepted: 4, Declined: 1 },
       dateColumns: {
@@ -111,6 +112,30 @@ describe('summarizeExport', () => {
     })
     const printed = JSON.stringify(summary)
     for (const personal of ['ada.example@example.org', 'Ada', 'ada-example', 'spk-1']) {
+      expect(printed).not.toContain(personal)
+    }
+  })
+
+  it('prints only value shapes when row 1 is not a header row', () => {
+    const summary = summarizeExport(
+      sheet(
+        [['Bob', 'bob.sample@example.com', 'Accepted']],
+        ['Ada', 'ada.example@example.org', 'Status'],
+      ),
+      ['Date Submitted'],
+    )
+
+    expect(summary.headersTrusted).toBe(false)
+    expect(summary.headers).toEqual(['AAA', 'AAA.AAAAAAA@AAAAAAA.AAA', 'AAAAAA'])
+    expect(summary.statusCounts).toEqual({})
+    const printed = JSON.stringify(summary)
+    for (const personal of [
+      'Ada',
+      'ada.example@example.org',
+      'Bob',
+      'bob.sample@example.com',
+      'Accepted',
+    ]) {
       expect(printed).not.toContain(personal)
     }
   })
