@@ -36,6 +36,26 @@ function standaloneProject(slug: string): ProjectToCreate {
   }
 }
 
+function projectWithItsOwnGroup(slug: string): ProjectToCreate {
+  const group = { pccProjectId: `pcc-${slug}-group`, name: `${slug} group`, slug: `${slug}-group` }
+  const node = { pccProjectId: `pcc-${slug}`, name: slug, slug }
+  return {
+    pccProjectId: node.pccProjectId,
+    pccSlug: slug,
+    name: slug,
+    status: null,
+    steps: [
+      { endpoint: 'projectGroup', node: group },
+      { endpoint: 'project', node, parent: { slug: group.slug, name: group.name } },
+    ],
+  }
+}
+
+const UNANSWERED: SegmentCreationResult = {
+  outcome: 'failed',
+  httpStatus: null,
+  error: 'fetch failed',
+}
 const CREATED: SegmentCreationResult = { outcome: 'created' }
 const REFUSED: SegmentCreationResult = { outcome: 'failed', httpStatus: 400, error: 'HTTP 400' }
 
@@ -167,6 +187,34 @@ describe('runCreations', () => {
     )
 
     expect(createStep).toHaveBeenCalledTimes(3)
+    expect(result.stoppedWithoutAnswers).toBe(false)
+  })
+
+  test('does not stop when the backend answers between two requests left unanswered', async () => {
+    const createStep = backendAnswering((step) =>
+      step.endpoint === 'projectGroup' ? CREATED : UNANSWERED,
+    )
+
+    const result = await runCreations(
+      ['a', 'b', 'c', 'd'].map((slug) => projectWithItsOwnGroup(slug)),
+      { maxProjects: 10, maxConsecutiveUnanswered: 3, createStep },
+    )
+
+    expect(createStep).toHaveBeenCalledTimes(8)
+    expect(result.notAttempted).toBe(0)
+    expect(result.stoppedWithoutAnswers).toBe(false)
+  })
+
+  test('does not report a stop when the last project is the one left unanswered', async () => {
+    const createStep = backendAnswering(() => UNANSWERED)
+
+    const result = await runCreations([standaloneProject('a'), standaloneProject('b')], {
+      maxProjects: 10,
+      maxConsecutiveUnanswered: 2,
+      createStep,
+    })
+
+    expect(result.notAttempted).toBe(0)
     expect(result.stoppedWithoutAnswers).toBe(false)
   })
 })
