@@ -260,6 +260,7 @@ export const ORG_DB_ATTRIBUTE_SOURCE_PRIORITY = [
   OrganizationAttributeSource.COMMITTEES,
   OrganizationAttributeSource.LUMA,
   OrganizationAttributeSource.SCHED,
+  OrganizationAttributeSource.SESSIONIZE,
   // legacy - keeping this for backward compatibility
   OrganizationAttributeSource.ENRICHMENT,
   OrganizationAttributeSource.GITHUB,

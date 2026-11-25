@@ -20,6 +20,7 @@ export enum OrganizationSource {
   COMMITTEES = 'committees',
   LUMA = 'luma',
   SCHED = 'sched',
+  SESSIONIZE = 'sessionize',
 }
 
 export enum OrganizationIdentityType {
