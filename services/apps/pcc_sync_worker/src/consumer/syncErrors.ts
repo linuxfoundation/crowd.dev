@@ -29,6 +29,23 @@ export async function resolveSyncErrorsNotReportedByExport(
   )
 }
 
+export async function resolveSyncErrorsOfProjects(
+  qx: QueryExecutor,
+  errorType: string,
+  pccProjectIds: string[],
+): Promise<number> {
+  return qx.result(
+    `
+    UPDATE pcc_projects_sync_errors
+    SET resolved = TRUE
+    WHERE NOT resolved
+      AND error_type = $(errorType)
+      AND external_project_id = ANY($(pccProjectIds)::text[])
+    `,
+    { errorType, pccProjectIds },
+  )
+}
+
 export async function isSingleFileExport(
   qx: QueryExecutor,
   platform: string,

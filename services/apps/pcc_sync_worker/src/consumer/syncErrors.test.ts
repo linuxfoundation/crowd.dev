@@ -4,7 +4,11 @@ import type { QueryExecutor } from '@crowd/database'
 import { DEFAULT_BATCH_SIZE } from '@crowd/snowflake'
 import { withQx } from '@crowd/test-kit/db'
 
-import { isSingleFileExport, resolveSyncErrorsNotReportedByExport } from './syncErrors'
+import {
+  isSingleFileExport,
+  resolveSyncErrorsNotReportedByExport,
+  resolveSyncErrorsOfProjects,
+} from './syncErrors'
 
 const test = withQx(base)
 
@@ -159,6 +163,32 @@ describe('resolveSyncErrorsNotReportedByExport', () => {
     await insertSyncError(qx, 'pcc-comes-back', DURING_EXPORT)
 
     expect(await unresolvedProjectIds(qx)).toEqual(['pcc-comes-back'])
+  })
+})
+
+describe('resolveSyncErrorsOfProjects', () => {
+  const CREATION_FAILED = 'PROJECT_CREATION_FAILED'
+
+  test('resolves the errors of the given projects and keeps the others open', async ({ qx }) => {
+    await insertSyncError(qx, 'pcc-created', BEFORE_EXPORT, CREATION_FAILED)
+    await insertSyncError(qx, 'pcc-still-missing', BEFORE_EXPORT, CREATION_FAILED)
+
+    const resolved = await resolveSyncErrorsOfProjects(qx, CREATION_FAILED, ['pcc-created'])
+
+    expect(resolved).toBe(1)
+    expect(await unresolvedProjectIds(qx)).toEqual(['pcc-still-missing'])
+  })
+
+  test('resolves nothing when no project is given', async ({ qx }) => {
+    await insertSyncError(qx, 'pcc-still-missing', BEFORE_EXPORT, CREATION_FAILED)
+
+    expect(await resolveSyncErrorsOfProjects(qx, CREATION_FAILED, [])).toBe(0)
+  })
+
+  test('leaves the other error types of the same project alone', async ({ qx }) => {
+    await insertSyncError(qx, 'pcc-created', BEFORE_EXPORT)
+
+    expect(await resolveSyncErrorsOfProjects(qx, CREATION_FAILED, ['pcc-created'])).toBe(0)
   })
 })
 
