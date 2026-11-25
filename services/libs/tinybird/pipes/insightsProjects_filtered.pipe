@@ -6,6 +6,7 @@ SQL >
     %
     SELECT
         insights_projects_populated_ds.id,
+        insights_projects_populated_ds.segmentId,
         insights_projects_populated_ds.name,
         insights_projects_populated_ds.slug,
         insights_projects_populated_ds.description,

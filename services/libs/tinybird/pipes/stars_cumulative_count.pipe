@@ -33,8 +33,6 @@ DESCRIPTION >
     snapshot to `argMax` over and reads as 0 stars for that repo, not "unknown" - undercounts
     early buckets until the star-snapshot backfill fully lands, never overcounts.
 
-TOKEN "insights-app-token" READ
-
 NODE stars_github_summary
 DESCRIPTION >
     No-granularity mode: GitHub total as of `endDate`, or the latest snapshots without it.

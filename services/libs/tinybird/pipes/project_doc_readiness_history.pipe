@@ -10,8 +10,6 @@ DESCRIPTION >
     - `project`: Required string for project slug (e.g., 'k8s', 'tensorflow')
     - Response: `month`, `score`, `failedOnly`, `docsUrl`, `urlChanged`, `firstEvaluatedMonth`
 
-TOKEN "insights-app-token" READ
-
 TAGS "Insights, Widget", "Project"
 
 NODE project_doc_readiness_history_runs

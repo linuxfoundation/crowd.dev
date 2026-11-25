@@ -9,8 +9,6 @@ DESCRIPTION >
     - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans (defaults: code contributions only)
     - Response: `startDate`, `endDate`, `contributorCount`, `contributionCount`, `organizationCount`
 
-TOKEN "insights-app-token" READ
-
 TAGS "Report"
 
 NODE cncf_country_activity_timeseries_result

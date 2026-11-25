@@ -1,0 +1,30 @@
+DESCRIPTION >
+    - `project_slug_candidates.pipe` suggests enabled projects close to a project slug that matched no project, for the Insights API's 404 response.
+    - Ranks each project by the smaller case-insensitive ngram distance from the requested slug to the project's slug or name, so `kuberntes` and `kubernetes` both find `k8s` (Kubernetes).
+    - Keeps projects with a distance under 0.75; nonsense input and slugs under 4 characters return no rows.
+    - Ties go to the project with more contributors, then to the slug in alphabetical order.
+    - Parameters:
+    - `slug`: Required string, the requested project slug (e.g., 'kuberntes')
+    - `limit`: Optional integer for the number of candidates, defaults to 5
+    - Response: `slug`, `name`, `distance` (0 for an exact match), closest first
+
+NODE project_slug_candidates_ranked
+SQL >
+    %
+    WITH
+        {{ String(slug, description="Project slug that matched no project", required=True) }}
+        AS requestedSlug
+    SELECT
+        slug,
+        name,
+        least(
+            ngramDistanceCaseInsensitive(slug, requestedSlug),
+            ngramDistanceCaseInsensitive(name, requestedSlug)
+        ) AS distance
+    -- insightsProjects_filtered would apply the `slug` param as an exact-match filter, so read its
+    -- source with the same enabled filter.
+    FROM insights_projects_populated_ds
+    -- Strings under 4 characters have no 4-grams and compare at distance 0, so skip short input.
+    WHERE enabled = 1 AND lengthUTF8(requestedSlug) >= 4 AND distance < 0.75
+    ORDER BY distance ASC, contributorCount DESC, slug ASC
+    LIMIT {{ Int32(limit, 5, description="Maximum number of candidates", required=False) }}
