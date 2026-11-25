@@ -11,9 +11,13 @@ DESCRIPTION >
     - `orderByDirection`: Optional string ('asc' or 'desc'), defaults to 'asc'
     - `pageSize`: Optional integer for result limit, defaults to 10
     - `page`: Optional integer for pagination offset calculation, defaults to 0
+    - `limit`: Optional integer row count; when given, it and `offset` replace `pageSize` and `page`
+    - `offset`: Optional integer number of rows to skip, defaults to 0, used with `limit`
+    - Rows that tie on the sort field and name are ordered by `id`
     - Response:
     - Count mode (`count=true`): `count` (total number of projects)
-    - Data mode (default): All project fields from `insightsProjects_filtered` with sorting and pagination
+    - Data mode (default): All project fields from `insightsProjects_filtered` with sorting and pagination, plus `sourceId`
+    - `sourceId`: LFX identifier from the project's segment, empty string when the segment has none
 
 NODE projects_paginated
 SQL >
@@ -21,8 +25,17 @@ SQL >
     {% if Boolean(count, false) %}
         SELECT count(insightsProjects_filtered.id) from insightsProjects_filtered
     {% else %}
-        SELECT *
+        SELECT insightsProjects_filtered.*, project_segment.sourceId AS sourceId
         FROM insightsProjects_filtered
+        -- segments is sorted by (slug, id), so FINAL keeps a row per slug for a renamed segment.
+        -- Grouping by id joins one row per project; ClickHouse 25.8 rejects USING on its aliased key.
+        LEFT JOIN
+            (
+                SELECT id AS segmentKey, argMax(sourceId, updatedAt) AS sourceId
+                FROM segments
+                GROUP BY id
+            ) AS project_segment
+            ON project_segment.segmentKey = insightsProjects_filtered.segmentId
         order by
             {{
                 column(
@@ -44,7 +57,9 @@ SQL >
             ) == 'ASC' %} ASC
             {% else %} DESC
             {% end %},
-            name ASC
-        LIMIT {{ Int32(pageSize, 10) }}
-        OFFSET {{ Int32(page, 0) * Int32(pageSize, 10) }}
+            name ASC,
+            id ASC
+        {% if defined(limit) %} LIMIT {{ Int32(limit, 10) }} OFFSET {{ Int32(offset, 0) }}
+        {% else %} LIMIT {{ Int32(pageSize, 10) }} OFFSET {{ Int32(page, 0) * Int32(pageSize, 10) }}
+        {% end %}
     {% end %}
