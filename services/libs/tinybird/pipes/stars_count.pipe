@@ -33,8 +33,6 @@ DESCRIPTION >
     - GitHub totals as of a date come from `stars_github_as_of.pipe`. GitLab events are read only
     from segments in `stars_scope.pipe`, so GitHub-only scopes skip the activity scan.
 
-TOKEN "insights-app-token" READ
-
 NODE stars_count_baseline
 DESCRIPTION >
     Scalar: cumulative stars total as of `startDate`, used as the first bucket's baseline in

@@ -41,15 +41,20 @@ const KUBECTL = node('kubectl', 'kubectl')
 const KUSTOMIZE = node('kustomize', 'Kustomize')
 const ZEPHYR = node('zephyr', 'Zephyr Project')
 
-const cncfGroup = segment(SegmentType.PROJECT_GROUP, CNCF, { slug: 'cncf' })
+const cncfGroup = segment(SegmentType.PROJECT_GROUP, CNCF, { slug: 'cncf', name: 'CNCF' })
 const kubernetesProject = segment(SegmentType.PROJECT, KUBERNETES, {
   slug: 'k8s',
+  name: 'K8s',
   parentId: cncfGroup.id,
 })
 const kubernetesSubproject = segment(SegmentType.SUB_PROJECT, KUBERNETES, {
   slug: 'k8s',
   parentId: kubernetesProject.id,
 })
+
+const cncfInCdp = { slug: 'cncf', name: 'CNCF' }
+const kubernetesInCdp = { slug: 'k8s', name: 'K8s' }
+const asInPcc = ({ slug, name }: PccHierarchyNode) => ({ slug, name })
 
 describe('buildCreationSteps', () => {
   test('creates a standalone project with one project group call', () => {
@@ -63,7 +68,7 @@ describe('buildCreationSteps', () => {
       cncfGroup,
     ])
 
-    expect(steps).toEqual([{ endpoint: 'project', node: KUBERNETES, parentSlug: 'cncf' }])
+    expect(steps).toEqual([{ endpoint: 'project', node: KUBERNETES, parent: cncfInCdp }])
   })
 
   test('creates the group first, then the project under the slug of the new group', () => {
@@ -71,7 +76,7 @@ describe('buildCreationSteps', () => {
 
     expect(steps).toEqual([
       { endpoint: 'projectGroup', node: CNCF },
-      { endpoint: 'project', node: KUBERNETES, parentSlug: CNCF.slug },
+      { endpoint: 'project', node: KUBERNETES, parent: asInPcc(CNCF) },
     ])
   })
 
@@ -82,30 +87,30 @@ describe('buildCreationSteps', () => {
     )
 
     expect(steps).toEqual([
-      { endpoint: 'project', node: KUBERNETES, parentSlug: 'cncf' },
+      { endpoint: 'project', node: KUBERNETES, parent: cncfInCdp },
       {
         endpoint: 'subproject',
         node: KUBECTL,
-        parentSlug: KUBERNETES.slug,
-        grandparentSlug: 'cncf',
+        parent: asInPcc(KUBERNETES),
+        grandparent: cncfInCdp,
       },
       {
         endpoint: 'subproject',
         node: KUSTOMIZE,
-        parentSlug: KUBERNETES.slug,
-        grandparentSlug: 'cncf',
+        parent: asInPcc(KUBERNETES),
+        grandparent: cncfInCdp,
       },
     ])
   })
 
-  test('uses the slugs CDP has for the parents that already exist', () => {
+  test('uses the slugs and names CDP has for the parents that already exist', () => {
     const steps = stepsFor(
       { group: CNCF, project: KUBERNETES, subprojects: [KUBERNETES, KUBECTL] },
       [cncfGroup, kubernetesProject, kubernetesSubproject],
     )
 
     expect(steps).toEqual([
-      { endpoint: 'subproject', node: KUBECTL, parentSlug: 'k8s', grandparentSlug: 'cncf' },
+      { endpoint: 'subproject', node: KUBECTL, parent: kubernetesInCdp, grandparent: cncfInCdp },
     ])
   })
 
@@ -116,7 +121,7 @@ describe('buildCreationSteps', () => {
     ])
 
     expect(steps).toEqual([
-      { endpoint: 'subproject', node: KUBERNETES, parentSlug: 'k8s', grandparentSlug: 'cncf' },
+      { endpoint: 'subproject', node: KUBERNETES, parent: kubernetesInCdp, grandparent: cncfInCdp },
     ])
   })
 
@@ -147,7 +152,11 @@ describe('creationStepKey', () => {
 
   test('tells apart the same PCC project created at two levels', () => {
     const asGroup: CreationStep = { endpoint: 'projectGroup', node: ZEPHYR }
-    const asProject: CreationStep = { endpoint: 'project', node: ZEPHYR, parentSlug: 'tlf' }
+    const asProject: CreationStep = {
+      endpoint: 'project',
+      node: ZEPHYR,
+      parent: { slug: 'tlf', name: 'The Linux Foundation' },
+    }
 
     expect(creationStepKey(asGroup)).not.toBe(creationStepKey(asProject))
   })

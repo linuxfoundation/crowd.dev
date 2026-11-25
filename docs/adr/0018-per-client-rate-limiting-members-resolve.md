@@ -1,7 +1,7 @@
 # ADR-0018: Per-client rate limiting for `POST /members/resolve` using in-memory store
 
 **Date**: 2026-08-12
-**Status**: accepted
+**Status**: superseded by ADR-0040
 **Deciders**: Joana Maia
 
 ## Context

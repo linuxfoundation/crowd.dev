@@ -8,8 +8,6 @@ DESCRIPTION >
     it is expected to be the hardest category to max out.
     - No parameters — this pipe is not scope-filtered.
 
-TOKEN "insights-app-token" READ
-
 TAGS "Insights, Widget", "Health"
 
 NODE health_score_report_category_maximum_endpoint

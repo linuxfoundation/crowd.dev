@@ -51,7 +51,13 @@ function stubSource(rows: Record<string, unknown>[]): CatalogueSource & { querie
 describe('loadCventCatalogue', () => {
   it('reads the latest row per event and maps it with no project slug', async () => {
     const source = stubSource([
-      { eventId: 'ev-1', eventName: 'Fake Summit', startDate: '2027-04-28', projectId: 'p-1' },
+      {
+        eventId: 'ev-1',
+        eventName: 'Fake Summit',
+        startDate: '2027-04-28',
+        projectId: 'p-1',
+        source: 'cvent',
+      },
       { eventId: 'ev-2', eventName: 'Fake Day', startDate: '2027-02-28', projectId: null },
     ])
 
@@ -62,6 +68,7 @@ describe('loadCventCatalogue', () => {
         startDate: '2027-04-28',
         projectId: 'p-1',
         projectSlug: null,
+        source: 'cvent',
       },
       {
         eventId: 'ev-2',
@@ -69,6 +76,7 @@ describe('loadCventCatalogue', () => {
         startDate: '2027-02-28',
         projectId: null,
         projectSlug: null,
+        source: null,
       },
     ])
     expect(source.queries).toHaveLength(1)
@@ -149,6 +157,7 @@ function matchedDecision(eventKey: string, segmentId: string): SessionizeEventDe
     status: 'matched',
     holdReason: null,
     cventEventId: `cvent-${eventKey}`,
+    catalogueSource: 'cvent',
     segmentId,
     rule: 'exact_name',
     ruleVersion: 1,
@@ -165,6 +174,7 @@ function heldDecision(
     status: 'held',
     holdReason,
     cventEventId: null,
+    catalogueSource: null,
     segmentId: null,
     rule: null,
     ruleVersion: 1,
@@ -217,7 +227,7 @@ describe('applySessionizeDecisions', () => {
     expect(summary).toEqual({
       listed: 4,
       matched: 1,
-      held: { no_match: 1, ambiguous: 1, no_segment: 1 },
+      held: { no_match: 1, ambiguous: 1, not_cvent: 0, no_segment: 1 },
       outcomes: { inserted: 2, updated: 0, unchanged: 1, protected: 1 },
       deactivated: 1,
     })
@@ -226,12 +236,19 @@ describe('applySessionizeDecisions', () => {
     expect(info.mock.calls[0][0]).toEqual({
       event: 'sessionize_decision_needs_review',
       eventKey: 'reviewed',
-      wanted: { status: 'held', holdReason: 'no_segment', segmentId: null, cventEventId: null },
+      wanted: {
+        status: 'held',
+        holdReason: 'no_segment',
+        segmentId: null,
+        cventEventId: null,
+        catalogueSource: null,
+      },
       stored: {
         status: 'matched',
         holdReason: null,
         segmentId: 'seg-1',
         cventEventId: 'cvent-reviewed',
+        catalogueSource: 'cvent',
       },
     })
     expect(deactivate).toHaveBeenCalledTimes(1)
@@ -283,6 +300,7 @@ describe('computeSessionizeDecisions', () => {
         eventName: 'Fake Summit 2027',
         startDate: '2027-03-16',
         projectId: 'PROJ-1',
+        source: 'cvent',
       },
     ])
 

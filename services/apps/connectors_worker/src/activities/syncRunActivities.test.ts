@@ -15,12 +15,16 @@ import { executeSync, recordSyncRunTimeout } from './syncRunActivities'
 
 const CADENCE_RUN_AT = new Date('2026-10-16T12:05:00.000Z')
 const SHORT_DEFER_RUN_AT = new Date('2026-10-16T12:01:00.000Z')
+const REQUESTED_NEXT_RUN_AT = new Date('2026-10-17T12:00:00.000Z')
+const BOUNDED_REQUESTED_RUN_AT = new Date('2026-10-17T12:00:30.000Z')
 
 const mocks = vi.hoisted(() => ({
   run: vi.fn(),
   getUnitById: vi.fn(),
   reassertUnitClaim: vi.fn(),
   recordRunSuccess: vi.fn(),
+  recordRunFinished: vi.fn(),
+  requestedRunAt: vi.fn(),
   recordRunFailure: vi.fn(),
   recordRunTimeout: vi.fn(),
   rescheduleUnit: vi.fn(),
@@ -78,6 +82,7 @@ vi.mock('@crowd/data-access-layer/src/connectors', () => ({
   getUnitById: mocks.getUnitById,
   reassertUnitClaim: mocks.reassertUnitClaim,
   recordRunSuccess: mocks.recordRunSuccess,
+  recordRunFinished: mocks.recordRunFinished,
   rescheduleUnit: mocks.rescheduleUnit,
   recordRunPartial: mocks.recordRunPartial,
   recordRunFailure: mocks.recordRunFailure,
@@ -107,6 +112,7 @@ vi.mock('../scheduling', () => ({
   cadenceRunAt: () => CADENCE_RUN_AT,
   shortDeferRunAt: () => SHORT_DEFER_RUN_AT,
   failureRunAt: () => SHORT_DEFER_RUN_AT,
+  requestedRunAt: mocks.requestedRunAt,
 }))
 
 const UNIT = {
@@ -135,6 +141,7 @@ beforeEach(() => {
   mocks.liveEmittedCount.mockReturnValue(2)
   mocks.getUnitById.mockResolvedValue(UNIT)
   mocks.reassertUnitClaim.mockResolvedValue(true)
+  mocks.requestedRunAt.mockReturnValue(BOUNDED_REQUESTED_RUN_AT)
 })
 
 describe('executeSync worker shutdown', () => {
@@ -183,10 +190,13 @@ describe('executeSync worker shutdown', () => {
 })
 
 describe('executeSync outcome scheduling', () => {
-  it.each([
+  it.each<[SyncOutcome, boolean, Date]>([
     [{ complete: true }, true, CADENCE_RUN_AT],
     [{ complete: false }, false, SHORT_DEFER_RUN_AT],
     [{ complete: false, resumeAtCadence: true }, false, CADENCE_RUN_AT],
+    [{ complete: false, nextRunAt: REQUESTED_NEXT_RUN_AT }, false, SHORT_DEFER_RUN_AT],
+    [{ complete: false, finished: true }, false, SHORT_DEFER_RUN_AT],
+    [{ complete: true, nextRunAt: REQUESTED_NEXT_RUN_AT }, true, BOUNDED_REQUESTED_RUN_AT],
   ])('records %j as complete=%s, next run at %s', async (outcome, complete, nextRunAt) => {
     runReturning(outcome)
 
@@ -197,6 +207,44 @@ describe('executeSync outcome scheduling', () => {
       UNIT.id,
       { watermark: { cursor: 'after' }, emittedCount: 3, complete },
       nextRunAt,
+    )
+    expect(mocks.recordRunFinished).not.toHaveBeenCalled()
+  })
+
+  it('bounds a requested next run of a complete outcome instead of using the cadence', async () => {
+    runReturning({ complete: true, nextRunAt: REQUESTED_NEXT_RUN_AT })
+
+    await executeSync(UNIT.id)
+
+    expect(mocks.requestedRunAt).toHaveBeenCalledWith(REQUESTED_NEXT_RUN_AT)
+    expect(mocks.log.info).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'success', nextRunAt: BOUNDED_REQUESTED_RUN_AT }),
+      'sync run summary',
+    )
+  })
+
+  it('ignores a requested next run of an incomplete outcome', async () => {
+    runReturning({ complete: false, nextRunAt: REQUESTED_NEXT_RUN_AT })
+
+    await executeSync(UNIT.id)
+
+    expect(mocks.requestedRunAt).not.toHaveBeenCalled()
+  })
+
+  it('stops the unit when a complete outcome says the sync is finished', async () => {
+    runReturning({ complete: true, finished: true, nextRunAt: REQUESTED_NEXT_RUN_AT })
+
+    await executeSync(UNIT.id)
+
+    expect(mocks.recordRunFinished).toHaveBeenCalledWith({}, UNIT.id, {
+      watermark: { cursor: 'after' },
+      emittedCount: 3,
+      complete: true,
+    })
+    expect(mocks.recordRunSuccess).not.toHaveBeenCalled()
+    expect(mocks.log.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'sync_run_summary', outcome: 'finished', complete: true }),
+      'sync run summary',
     )
   })
 })

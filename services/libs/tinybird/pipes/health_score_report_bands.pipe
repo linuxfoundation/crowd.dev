@@ -12,8 +12,6 @@ DESCRIPTION >
     - `scope`: Optional string, default `all`, values `all | lf | other` — filters by `isLF` when
     `lf`/`other` is given; `all` applies no filter.
 
-TOKEN "insights-app-token" READ
-
 TAGS "Insights, Widget", "Health"
 
 NODE health_score_report_bands_endpoint

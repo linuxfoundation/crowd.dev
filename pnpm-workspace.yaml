@@ -19,6 +19,7 @@ catalog:
   axios: ^1.20.0
   config: ^3.3.12
   pg-promise: ^11.4.3
+  rate-limit-redis: 3.1.0
   tsx: ^4.20.3
   typescript: ^5.6.3
   zod: ^4.3.6

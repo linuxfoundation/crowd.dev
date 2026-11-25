@@ -17,8 +17,6 @@ DESCRIPTION >
     check) — projects with no attributed contributors/organizations have no meaningful health signal yet
     and would otherwise pull the average down artificially.
 
-TOKEN "insights-app-token" READ
-
 TAGS "Insights, Widget", "Collection"
 
 NODE collection_insights_aggregate_results

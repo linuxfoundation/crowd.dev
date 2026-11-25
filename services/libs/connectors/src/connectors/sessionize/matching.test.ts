@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { SessionizeConsoleEvent } from './consoleEvents'
-import {
-  type CventCatalogueEvent,
-  MATCHING_RULE_VERSION,
-  matchSessionizeEvent,
-  normalizeEventName,
-} from './matching'
+import { type CventCatalogueEvent, matchSessionizeEvent, normalizeEventName } from './matching'
 
 function sessionizeEvent(eventName: string, eventStart: string): SessionizeConsoleEvent {
   return {
@@ -24,8 +19,9 @@ function cventEvent(
   eventName: string,
   startDate: string,
   projectSlug: string | null = 'example-project',
+  source: string | null = 'cvent',
 ): CventCatalogueEvent {
-  return { eventId, eventName, startDate, projectId: `${projectSlug}-id`, projectSlug }
+  return { eventId, eventName, startDate, projectId: `${projectSlug}-id`, projectSlug, source }
 }
 
 const subprojectFor = (projectSlug: string | null) =>
@@ -71,9 +67,10 @@ describe('matchSessionizeEvent', () => {
       status: 'matched',
       holdReason: null,
       cventEventId: 'cv-1',
+      catalogueSource: 'cvent',
       segmentId: 'segment-example',
       rule: 'exact_name',
-      ruleVersion: MATCHING_RULE_VERSION,
+      ruleVersion: 3,
     })
     expect(decision.evidence.candidates).toEqual([
       {
@@ -81,6 +78,7 @@ describe('matchSessionizeEvent', () => {
         eventName: 'Example Cloud NativeCon North America 2025',
         startDate: '2025-11-10',
         projectId: 'example-project-id',
+        source: 'cvent',
         dayGap: 0,
       },
     ])
@@ -106,7 +104,7 @@ describe('matchSessionizeEvent', () => {
     expect(decision.evidence.candidates[0].dayGap).toBe(8)
   })
 
-  it('holds a twin as ambiguous even when the twin project has no segment', () => {
+  it('holds two cvent namesakes as ambiguous', () => {
     const decision = matchSessionizeEvent(
       sessionizeEvent('Summit 2025', '2025-06-10'),
       [
@@ -120,9 +118,89 @@ describe('matchSessionizeEvent', () => {
       holdReason: 'ambiguous',
       cventEventId: null,
       segmentId: null,
+      ruleVersion: 3,
     })
     expect(decision.evidence.candidates.map(({ eventId }) => eventId)).toEqual(['cv-1', 'cv-2'])
   })
+
+  it('matches the cvent candidate when a namesake comes from another source', () => {
+    const decision = matchSessionizeEvent(
+      sessionizeEvent('Summit 2025', '2025-06-10'),
+      [
+        cventEvent('lu-1', 'Summit 2025', '2025-06-11', 'example-project', 'luma'),
+        cventEvent('cv-1', 'Summit 2025', '2025-06-10'),
+      ],
+      subprojectFor,
+    )
+    expect(decision).toMatchObject({
+      status: 'matched',
+      holdReason: null,
+      cventEventId: 'cv-1',
+      catalogueSource: 'cvent',
+      segmentId: 'segment-example',
+      rule: 'exact_name',
+      ruleVersion: 3,
+    })
+    expect(decision.evidence.candidates.map(({ eventId }) => eventId)).toEqual(['lu-1', 'cv-1'])
+  })
+
+  it('holds several non-cvent namesakes as ambiguous', () => {
+    const decision = matchSessionizeEvent(
+      sessionizeEvent('Summit 2025', '2025-06-10'),
+      [
+        cventEvent('lu-1', 'Summit 2025', '2025-06-10', 'example-project', 'luma'),
+        cventEvent('bv-1', 'Summit 2025', '2025-06-11', 'example-project', 'bevy'),
+      ],
+      subprojectFor,
+    )
+    expect(decision).toMatchObject({
+      status: 'held',
+      holdReason: 'ambiguous',
+      cventEventId: null,
+      catalogueSource: null,
+      ruleVersion: 3,
+    })
+    expect(decision.evidence.candidates).toHaveLength(2)
+  })
+
+  it('holds the cvent candidate as no_segment when its project has no subproject, whatever the namesakes', () => {
+    const decision = matchSessionizeEvent(
+      sessionizeEvent('Summit 2025', '2025-06-10'),
+      [
+        cventEvent('cv-9', 'Summit 2025', '2025-06-10', 'unknown'),
+        cventEvent('lu-1', 'Summit 2025', '2025-06-10', 'example-project', 'luma'),
+      ],
+      subprojectFor,
+    )
+    expect(decision).toMatchObject({
+      status: 'held',
+      holdReason: 'no_segment',
+      cventEventId: 'cv-9',
+      catalogueSource: 'cvent',
+      segmentId: null,
+      ruleVersion: 3,
+    })
+    expect(decision.evidence.candidates).toHaveLength(2)
+  })
+
+  it.each(['backfill', 'bevy', 'regfox', null])(
+    'holds a single candidate from source %s as not_cvent',
+    (source) => {
+      const decision = matchSessionizeEvent(
+        sessionizeEvent('Summit 2025', '2025-06-10'),
+        [cventEvent('cv-1', 'Summit 2025', '2025-06-10', 'example-project', source)],
+        subprojectFor,
+      )
+      expect(decision).toMatchObject({
+        status: 'held',
+        holdReason: 'not_cvent',
+        cventEventId: 'cv-1',
+        catalogueSource: source,
+        segmentId: null,
+        evidence: { candidates: [{ eventId: 'cv-1', source }] },
+      })
+    },
+  )
 
   it('holds with no_segment when the project has no subproject', () => {
     const decision = matchSessionizeEvent(
@@ -134,6 +212,7 @@ describe('matchSessionizeEvent', () => {
       status: 'held',
       holdReason: 'no_segment',
       cventEventId: 'cv-9',
+      catalogueSource: 'cvent',
       segmentId: null,
       rule: null,
     })

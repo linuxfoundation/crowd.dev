@@ -19,8 +19,6 @@ DESCRIPTION >
     the repo's resolved Linux Foundation association (`repositories.insightsProjectId` joined to
     `insights_projects_populated_ds.isLF`); repos with no linked insights project resolve to `other`.
 
-TOKEN "insights-app-token" READ
-
 TAGS "Insights, Widget", "Health"
 
 NODE health_score_report_signal_availability_tracked_repos
