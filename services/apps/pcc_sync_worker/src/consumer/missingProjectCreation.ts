@@ -12,6 +12,7 @@ import { buildSegmentCreationPayload } from './segmentCreationClient'
 const log = getServiceChildLogger('missingProjectCreation')
 
 export const PROJECT_CREATION_FAILED = 'PROJECT_CREATION_FAILED'
+export const PROJECT_CREATION_BLOCKED = 'PROJECT_CREATION_BLOCKED'
 
 export type CreationMode = 'off' | 'dry-run' | 'on'
 
@@ -40,6 +41,14 @@ export function effectiveCreationMode(
 ): CreationMode {
   if (mode === 'off') return 'off'
   return syncIsDryRun || !hasBackendApi ? 'dry-run' : mode
+}
+
+export function describeBlockedCreation(
+  project: ParsedPccProject,
+  plan: CreationPlan,
+): Record<string, unknown> | null {
+  if (plan.action !== 'BLOCKED') return null
+  return { ...plan.details, name: project.name, reason: plan.reason }
 }
 
 export function toProjectToCreate(

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { SegmentStatus } from '@crowd/types'
+import { SegmentStatus, SegmentType } from '@crowd/types'
 
 import type { ParsedPccProject } from '../parser'
 import { buildCdpSegmentIndex, planCreation } from './creationPlan'
@@ -8,6 +8,7 @@ import type { ProjectToCreate } from './creationRun'
 import type { CreationStep } from './creationSteps'
 import {
   createMissingProjects,
+  describeBlockedCreation,
   effectiveCreationMode,
   readCreationSettings,
   toProjectToCreate,
@@ -122,6 +123,46 @@ describe('toProjectToCreate', () => {
     const plan = planCreation(project.creationTarget, emptyCdp)
 
     expect(toProjectToCreate(project, plan, emptyCdp)?.status).toBeNull()
+  })
+})
+
+describe('describeBlockedCreation', () => {
+  test('describes a blocked project with its reason and the segments in the way', () => {
+    const cdp = buildCdpSegmentIndex([
+      {
+        id: 'segment-1',
+        type: SegmentType.PROJECT_GROUP,
+        slug: ZEPHYR.slug,
+        name: 'Another Zephyr',
+        sourceId: null,
+        parentId: null,
+      },
+    ])
+    const project = zephyrInPcc()
+    const plan = planCreation(project.creationTarget, cdp)
+
+    expect(describeBlockedCreation(project, plan)).toMatchObject({
+      name: ZEPHYR.name,
+      reason: 'SLUG_OR_NAME_TAKEN',
+      segments: [expect.objectContaining({ id: 'segment-1' })],
+    })
+  })
+
+  test('describes a project whose pcc data is incomplete', () => {
+    const project = zephyrInPcc({ creationTarget: null })
+    const plan = planCreation(project.creationTarget, buildCdpSegmentIndex([]))
+
+    expect(describeBlockedCreation(project, plan)).toEqual({
+      name: ZEPHYR.name,
+      reason: 'INCOMPLETE_PCC_DATA',
+    })
+  })
+
+  test('returns nothing for a project that can be created', () => {
+    const project = zephyrInPcc()
+    const plan = planCreation(project.creationTarget, buildCdpSegmentIndex([]))
+
+    expect(describeBlockedCreation(project, plan)).toBeNull()
   })
 })
 

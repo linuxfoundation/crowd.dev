@@ -26,8 +26,10 @@ import type { ProjectToCreate } from './creationRun'
 import { findExistingProjectCandidates, loadCdpSubprojectIndex } from './existingProjects'
 import type { CdpSubprojectIndex } from './existingProjects'
 import {
+  PROJECT_CREATION_BLOCKED,
   PROJECT_CREATION_FAILED,
   createMissingProjects,
+  describeBlockedCreation,
   effectiveCreationMode,
   readCreationSettings,
   toProjectToCreate,
@@ -249,6 +251,15 @@ export class PccProjectConsumer {
                 addToCreationSummary(creationSummary, result.creationPlan)
                 const toCreate = toProjectToCreate(project, result.creationPlan, cdpSegments)
                 if (toCreate) projectsToCreate.push(toCreate)
+                const blockedCreation = describeBlockedCreation(project, result.creationPlan)
+                if (blockedCreation) {
+                  await this.recordSyncError(
+                    project.pccProjectId,
+                    project.pccSlug,
+                    PROJECT_CREATION_BLOCKED,
+                    blockedCreation,
+                  )
+                }
                 if (this.dryRun) {
                   log.info(
                     {
