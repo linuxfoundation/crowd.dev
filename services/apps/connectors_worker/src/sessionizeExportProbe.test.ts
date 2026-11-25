@@ -358,8 +358,23 @@ describe('nextProbeRunState', () => {
   }
 
   it.each([
-    [['provider.auth'], [true]],
     [['provider.rate_limit'], [true]],
+    [
+      [undefined, 'provider.auth', undefined, 'provider.auth'],
+      [false, false, false, false],
+    ],
+    [
+      [
+        'provider.auth',
+        'provider.unavailable',
+        'provider.auth',
+        'provider.auth',
+        'provider.auth',
+        'provider.auth',
+        'provider.auth',
+      ],
+      [false, false, false, false, false, false, true],
+    ],
     [
       [undefined, 'provider.unavailable', undefined],
       [false, false, false],

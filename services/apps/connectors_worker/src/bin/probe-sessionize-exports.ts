@@ -3,7 +3,6 @@ import { join } from 'node:path'
 
 import { timeout } from '@crowd/common'
 import { getPlatformCredential } from '@crowd/connectors'
-import type { ConnectorHttp } from '@crowd/connectors'
 import {
   downloadSessionizeExport,
   readExportSheet,
@@ -101,13 +100,13 @@ async function appendLine(file: string, line: object): Promise<void> {
 }
 
 async function saveExport(
-  http: ConnectorHttp,
+  cookie: string,
   args: ExportDownloadArgs,
   eventKey: string,
 ): Promise<DownloadResultLine> {
   try {
     const file = await downloadSessionizeExport(
-      http,
+      createSessionizeFixedSessionHttp(cookie),
       exportPath(args.pathTemplate, eventKey),
       EXPORT_MAX_ATTEMPTS,
     )
@@ -138,18 +137,22 @@ async function download(args: ExportDownloadArgs): Promise<number> {
   }
   log.info({ events: eventKeys.length, pathTemplate: args.pathTemplate }, 'downloading exports')
 
-  const http = createSessionizeFixedSessionHttp(session.cookie)
   const lines: DownloadResultLine[] = []
   let runState = PROBE_RUN_START
   for (const [index, eventKey] of eventKeys.entries()) {
     if (index > 0) {
       await timeout(args.paceMs)
     }
-    const line = await saveExport(http, args, eventKey)
+    const line = await saveExport(session.cookie, args, eventKey)
     lines.push(line)
     await appendLine(resultsFile, line)
     log.info(
-      { eventKey, outcome: line.outcome, bytes: line.outcome === 'saved' ? line.bytes : undefined },
+      {
+        eventKey,
+        outcome: line.outcome,
+        bytes: line.outcome === 'saved' ? line.bytes : undefined,
+        errorClass: line.outcome === 'failed' ? line.errorClass : undefined,
+      },
       'export probed',
     )
     const failureClass = line.outcome === 'failed' ? line.errorClass : undefined
