@@ -1,3 +1,6 @@
+import { appendFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
 import { timeout } from '@crowd/common'
 import { getPlatformCredential } from '@crowd/connectors'
 import type { ConnectorHttp } from '@crowd/connectors'
@@ -13,28 +16,37 @@ import { listSessionizeEventMappings } from '@crowd/data-access-layer/src/sessio
 import { getServiceLogger } from '@crowd/logging'
 
 import {
+  DownloadResultLine,
+  ExportDownloadArgs,
   ExportProbeArgs,
   ExportProbeFailure,
-  ExportProbeSummary,
+  ExportSummaryArgs,
   PROBE_RUN_START,
+  SummaryResultLine,
   describeProbeFailure,
+  downloadTotalsLine,
+  eventKeysInDirectory,
+  exportFileName,
   exportPath,
-  flushThenExit,
+  failedLine,
   nextProbeRunState,
   parseExportProbeArgs,
+  savedLine,
   summarizeExport,
+  summarizedLine,
+  summaryTotalsLine,
 } from '../sessionizeExportProbe'
 
 const log = getServiceLogger()
 
 const EXPORT_MAX_ATTEMPTS = 2
+const RESULTS_FILE = 'results.jsonl'
+const SUMMARY_FILE = 'summary.jsonl'
 
-const USAGE =
-  'Usage: probe-sessionize-exports [--event <key>]... [--path <template with {eventKey}>] [--date-header <name>]... [--pace-ms <n>]'
-
-type ProbeLine =
-  | { eventKey: string; outcome: 'xlsx'; summary: ExportProbeSummary }
-  | ({ eventKey: string; outcome: 'failed' } & ExportProbeFailure)
+const USAGE = [
+  'Usage: probe-sessionize-exports --out-dir <dir> [--event <key>]... [--path <template with {eventKey}>] [--pace-ms <n>]',
+  '       probe-sessionize-exports --from-dir <dir> [--date-header <name>]...',
+].join('\n')
 
 function parseArgs(): ExportProbeArgs | null {
   try {
@@ -62,7 +74,7 @@ async function matchedEventKeys(): Promise<string[]> {
     .map((mapping) => mapping.eventKey)
 }
 
-async function listEventKeys(args: ExportProbeArgs): Promise<string[] | null> {
+async function listEventKeys(args: ExportDownloadArgs): Promise<string[] | null> {
   if (args.eventKeys.length > 0) {
     return args.eventKeys
   }
@@ -84,33 +96,29 @@ async function signInOnce(
   }
 }
 
-async function probeEvent(
+async function appendLine(file: string, line: object): Promise<void> {
+  await appendFile(file, `${JSON.stringify(line)}\n`, { mode: 0o600 })
+}
+
+async function saveExport(
   http: ConnectorHttp,
-  args: ExportProbeArgs,
+  args: ExportDownloadArgs,
   eventKey: string,
-): Promise<ProbeLine> {
+): Promise<DownloadResultLine> {
   try {
     const file = await downloadSessionizeExport(
       http,
       exportPath(args.pathTemplate, eventKey),
       EXPORT_MAX_ATTEMPTS,
     )
-    const sheet = await readExportSheet(file)
-    return { eventKey, outcome: 'xlsx', summary: summarizeExport(sheet, args.dateHeaders) }
+    await writeFile(join(args.outDir, exportFileName(eventKey)), file, { mode: 0o600 })
+    return savedLine(eventKey, file.length)
   } catch (err) {
-    return { eventKey, outcome: 'failed', ...describeProbeFailure(err) }
+    return failedLine(eventKey, err)
   }
 }
 
-function printLine(line: object): void {
-  process.stdout.write(`${JSON.stringify(line)}\n`)
-}
-
-async function main(): Promise<number> {
-  const args = parseArgs()
-  if (!args) {
-    return 1
-  }
+async function download(args: ExportDownloadArgs): Promise<number> {
   const credential = loadCredential()
   if (!credential) {
     return 1
@@ -119,36 +127,79 @@ async function main(): Promise<number> {
   if (!eventKeys) {
     return 1
   }
-  const totals: Record<ProbeLine['outcome'], number> = { xlsx: 0, failed: 0 }
+  await mkdir(args.outDir, { recursive: true, mode: 0o700 })
+  const resultsFile = join(args.outDir, RESULTS_FILE)
 
   const session = await signInOnce(credential)
   if ('failure' in session) {
     log.error(session.failure, 'sessionize sign-in failed, no export was requested')
-    printLine({ totals: { ...totals, notProbed: eventKeys.length }, signIn: session.failure })
+    await appendLine(resultsFile, downloadTotalsLine([], eventKeys.length, session.failure))
     return 1
   }
-  log.info({ events: eventKeys.length, pathTemplate: args.pathTemplate }, 'probing exports')
+  log.info({ events: eventKeys.length, pathTemplate: args.pathTemplate }, 'downloading exports')
 
   const http = createSessionizeFixedSessionHttp(session.cookie)
+  const lines: DownloadResultLine[] = []
   let runState = PROBE_RUN_START
   for (const [index, eventKey] of eventKeys.entries()) {
     if (index > 0) {
       await timeout(args.paceMs)
     }
-    const line = await probeEvent(http, args, eventKey)
-    totals[line.outcome] += 1
-    printLine(line)
+    const line = await saveExport(http, args, eventKey)
+    lines.push(line)
+    await appendLine(resultsFile, line)
+    log.info(
+      { eventKey, outcome: line.outcome, bytes: line.outcome === 'saved' ? line.bytes : undefined },
+      'export probed',
+    )
     const failureClass = line.outcome === 'failed' ? line.errorClass : undefined
     runState = nextProbeRunState(runState, failureClass)
     if (runState.stop) {
       const notProbed = eventKeys.length - index - 1
       log.error({ errorClass: failureClass, notProbed }, 'stopping the probe run')
-      printLine({ totals: { ...totals, notProbed } })
+      await appendLine(resultsFile, downloadTotalsLine(lines, notProbed))
       return 1
     }
   }
-  printLine({ totals: { ...totals, notProbed: 0 } })
-  return totals.failed === 0 ? 0 : 1
+  const totals = downloadTotalsLine(lines, 0)
+  await appendLine(resultsFile, totals)
+  return totals.totals.failed === 0 ? 0 : 1
+}
+
+async function summarizeFile(
+  args: ExportSummaryArgs,
+  eventKey: string,
+): Promise<SummaryResultLine> {
+  try {
+    const sheet = await readExportSheet(
+      await readFile(join(args.fromDir, exportFileName(eventKey))),
+    )
+    return summarizedLine(eventKey, summarizeExport(sheet, args.dateHeaders))
+  } catch (err) {
+    return failedLine(eventKey, err)
+  }
+}
+
+async function summarize(args: ExportSummaryArgs): Promise<number> {
+  const summaryFile = join(args.fromDir, SUMMARY_FILE)
+  const lines: SummaryResultLine[] = []
+  for (const eventKey of eventKeysInDirectory(await readdir(args.fromDir))) {
+    const line = await summarizeFile(args, eventKey)
+    lines.push(line)
+    await appendLine(summaryFile, line)
+  }
+  const totals = summaryTotalsLine(lines)
+  await appendLine(summaryFile, totals)
+  log.info(totals, 'exports summarized')
+  return totals.totals.failed === 0 ? 0 : 1
+}
+
+async function main(): Promise<number> {
+  const args = parseArgs()
+  if (!args) {
+    return 1
+  }
+  return args.mode === 'download' ? download(args) : summarize(args)
 }
 
 main()
@@ -156,4 +207,4 @@ main()
     log.error(describeProbeFailure(err), 'sessionize export probe failed')
     return 1
   })
-  .then((code) => flushThenExit(process.stdout, (exitCode) => process.exit(exitCode), code))
+  .then((code) => process.exit(code))

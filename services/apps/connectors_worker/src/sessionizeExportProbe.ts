@@ -30,12 +30,21 @@ export interface ExportProbeSummary {
   emailFilled: number
 }
 
-export interface ExportProbeArgs {
+export interface ExportDownloadArgs {
+  mode: 'download'
+  outDir: string
   eventKeys: string[]
   pathTemplate: string
-  dateHeaders: string[]
   paceMs: number
 }
+
+export interface ExportSummaryArgs {
+  mode: 'summarize'
+  fromDir: string
+  dateHeaders: string[]
+}
+
+export type ExportProbeArgs = ExportDownloadArgs | ExportSummaryArgs
 
 export interface ExportProbeFailure {
   errorClass: string
@@ -189,50 +198,90 @@ function requireValue(args: string[], index: number, flag: string): string {
   return value
 }
 
-export function parseExportProbeArgs(argv: string[]): ExportProbeArgs {
-  const eventKeys: string[] = []
-  const dateHeaders: string[] = []
-  let pathTemplate: string | undefined
-  let paceMs: number | undefined
+const PROBE_FLAGS = ['--out-dir', '--from-dir', '--event', '--path', '--date-header', '--pace-ms']
+const REPEATABLE_FLAGS = new Set(['--event', '--date-header'])
+const DOWNLOAD_ONLY_FLAGS = ['--event', '--path', '--pace-ms']
+const SUMMARY_ONLY_FLAGS = ['--date-header']
+const EXACTLY_ONE_MODE = 'give exactly one of --out-dir and --from-dir'
 
+function collectFlagValues(argv: string[]): Map<string, string[]> {
+  const values = new Map<string, string[]>()
   const args = argv.filter((arg) => arg !== '--')
   for (let i = 0; i < args.length; i += 2) {
     const flag = args[i]
-    if (!['--event', '--path', '--date-header', '--pace-ms'].includes(flag)) {
+    if (!PROBE_FLAGS.includes(flag)) {
       throw new Error(`unknown argument "${flag}"`)
     }
     const value = requireValue(args, i, flag)
-    if (flag === '--event') {
-      if (!/^\d+$/.test(value)) {
-        throw new Error(`event key "${value}" is not numeric`)
-      }
-      eventKeys.push(value)
-    } else if (flag === '--date-header') {
-      dateHeaders.push(value)
-    } else if (flag === '--path') {
-      if (pathTemplate !== undefined) {
-        throw new Error('--path given more than once')
-      }
-      if (!value.startsWith('/') || !value.includes(EVENT_KEY_PLACEHOLDER)) {
-        throw new Error(`--path must start with / and contain ${EVENT_KEY_PLACEHOLDER}`)
-      }
-      pathTemplate = value
-    } else {
-      if (paceMs !== undefined) {
-        throw new Error('--pace-ms given more than once')
-      }
-      if (!/^\d+$/.test(value)) {
-        throw new Error('--pace-ms must be a non-negative integer')
-      }
-      paceMs = Number(value)
+    const existing = values.get(flag) ?? []
+    if (existing.length > 0 && !REPEATABLE_FLAGS.has(flag)) {
+      throw new Error(`${flag} given more than once`)
+    }
+    values.set(flag, [...existing, value])
+  }
+  return values
+}
+
+function rejectFlags(values: Map<string, string[]>, flags: string[], validMode: string): void {
+  const misplaced = flags.find((flag) => values.has(flag))
+  if (misplaced) {
+    throw new Error(`${misplaced} is only valid with ${validMode}`)
+  }
+}
+
+function parsePathTemplate(value: string | undefined): string {
+  if (value === undefined) {
+    return SESSIONIZE_ALL_SESSIONS_PATH(EVENT_KEY_PLACEHOLDER)
+  }
+  if (!value.startsWith('/') || !value.includes(EVENT_KEY_PLACEHOLDER)) {
+    throw new Error(`--path must start with / and contain ${EVENT_KEY_PLACEHOLDER}`)
+  }
+  return value
+}
+
+function parsePaceMs(value: string | undefined): number {
+  if (value === undefined) {
+    return 5000
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new Error('--pace-ms must be a non-negative integer')
+  }
+  return Number(value)
+}
+
+export function parseExportProbeArgs(argv: string[]): ExportProbeArgs {
+  const values = collectFlagValues(argv)
+  const outDir = values.get('--out-dir')?.[0]
+  const fromDir = values.get('--from-dir')?.[0]
+  if (outDir !== undefined && fromDir !== undefined) {
+    throw new Error(EXACTLY_ONE_MODE)
+  }
+
+  if (fromDir !== undefined) {
+    rejectFlags(values, DOWNLOAD_ONLY_FLAGS, '--out-dir')
+    const dateHeaders = values.get('--date-header') ?? []
+    return {
+      mode: 'summarize',
+      fromDir,
+      dateHeaders: dateHeaders.length > 0 ? dateHeaders : ['Date Submitted'],
     }
   }
 
+  if (outDir === undefined) {
+    throw new Error(EXACTLY_ONE_MODE)
+  }
+  rejectFlags(values, SUMMARY_ONLY_FLAGS, '--from-dir')
+  const eventKeys = values.get('--event') ?? []
+  const invalidKey = eventKeys.find((key) => !isEventKey(key))
+  if (invalidKey !== undefined) {
+    throw new Error(`event key "${invalidKey}" is not numeric`)
+  }
   return {
+    mode: 'download',
+    outDir,
     eventKeys,
-    pathTemplate: pathTemplate ?? SESSIONIZE_ALL_SESSIONS_PATH(EVENT_KEY_PLACEHOLDER),
-    dateHeaders: dateHeaders.length > 0 ? dateHeaders : ['Date Submitted'],
-    paceMs: paceMs ?? 5000,
+    pathTemplate: parsePathTemplate(values.get('--path')?.[0]),
+    paceMs: parsePaceMs(values.get('--pace-ms')?.[0]),
   }
 }
 
@@ -240,10 +289,69 @@ export function exportPath(pathTemplate: string, eventKey: string): string {
   return pathTemplate.split(EVENT_KEY_PLACEHOLDER).join(eventKey)
 }
 
-export function flushThenExit(
-  stream: { write(chunk: string, callback: () => void): boolean },
-  exit: (code: number) => void,
-  code: number,
-): void {
-  stream.write('', () => exit(code))
+function isEventKey(value: string): boolean {
+  return /^\d+$/.test(value)
+}
+
+export function exportFileName(eventKey: string): string {
+  if (!isEventKey(eventKey)) {
+    throw new Error(`event key "${eventKey}" is not numeric`)
+  }
+  return `${eventKey}.xlsx`
+}
+
+export function eventKeysInDirectory(fileNames: string[]): string[] {
+  return fileNames
+    .map((name) => /^(\d+)\.xlsx$/.exec(name)?.[1])
+    .filter((key): key is string => key !== undefined)
+    .sort((a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0))
+}
+
+export type DownloadResultLine =
+  | { eventKey: string; outcome: 'saved'; bytes: number }
+  | ({ eventKey: string; outcome: 'failed' } & ExportProbeFailure)
+
+export type SummaryResultLine =
+  | { eventKey: string; outcome: 'xlsx'; summary: ExportProbeSummary }
+  | ({ eventKey: string; outcome: 'failed' } & ExportProbeFailure)
+
+export function savedLine(eventKey: string, bytes: number): DownloadResultLine {
+  return { eventKey, outcome: 'saved', bytes }
+}
+
+export function summarizedLine(eventKey: string, summary: ExportProbeSummary): SummaryResultLine {
+  return { eventKey, outcome: 'xlsx', summary }
+}
+
+export function failedLine(
+  eventKey: string,
+  err: unknown,
+): { eventKey: string; outcome: 'failed' } & ExportProbeFailure {
+  return { eventKey, outcome: 'failed', ...describeProbeFailure(err) }
+}
+
+function countOutcome(lines: { outcome: string }[], outcome: string): number {
+  return lines.filter((line) => line.outcome === outcome).length
+}
+
+export function downloadTotalsLine(
+  lines: DownloadResultLine[],
+  notProbed: number,
+  signIn?: ExportProbeFailure,
+): {
+  totals: { saved: number; failed: number; notProbed: number }
+  signIn?: ExportProbeFailure
+} {
+  const totals = {
+    saved: countOutcome(lines, 'saved'),
+    failed: countOutcome(lines, 'failed'),
+    notProbed,
+  }
+  return signIn ? { totals, signIn } : { totals }
+}
+
+export function summaryTotalsLine(lines: SummaryResultLine[]): {
+  totals: { xlsx: number; failed: number }
+} {
+  return { totals: { xlsx: countOutcome(lines, 'xlsx'), failed: countOutcome(lines, 'failed') } }
 }

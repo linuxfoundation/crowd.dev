@@ -58,7 +58,7 @@ export async function downloadSessionizeExport(
   return body
 }
 
-function normalizeCell(value: ExcelJS.CellValue): ExportCell {
+function normalizeCell(value: ExcelJS.CellValue, rowNumber: number): ExportCell {
   if (value === null || value === undefined) {
     return null
   }
@@ -73,23 +73,23 @@ function normalizeCell(value: ExcelJS.CellValue): ExportCell {
     return text === '' ? null : text
   }
   if ('richText' in value) {
-    return normalizeCell(value.richText.map((run) => run.text).join(''))
+    return normalizeCell(value.richText.map((run) => run.text).join(''), rowNumber)
   }
   if ('text' in value) {
-    return normalizeCell(value.text)
+    return normalizeCell(value.text, rowNumber)
   }
   if ('result' in value) {
-    return normalizeCell(value.result)
+    return normalizeCell(value.result, rowNumber)
   }
   if ('error' in value) {
-    throw contractError(`cell holds the error ${value.error}`)
+    throw contractError(`row ${rowNumber} has an error cell`)
   }
   throw contractError('cell holds a formula without a result')
 }
 
 function readCells(row: ExcelJS.Row, from: number, to: number): ExportCell[] {
   return Array.from({ length: Math.max(to - from + 1, 0) }, (_, index) =>
-    normalizeCell(row.getCell(from + index).value),
+    normalizeCell(row.getCell(from + index).value, row.number),
   )
 }
 

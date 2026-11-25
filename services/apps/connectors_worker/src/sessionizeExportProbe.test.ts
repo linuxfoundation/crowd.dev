@@ -1,12 +1,18 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { ProviderContractError } from '@crowd/connectors'
 import type { ExportSheet } from '@crowd/connectors/src/connectors/sessionize/exportFile'
 
 import {
   describeProbeFailure,
+  downloadTotalsLine,
+  eventKeysInDirectory,
+  exportFileName,
   exportPath,
-  flushThenExit,
+  failedLine,
+  savedLine,
+  summarizedLine,
+  summaryTotalsLine,
   PROBE_RUN_START,
   nextProbeRunState,
   parseExportProbeArgs,
@@ -177,53 +183,148 @@ describe('summarizeExport', () => {
 })
 
 describe('parseExportProbeArgs', () => {
-  it('defaults to every matched event, the all sessions path, Date Submitted and 5 s pacing', () => {
-    expect(parseExportProbeArgs([])).toEqual({
+  it('defaults download mode to every matched event, the all sessions path and 5 s pacing', () => {
+    expect(parseExportProbeArgs(['--out-dir', '/tmp/made-up-exports'])).toEqual({
+      mode: 'download',
+      outDir: '/tmp/made-up-exports',
       eventKeys: [],
       pathTemplate: '/app/organizer/export/excel/{eventKey}/Flattened_sessions',
-      dateHeaders: ['Date Submitted'],
       paceMs: 5000,
     })
   })
 
-  it('collects repeated events and date headers, skipping the pnpm separator', () => {
+  it('collects repeated events in download mode, skipping the pnpm separator', () => {
     expect(
       parseExportProbeArgs([
         '--',
+        '--out-dir',
+        'exports',
         '--event',
         '12662',
         '--event',
         '12663',
         '--path',
         '/app/organizer/export/excel/{eventKey}/Accepted_sessions',
-        '--date-header',
-        'Scheduled At',
-        '--date-header',
-        'Date Submitted',
         '--pace-ms',
         '0',
       ]),
     ).toEqual({
+      mode: 'download',
+      outDir: 'exports',
       eventKeys: ['12662', '12663'],
       pathTemplate: '/app/organizer/export/excel/{eventKey}/Accepted_sessions',
-      dateHeaders: ['Scheduled At', 'Date Submitted'],
       paceMs: 0,
     })
   })
 
+  it('defaults summary mode to Date Submitted and collects repeated date headers', () => {
+    expect(parseExportProbeArgs(['--from-dir', 'exports'])).toEqual({
+      mode: 'summarize',
+      fromDir: 'exports',
+      dateHeaders: ['Date Submitted'],
+    })
+    expect(
+      parseExportProbeArgs([
+        '--from-dir',
+        'exports',
+        '--date-header',
+        'Scheduled At',
+        '--date-header',
+        'Date Submitted',
+      ]),
+    ).toEqual({
+      mode: 'summarize',
+      fromDir: 'exports',
+      dateHeaders: ['Scheduled At', 'Date Submitted'],
+    })
+  })
+
+  const OUT = ['--out-dir', 'exports']
   it.each([
-    [['--event'], '--event needs a value'],
-    [['--event', '--path'], '--event needs a value'],
-    [['--event', '12/34'], 'event key "12/34" is not numeric'],
-    [['--path', '/app/export/excel'], '--path must start with / and contain {eventKey}'],
-    [['--path', 'app/{eventKey}'], '--path must start with / and contain {eventKey}'],
-    [['--path', '/a/{eventKey}', '--path', '/b/{eventKey}'], '--path given more than once'],
-    [['--pace-ms', '-1'], '--pace-ms must be a non-negative integer'],
-    [['--pace-ms', '1.5'], '--pace-ms must be a non-negative integer'],
-    [['--pace-ms', '1', '--pace-ms', '2'], '--pace-ms given more than once'],
-    [['--verbose'], 'unknown argument "--verbose"'],
+    [[], 'give exactly one of --out-dir and --from-dir'],
+    [['--event', '12662'], 'give exactly one of --out-dir and --from-dir'],
+    [[...OUT, '--from-dir', 'exports'], 'give exactly one of --out-dir and --from-dir'],
+    [[...OUT, '--out-dir', 'other'], '--out-dir given more than once'],
+    [['--from-dir', 'a', '--from-dir', 'b'], '--from-dir given more than once'],
+    [['--from-dir', 'exports', '--event', '12662'], '--event is only valid with --out-dir'],
+    [['--from-dir', 'exports', '--path', '/a/{eventKey}'], '--path is only valid with --out-dir'],
+    [['--from-dir', 'exports', '--pace-ms', '0'], '--pace-ms is only valid with --out-dir'],
+    [[...OUT, '--date-header', 'Date Submitted'], '--date-header is only valid with --from-dir'],
+    [['--out-dir'], '--out-dir needs a value'],
+    [[...OUT, '--event'], '--event needs a value'],
+    [[...OUT, '--event', '--path'], '--event needs a value'],
+    [[...OUT, '--event', '12/34'], 'event key "12/34" is not numeric'],
+    [[...OUT, '--path', '/app/export/excel'], '--path must start with / and contain {eventKey}'],
+    [[...OUT, '--path', 'app/{eventKey}'], '--path must start with / and contain {eventKey}'],
+    [[...OUT, '--path', '/a/{eventKey}', '--path', '/b/{eventKey}'], '--path given more than once'],
+    [[...OUT, '--pace-ms', '-1'], '--pace-ms must be a non-negative integer'],
+    [[...OUT, '--pace-ms', '1.5'], '--pace-ms must be a non-negative integer'],
+    [[...OUT, '--pace-ms', '1', '--pace-ms', '2'], '--pace-ms given more than once'],
+    [[...OUT, '--verbose'], 'unknown argument "--verbose"'],
   ])('rejects %j', (argv, message) => {
     expect(() => parseExportProbeArgs(argv)).toThrow(message)
+  })
+})
+
+describe('exportFileName', () => {
+  it('names the file after a numeric event key', () => {
+    expect(exportFileName('12662')).toBe('12662.xlsx')
+  })
+
+  it.each(['../12662', '12662/..', '', '12 662', '1e3'])('refuses the event key %j', (key) => {
+    expect(() => exportFileName(key)).toThrow('is not numeric')
+  })
+})
+
+describe('eventKeysInDirectory', () => {
+  it('keeps only event export files, sorted by event key', () => {
+    expect(
+      eventKeysInDirectory([
+        'results.jsonl',
+        '12662.xlsx',
+        '9001.xlsx',
+        'summary.jsonl',
+        '12650.xlsx',
+        '12662.xlsx.part',
+        'notes.xlsx',
+        '.12663.xlsx',
+      ]),
+    ).toEqual(['9001', '12650', '12662'])
+  })
+})
+
+describe('result lines', () => {
+  it('builds download lines and totals, with the sign-in failure only when there is one', () => {
+    const lines = [
+      savedLine('12662', 2048),
+      failedLine('12663', new ProviderContractError('sessionize export: not xlsx')),
+    ]
+
+    expect(lines).toEqual([
+      { eventKey: '12662', outcome: 'saved', bytes: 2048 },
+      {
+        eventKey: '12663',
+        outcome: 'failed',
+        errorClass: 'provider.contract',
+        message: 'sessionize export: not xlsx',
+      },
+    ])
+    expect(downloadTotalsLine(lines, 3)).toEqual({ totals: { saved: 1, failed: 1, notProbed: 3 } })
+    expect(downloadTotalsLine([], 5, { errorClass: 'provider.auth', message: 'refused' })).toEqual({
+      totals: { saved: 0, failed: 0, notProbed: 5 },
+      signIn: { errorClass: 'provider.auth', message: 'refused' },
+    })
+  })
+
+  it('builds summary lines and totals', () => {
+    const summary = summarizeExport(sheet([]), ['Date Submitted'])
+    const lines = [summarizedLine('12662', summary), failedLine('12663', new TypeError('bad'))]
+
+    expect(lines).toEqual([
+      { eventKey: '12662', outcome: 'xlsx', summary },
+      { eventKey: '12663', outcome: 'failed', errorClass: 'TypeError' },
+    ])
+    expect(summaryTotalsLine(lines)).toEqual({ totals: { xlsx: 1, failed: 1 } })
   })
 })
 
@@ -281,24 +382,5 @@ describe('nextProbeRunState', () => {
     ],
   ])('after %j stops at %j', (outcomes, stops) => {
     expect(stopsAfter(outcomes)).toEqual(stops)
-  })
-})
-
-describe('flushThenExit', () => {
-  it('exits with the given code only after the stream has taken every earlier write', () => {
-    let flushed: (() => void) | undefined
-    const stream = {
-      write: vi.fn((_chunk: string, callback: () => void) => {
-        flushed = callback
-        return false
-      }),
-    }
-    const exit = vi.fn()
-
-    flushThenExit(stream, exit, 1)
-
-    expect(exit).not.toHaveBeenCalled()
-    flushed?.()
-    expect(exit).toHaveBeenCalledExactlyOnceWith(1)
   })
 })

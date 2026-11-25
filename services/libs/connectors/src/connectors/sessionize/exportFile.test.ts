@@ -135,7 +135,9 @@ describe('readExportSheet', () => {
       workbookWith((w) => {
         const sheet = w.addWorksheet('Sessions')
         sheet.addRow(['Id'])
-        sheet.addRow([{ error: '#N/A' }])
+        sheet.addRow([
+          { error: 'secret-export-detail@example.org' as ExcelJS.CellErrorValue['error'] },
+        ])
       }),
     ],
     [
@@ -149,6 +151,21 @@ describe('readExportSheet', () => {
     expect(JSON.stringify({ message: (err as Error).message, err })).not.toContain(
       'secret-export-detail',
     )
+  })
+})
+
+describe('readExportSheet error cells', () => {
+  it('names only the row of an error cell, never its text', async () => {
+    const file = await workbookFile((workbook) => {
+      const sheet = workbook.addWorksheet('Sessions')
+      sheet.addRow(['Id'])
+      sheet.addRow([{ error: 'ada.example@example.org' as ExcelJS.CellErrorValue['error'] }])
+    })
+
+    const err = await readExportSheet(file).catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(ProviderContractError)
+    expect((err as Error).message).toBe('sessionize export: row 2 has an error cell')
   })
 })
 
