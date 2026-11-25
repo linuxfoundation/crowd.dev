@@ -159,27 +159,35 @@ export function summarizeExport(sheet: ExportSheet, dateHeaders: string[]): Expo
   }
 }
 
-const RUN_STOPPING_ERROR_CLASSES = new Set(['provider.auth', 'provider.rate_limit'])
-const MAX_CONSECUTIVE_UNAVAILABLE = 2
+const RATE_LIMIT_ERROR_CLASS = 'provider.rate_limit'
+const MAX_CONSECUTIVE_BY_ERROR_CLASS: Record<string, number> = {
+  'provider.auth': 5,
+  'provider.unavailable': 2,
+}
 
 export interface ProbeRunState {
-  consecutiveUnavailable: number
+  failureClass: string | undefined
+  consecutive: number
   stop: boolean
 }
 
-export const PROBE_RUN_START: ProbeRunState = { consecutiveUnavailable: 0, stop: false }
+export const PROBE_RUN_START: ProbeRunState = {
+  failureClass: undefined,
+  consecutive: 0,
+  stop: false,
+}
 
 export function nextProbeRunState(
   state: ProbeRunState,
   failureClass: string | undefined,
 ): ProbeRunState {
-  const consecutiveUnavailable =
-    failureClass === 'provider.unavailable' ? state.consecutiveUnavailable + 1 : 0
+  const consecutive = failureClass === state.failureClass ? state.consecutive + 1 : 1
+  const limit =
+    failureClass === undefined ? undefined : MAX_CONSECUTIVE_BY_ERROR_CLASS[failureClass]
   return {
-    consecutiveUnavailable,
-    stop:
-      (failureClass !== undefined && RUN_STOPPING_ERROR_CLASSES.has(failureClass)) ||
-      consecutiveUnavailable >= MAX_CONSECUTIVE_UNAVAILABLE,
+    failureClass,
+    consecutive,
+    stop: failureClass === RATE_LIMIT_ERROR_CLASS || (limit !== undefined && consecutive >= limit),
   }
 }
 
