@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createHttpClient } from '../../http/client'
 import type { IPooledToken } from '../../http/client'
-import { ProviderAuthError, ProviderUnavailableError } from '../../http/errors'
+import {
+  ConnectorCodeError,
+  ProviderAuthError,
+  ProviderUnavailableError,
+  RateLimitError,
+} from '../../http/errors'
 import type { TokenPool } from '../../pool/tokenPool'
 import type { Credential } from '../../types'
 import {
@@ -161,6 +166,33 @@ describe('signInToSessionize', () => {
     expectNoSecret(err)
   })
 
+  it.each([
+    ['a 5xx', 503, ProviderUnavailableError, 1],
+    ['a 429', 429, RateLimitError, 1],
+    ['a 5xx with the default', 503, ProviderUnavailableError, undefined],
+  ])(
+    'stops after the attempts it is given when the login page answers %s',
+    async (_, status, errorType, maxAttempts) => {
+      mockedRequest.mockResolvedValue(reply(status, ''))
+
+      const err = await signInToSessionize(CREDENTIAL, maxAttempts).catch((e: unknown) => e)
+
+      expect(err).toBeInstanceOf(errorType)
+      expect(mockedRequest).toHaveBeenCalledTimes(maxAttempts ?? SESSIONIZE_SIGN_IN_MAX_ATTEMPTS)
+      expect(mockedRequest.mock.calls.every(([config]) => config.method === 'GET')).toBe(true)
+    },
+  )
+
+  it.each([0, -1, 1.5])(
+    'refuses %s attempts as a code error before calling sessionize',
+    async (maxAttempts) => {
+      await expect(signInToSessionize(CREDENTIAL, maxAttempts)).rejects.toBeInstanceOf(
+        ConnectorCodeError,
+      )
+      expect(mockedRequest).not.toHaveBeenCalled()
+    },
+  )
+
   it('rejects a credential of the wrong kind before calling sessionize', async () => {
     const credly: Credential = {
       platform: 'credly',
@@ -190,6 +222,36 @@ describe('interpretSessionizeResponse', () => {
 
   it('leaves non-redirect responses to the default classification', () => {
     expect(interpretSessionizeResponse({ status: 200, headers: {}, data: '' })).toBeNull()
+  })
+
+  it.each([
+    ['a text', LOGIN_PAGE],
+    ['a binary', Buffer.from(LOGIN_PAGE)],
+  ])('treats %s sign-in page served as a 200 as a rejected session', (_, data) => {
+    const error = interpretSessionizeResponse({ status: 200, headers: {}, data })
+
+    expect(error).toBeInstanceOf(ProviderAuthError)
+  })
+
+  it.each([
+    ['a spreadsheet', Buffer.concat([Buffer.from('PK\x03\x04'), Buffer.alloc(64)])],
+    ['the events page', '<div id="tab-activated"><table></table></div>'],
+  ])('accepts %s served as a 200', (_, data) => {
+    expect(interpretSessionizeResponse({ status: 200, headers: {}, data })).toBeNull()
+  })
+
+  it('finds the sign-in form deep inside a binary login page', () => {
+    const data = Buffer.concat([Buffer.alloc(11 * 1024 + 206, ' '), Buffer.from(LOGIN_PAGE)])
+
+    expect(interpretSessionizeResponse({ status: 200, headers: {}, data })).toBeInstanceOf(
+      ProviderAuthError,
+    )
+  })
+
+  it('never scans a spreadsheet for the sign-in form', () => {
+    const data = Buffer.concat([Buffer.from('PK\x03\x04'), Buffer.from(LOGIN_PAGE)])
+
+    expect(interpretSessionizeResponse({ status: 200, headers: {}, data })).toBeNull()
   })
 })
 
