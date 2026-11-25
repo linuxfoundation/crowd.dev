@@ -71,12 +71,18 @@ function cellType(cell: ExportCell): string {
   return typeof cell
 }
 
+function isUtcMidnight(date: Date): boolean {
+  return date.getTime() % 86_400_000 === 0
+}
+
 function summarizeDateColumn(cells: ExportCell[]): ExportProbeSummary['dateColumns'][string] {
   const cellTypes: Record<string, number> = {}
   const shapes: Record<string, number> = {}
   for (const cell of cells) {
     increment(cellTypes, cellType(cell))
-    if (typeof cell === 'string' || typeof cell === 'number') {
+    if (cell instanceof Date) {
+      increment(shapes, isUtcMidnight(cell) ? 'date:midnight' : 'date:time')
+    } else if (cell !== null) {
       increment(shapes, valueShape(String(cell)))
     }
   }

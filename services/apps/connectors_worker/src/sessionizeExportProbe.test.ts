@@ -71,6 +71,17 @@ describe('summarizeExport', () => {
       null,
     ],
     ['104', 'Fourth talk', 'Accepted', 46012.5, 'spk-5', 'Ed', 'Mock', 'ed@example.com', null],
+    [
+      '105',
+      'Fifth talk',
+      'Accepted',
+      new Date('2026-02-01T00:00:00.000Z'),
+      'spk-6',
+      'Fay',
+      'Fake',
+      null,
+      null,
+    ],
   ]
 
   it('summarizes counts, headers and shapes without the personal values', () => {
@@ -78,14 +89,19 @@ describe('summarizeExport', () => {
 
     expect(summary).toEqual({
       sheetNames: ['Sessions', 'Notes'],
-      rowCount: 5,
+      rowCount: 6,
       missingRequiredColumns: [],
       headers: HEADERS,
-      statusCounts: { Accepted: 3, Declined: 1 },
+      statusCounts: { Accepted: 4, Declined: 1 },
       dateColumns: {
         'Date Submitted': {
-          cellTypes: { date: 1, empty: 1, string: 2, number: 1 },
-          shapes: { '9999-99-99 99:99:99 +99:99': 2, '99999.9': 1 },
+          cellTypes: { date: 2, empty: 1, string: 2, number: 1 },
+          shapes: {
+            'date:time': 1,
+            'date:midnight': 1,
+            '9999-99-99 99:99:99 +99:99': 2,
+            '99999.9': 1,
+          },
         },
       },
       linkedin: { filled: 3, withInPath: 2 },
@@ -163,6 +179,7 @@ describe('parseExportProbeArgs', () => {
     [['--path', '/a/{eventKey}', '--path', '/b/{eventKey}'], '--path given more than once'],
     [['--pace-ms', '-1'], '--pace-ms must be a non-negative integer'],
     [['--pace-ms', '1.5'], '--pace-ms must be a non-negative integer'],
+    [['--pace-ms', '1', '--pace-ms', '2'], '--pace-ms given more than once'],
     [['--verbose'], 'unknown argument "--verbose"'],
   ])('rejects %j', (argv, message) => {
     expect(() => parseExportProbeArgs(argv)).toThrow(message)
