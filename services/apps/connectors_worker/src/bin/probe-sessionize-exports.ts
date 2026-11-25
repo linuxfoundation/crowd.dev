@@ -19,6 +19,7 @@ import {
   PROBE_RUN_START,
   describeProbeFailure,
   exportPath,
+  flushThenExit,
   nextProbeRunState,
   parseExportProbeArgs,
   summarizeExport,
@@ -35,21 +36,21 @@ type ProbeLine =
   | { eventKey: string; outcome: 'xlsx'; summary: ExportProbeSummary }
   | ({ eventKey: string; outcome: 'failed' } & ExportProbeFailure)
 
-function parseArgsOrExit(): ExportProbeArgs {
+function parseArgs(): ExportProbeArgs | null {
   try {
     return parseExportProbeArgs(process.argv.slice(2))
   } catch (err) {
     log.error({ errMsg: err instanceof Error ? err.message : String(err) }, USAGE)
-    process.exit(1)
+    return null
   }
 }
 
-function loadCredential(): ReturnType<typeof getPlatformCredential> {
+function loadCredential(): ReturnType<typeof getPlatformCredential> | null {
   try {
     return getPlatformCredential('sessionize')
   } catch (err) {
     log.error({ err }, 'The sessionize organizer credential is not configured')
-    process.exit(1)
+    return null
   }
 }
 
@@ -61,7 +62,7 @@ async function matchedEventKeys(): Promise<string[]> {
     .map((mapping) => mapping.eventKey)
 }
 
-async function eventKeysOrExit(args: ExportProbeArgs): Promise<string[]> {
+async function listEventKeys(args: ExportProbeArgs): Promise<string[] | null> {
   if (args.eventKeys.length > 0) {
     return args.eventKeys
   }
@@ -69,7 +70,7 @@ async function eventKeysOrExit(args: ExportProbeArgs): Promise<string[]> {
     return await matchedEventKeys()
   } catch (err) {
     log.error({ err }, 'Could not list the matched sessionize events')
-    process.exit(1)
+    return null
   }
 }
 
@@ -105,17 +106,26 @@ function printLine(line: object): void {
   process.stdout.write(`${JSON.stringify(line)}\n`)
 }
 
-async function main(): Promise<boolean> {
-  const args = parseArgsOrExit()
+async function main(): Promise<number> {
+  const args = parseArgs()
+  if (!args) {
+    return 1
+  }
   const credential = loadCredential()
-  const eventKeys = await eventKeysOrExit(args)
+  if (!credential) {
+    return 1
+  }
+  const eventKeys = await listEventKeys(args)
+  if (!eventKeys) {
+    return 1
+  }
   const totals: Record<ProbeLine['outcome'], number> = { xlsx: 0, failed: 0 }
 
   const session = await signInOnce(credential)
   if ('failure' in session) {
     log.error(session.failure, 'sessionize sign-in failed, no export was requested')
     printLine({ totals: { ...totals, notProbed: eventKeys.length }, signIn: session.failure })
-    return false
+    return 1
   }
   log.info({ events: eventKeys.length, pathTemplate: args.pathTemplate }, 'probing exports')
 
@@ -134,16 +144,16 @@ async function main(): Promise<boolean> {
       const notProbed = eventKeys.length - index - 1
       log.error({ errorClass: failureClass, notProbed }, 'stopping the probe run')
       printLine({ totals: { ...totals, notProbed } })
-      return false
+      return 1
     }
   }
   printLine({ totals: { ...totals, notProbed: 0 } })
-  return totals.failed === 0
+  return totals.failed === 0 ? 0 : 1
 }
 
 main()
-  .then((allSucceeded) => process.exit(allSucceeded ? 0 : 1))
   .catch((err) => {
     log.error(describeProbeFailure(err), 'sessionize export probe failed')
-    process.exit(1)
+    return 1
   })
+  .then((code) => flushThenExit(process.stdout, (exitCode) => process.exit(exitCode), code))

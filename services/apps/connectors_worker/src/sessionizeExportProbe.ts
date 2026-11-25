@@ -239,3 +239,11 @@ export function parseExportProbeArgs(argv: string[]): ExportProbeArgs {
 export function exportPath(pathTemplate: string, eventKey: string): string {
   return pathTemplate.split(EVENT_KEY_PLACEHOLDER).join(eventKey)
 }
+
+export function flushThenExit(
+  stream: { write(chunk: string, callback: () => void): boolean },
+  exit: (code: number) => void,
+  code: number,
+): void {
+  stream.write('', () => exit(code))
+}

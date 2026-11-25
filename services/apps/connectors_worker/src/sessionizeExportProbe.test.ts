@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { ProviderContractError } from '@crowd/connectors'
 import type { ExportSheet } from '@crowd/connectors/src/connectors/sessionize/exportFile'
@@ -6,6 +6,7 @@ import type { ExportSheet } from '@crowd/connectors/src/connectors/sessionize/ex
 import {
   describeProbeFailure,
   exportPath,
+  flushThenExit,
   PROBE_RUN_START,
   nextProbeRunState,
   parseExportProbeArgs,
@@ -280,5 +281,24 @@ describe('nextProbeRunState', () => {
     ],
   ])('after %j stops at %j', (outcomes, stops) => {
     expect(stopsAfter(outcomes)).toEqual(stops)
+  })
+})
+
+describe('flushThenExit', () => {
+  it('exits with the given code only after the stream has taken every earlier write', () => {
+    let flushed: (() => void) | undefined
+    const stream = {
+      write: vi.fn((_chunk: string, callback: () => void) => {
+        flushed = callback
+        return false
+      }),
+    }
+    const exit = vi.fn()
+
+    flushThenExit(stream, exit, 1)
+
+    expect(exit).not.toHaveBeenCalled()
+    flushed?.()
+    expect(exit).toHaveBeenCalledExactlyOnceWith(1)
   })
 })
