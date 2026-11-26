@@ -98,13 +98,17 @@ async function loadExport(
   return { parsed, warnings }
 }
 
+function isRowCountDrop({ kind }: ExportWarning): boolean {
+  return kind === 'row_count_drop'
+}
+
 function assertFinalLoadComplete(
   eventKey: string,
   all: ParsedExport,
   allWarnings: ExportWarning[],
   accepted: ParsedExport,
 ): void {
-  const rowCountDrop = allWarnings.find(({ kind }) => kind === 'row_count_drop')
+  const rowCountDrop = allWarnings.find(isRowCountDrop)
   if (rowCountDrop) {
     throw new ProviderContractError(
       `sessionize event ${eventKey} has ended but its all sessions export lost more than half of its rows`,
@@ -179,13 +183,16 @@ function nextWatermark(
   startedAt: Date,
   ended: boolean,
   all: ParsedExport,
+  allWarnings: ExportWarning[],
   accepted: ParsedExport | null,
 ): EventExportWatermark {
   const acceptedProfile = accepted?.profile ?? previous?.lastGoodRun.accepted
+  const allProfile =
+    previous !== null && allWarnings.some(isRowCountDrop) ? previous.lastGoodRun.all : all.profile
   return {
     lastRunStartedAt: startedAt.toISOString(),
     ...(ended && { finished: true as const }),
-    lastGoodRun: { all: all.profile, ...(acceptedProfile && { accepted: acceptedProfile }) },
+    lastGoodRun: { all: allProfile, ...(acceptedProfile && { accepted: acceptedProfile }) },
   }
 }
 
@@ -232,7 +239,7 @@ export async function runEventExport(ctx: SyncContext<SessionizeDeps>): Promise<
     await ctx.emit(activities.slice(start, start + EMIT_CHUNK_SIZE), overrides)
   }
 
-  await ctx.commitWatermark(nextWatermark(previous, startedAt, ended, all, accepted))
+  await ctx.commitWatermark(nextWatermark(previous, startedAt, ended, all, allWarnings, accepted))
   ctx.log.info(
     {
       event: 'sessionize_export_loaded',

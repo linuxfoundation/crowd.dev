@@ -417,7 +417,7 @@ describe('runEventExport', () => {
   it('logs warnings and skipped counts with counts and column names only', async () => {
     vi.setSystemTime(new Date('2026-03-21T12:00:00.000Z'))
     const sensitiveHeaders = [...ALL_HEADERS, 'Gender identity']
-    const { ctx, log } = await makeCtx({
+    const { ctx, log, watermarks } = await makeCtx({
       files: {
         all: allSheet(
           ALL_ROWS.map((row) => [
@@ -462,6 +462,11 @@ describe('runEventExport', () => {
         kind: 'row_count_drop',
         detail: { last: 10, current: 4 },
       },
+    ])
+    expect(watermarks).toEqual([
+      expect.objectContaining({
+        lastGoodRun: expect.objectContaining({ all: expect.objectContaining({ rowCount: 10 }) }),
+      }),
     ])
     expect(log.info.mock.calls.map(([fields]) => fields)).toContainEqual({
       event: 'sessionize_export_skipped',
