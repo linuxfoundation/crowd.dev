@@ -19,6 +19,7 @@ export interface HttpResponse {
   status: number
   headers: Record<string, string>
   data: unknown
+  url?: string
 }
 
 export type TokenApplier = (config: AxiosRequestConfig, token: IPooledToken) => AxiosRequestConfig
@@ -96,7 +97,12 @@ async function attemptRequest<T>(
   const token = await deps.acquireToken()
   const response = await send<T>(deps, config, token)
   const headers = normalizeHeaders(response.headers)
-  const error = classifyResponse(deps, response.status, headers, response.data)
+  const error = classifyResponse(deps, {
+    status: response.status,
+    headers,
+    data: response.data,
+    url: config.url,
+  })
 
   if (!error) {
     return response.data
@@ -223,16 +229,12 @@ function applyBearerToken(config: AxiosRequestConfig, token: IPooledToken): Axio
   return { ...config, headers }
 }
 
-function classifyResponse(
-  deps: HttpClientDeps,
-  status: number,
-  headers: Record<string, string>,
-  data: unknown,
-): ConnectorError | null {
-  const custom = deps.interpretResponse?.({ status, headers, data })
+function classifyResponse(deps: HttpClientDeps, response: HttpResponse): ConnectorError | null {
+  const custom = deps.interpretResponse?.(response)
   if (custom) {
     return custom
   }
+  const { status, headers } = response
   if (isRateLimited(status, headers)) {
     return new RateLimitError(`provider rate limited (status ${status})`, {
       status,

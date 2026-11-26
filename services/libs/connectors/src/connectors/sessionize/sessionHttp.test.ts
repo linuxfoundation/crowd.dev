@@ -107,8 +107,11 @@ describe('createSessionizeFixedSessionHttp', () => {
       .mockResolvedValueOnce({ status: 403, headers: {}, data: '' })
       .mockResolvedValueOnce({ status: 200, headers: {}, data: 'events page' })
     const http = createSessionizeFixedSessionHttp('made-up-fixed-cookie')
+    const exportRequest = {
+      url: 'https://sessionize.com/app/organizer/export/excel/1/Flattened_sessions',
+    }
 
-    await expect(http.request(request)).rejects.toBeInstanceOf(ProviderAccessDeniedError)
+    await expect(http.request(exportRequest)).rejects.toBeInstanceOf(ProviderAccessDeniedError)
     await expect(http.request(request)).resolves.toBe('events page')
     expect(mockedRequest).toHaveBeenCalledTimes(2)
     expect(signInToSessionize).not.toHaveBeenCalled()

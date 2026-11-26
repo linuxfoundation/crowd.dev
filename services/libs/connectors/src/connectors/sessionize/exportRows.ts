@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import { ProviderContractError } from '../../http/errors'
 import type { ExportCell, ExportSheet } from './exportFile'
 
@@ -35,12 +37,14 @@ export interface SessionizeExportRow {
   durationMinutes: number | null
 }
 
-export interface ExportProfile {
-  columns: string[]
-  rowCount: number
-  emailFillRate: number
-  linkedinFillRate: number
-}
+export const exportProfileSchema = z.object({
+  columns: z.array(z.string()),
+  rowCount: z.number(),
+  emailFillRate: z.number(),
+  linkedinFillRate: z.number(),
+})
+
+export type ExportProfile = z.infer<typeof exportProfileSchema>
 
 export interface ParsedExport {
   rows: SessionizeExportRow[]

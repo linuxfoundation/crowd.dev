@@ -16,7 +16,6 @@ import {
   EMIT_CHUNK_SIZE,
   SESSIONIZE_DOWNLOAD_GAP_MS,
   hasEventEnded,
-  nextEventExportRun,
   runEventExport,
 } from './eventExport'
 
@@ -203,6 +202,7 @@ interface CtxOptions {
   watermark?: Record<string, unknown> | null
   hasRunBudget?: () => boolean
   event?: SessionizeEventContext | null
+  channelId?: string
 }
 
 async function makeCtx(options: CtxOptions = {}) {
@@ -213,7 +213,7 @@ async function makeCtx(options: CtxOptions = {}) {
     getEvent: vi.fn(async () => (options.event === undefined ? EVENT : options.event)),
   }
   const ctx: SyncContext<SessionizeDeps> = {
-    channel: { channelId: EVENT.eventKey, channelName: EVENT.eventName },
+    channel: { channelId: options.channelId ?? EVENT.eventKey, channelName: EVENT.eventName },
     integrationId: 'integration-1',
     watermark: options.watermark ?? null,
     emit: async (records, overrides) => {
@@ -237,15 +237,22 @@ function types(emits: { records: unknown[] }[]): string[] {
   return emits.flatMap(({ records }) => records.map((record) => (record as { type: string }).type))
 }
 
-function liveWatermark(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function watermarkAt(
+  lastRunStartedAt: Date,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
-    loadedOnce: true,
-    spokeAtEmitted: false,
-    eventEnd: EVENT.eventEnd,
+    lastRunStartedAt: lastRunStartedAt.toISOString(),
     lastGoodRun: { all: ALL_PROFILE },
     ...overrides,
   }
 }
+
+const ENDED_WATERMARK = (startedAt: Date) =>
+  watermarkAt(startedAt, {
+    finished: true,
+    lastGoodRun: { all: ALL_PROFILE, accepted: ACCEPTED_PROFILE },
+  })
 
 async function failure(run: Promise<SyncOutcome>): Promise<unknown> {
   return run.then(
@@ -277,46 +284,42 @@ describe('hasEventEnded', () => {
   })
 })
 
-describe('nextEventExportRun', () => {
-  const end = Date.parse('2026-03-22T00:00:00.000Z')
-
-  it.each([
-    ['before the event', -12, { gapDays: 1 }],
-    ['10 days after the end', 10, { gapDays: 1 }],
-    ['91 days after the end', 91, { gapDays: 7 }],
-    ['366 days after the end', 366, { finished: true }],
-  ])('%s', (_, daysAfterEnd, expected) => {
-    const now = new Date(end + daysAfterEnd * DAY_MS + 3_600_000)
-    const next = nextEventExportRun('2026-03-22', now)
-
-    expect(next).toEqual(
-      'gapDays' in expected
-        ? { nextRunAt: new Date(now.getTime() + expected.gapDays * DAY_MS) }
-        : { finished: true },
-    )
-  })
-})
-
 describe('runEventExport', () => {
-  it('loads only the all sessions export of a live event, as live data', async () => {
+  it.each<[string, Record<string, unknown> | null, string[], EmitOverrides | undefined]>([
+    [
+      'sends every submission on the first run, as a backfill',
+      null,
+      [`5001-${SPEAKER_ONE}`, `5001-${SPEAKER_TWO}`, `5002-${SPEAKER_THREE}`],
+      { backfill: true },
+    ],
+    [
+      'treats an empty watermark as a first run',
+      {},
+      [`5001-${SPEAKER_ONE}`, `5001-${SPEAKER_TWO}`, `5002-${SPEAKER_THREE}`],
+      { backfill: true },
+    ],
+    [
+      'sends only submissions from 24 hours before the last run started, as live data',
+      watermarkAt(new Date('2025-11-04T09:00:00.000Z')),
+      [`5002-${SPEAKER_THREE}`],
+      undefined,
+    ],
+  ])('for an ongoing event, %s', async (_, watermark, sourceIds, expectedOverrides) => {
     vi.setSystemTime(BEFORE_EVENT)
-    const { ctx, emits, watermarks } = await makeCtx()
+    const { ctx, emits, watermarks } = await makeCtx({ watermark })
 
     const outcome = await runEventExport(ctx)
 
     expect(steps).toEqual([`wait ${SESSIONIZE_DOWNLOAD_GAP_MS}`, `get ${ALL_PATH}`])
-    expect(types(emits)).toEqual([
-      SessionizeActivityType.SUBMITTED_SESSION,
-      SessionizeActivityType.SUBMITTED_SESSION,
-      SessionizeActivityType.SUBMITTED_SESSION,
-    ])
-    expect(emits.map(({ overrides }) => overrides)).toEqual([undefined])
-    expect(emits[0].records).toMatchObject([
-      { sourceId: `5001-${SPEAKER_ONE}`, timestamp: '2025-11-02T10:15:00.000Z', channel: '91001' },
-      { sourceId: `5001-${SPEAKER_TWO}`, timestamp: '2025-11-02T10:15:00.000Z' },
-      { sourceId: `5002-${SPEAKER_THREE}`, timestamp: '2025-11-03T09:00:00.000Z' },
-    ])
-    expect(watermarks).toEqual([liveWatermark()])
+    expect(types(emits)).toEqual(
+      Array(sourceIds.length).fill(SessionizeActivityType.SUBMITTED_SESSION),
+    )
+    expect(emits.map(({ overrides }) => overrides)).toEqual([expectedOverrides])
+    expect(emits[0].records.map((record) => (record as { sourceId: string }).sourceId)).toEqual(
+      sourceIds,
+    )
+    expect(emits[0].records[0]).toMatchObject({ channel: '91001' })
+    expect(watermarks).toEqual([watermarkAt(BEFORE_EVENT)])
     expect(outcome).toEqual({
       complete: true,
       nextRunAt: new Date(BEFORE_EVENT.getTime() + DAY_MS),
@@ -324,64 +327,36 @@ describe('runEventExport', () => {
   })
 
   it.each([
-    ['first run, as a backfill', null, { backfill: true }],
-    ['later run, as live data', liveWatermark(), undefined],
-  ])('loads both exports of an ended event on its %s', async (_, watermark, expectedOverrides) => {
-    vi.setSystemTime(ENDED)
-    const { ctx, emits, watermarks } = await makeCtx({ watermark })
+    ['already ended at its first run', null],
+    ['loaded while ongoing', watermarkAt(new Date('2026-03-21T08:00:00.000Z'))],
+    ['restarted by hand after it finished', ENDED_WATERMARK(new Date('2026-03-24T00:00:00.000Z'))],
+  ])(
+    'loads an ended event %s once in full, as a backfill, and stops its unit',
+    async (_, watermark) => {
+      vi.setSystemTime(ENDED)
+      const { ctx, emits, watermarks } = await makeCtx({ watermark })
 
-    const outcome = await runEventExport(ctx)
+      const outcome = await runEventExport(ctx)
 
-    expect(steps).toEqual([
-      `wait ${SESSIONIZE_DOWNLOAD_GAP_MS}`,
-      `get ${ALL_PATH}`,
-      `wait ${SESSIONIZE_DOWNLOAD_GAP_MS}`,
-      `get ${ACCEPTED_PATH}`,
-    ])
-    expect(types(emits)).toEqual([
-      ...Array(3).fill(SessionizeActivityType.SUBMITTED_SESSION),
-      ...Array(2).fill(SessionizeActivityType.SPOKE_AT_SESSION),
-    ])
-    expect(emits[0].records.slice(3)).toMatchObject([
-      { sourceId: `5001-${SPEAKER_ONE}`, timestamp: '2026-03-21T14:00:00.000Z' },
-      { sourceId: `5001-${SPEAKER_TWO}`, timestamp: '2026-03-21T14:00:00.000Z' },
-    ])
-    expect(emits.map(({ overrides }) => overrides)).toEqual([expectedOverrides])
-    expect(watermarks).toEqual([
-      liveWatermark({
-        spokeAtEmitted: true,
-        lastGoodRun: { all: ALL_PROFILE, accepted: ACCEPTED_PROFILE },
-      }),
-    ])
-    expect(outcome).toEqual({ complete: true, nextRunAt: new Date(ENDED.getTime() + DAY_MS) })
-  })
-
-  it('stops the unit of an event that ended over a year ago, and again after a restart', async () => {
-    const now = new Date(Date.parse('2026-03-22T00:00:00.000Z') + 400 * DAY_MS)
-    vi.setSystemTime(now)
-    const first = await makeCtx()
-
-    expect(await runEventExport(first.ctx)).toEqual({ complete: true, finished: true })
-    expect(first.watermarks).toEqual([
-      liveWatermark({
-        spokeAtEmitted: true,
-        finished: true,
-        lastGoodRun: { all: ALL_PROFILE, accepted: ACCEPTED_PROFILE },
-      }),
-    ])
-
-    steps.length = 0
-    const restarted = await makeCtx({ watermark: first.watermarks[0] })
-
-    expect(await runEventExport(restarted.ctx)).toEqual({ complete: true, finished: true })
-    expect(steps.filter((step) => step.startsWith('get'))).toEqual([
-      `get ${ALL_PATH}`,
-      `get ${ACCEPTED_PATH}`,
-    ])
-    expect(types(restarted.emits)).toHaveLength(5)
-    expect(restarted.emits.map(({ overrides }) => overrides)).toEqual([undefined])
-    expect(restarted.watermarks).toEqual(first.watermarks)
-  })
+      expect(steps).toEqual([
+        `wait ${SESSIONIZE_DOWNLOAD_GAP_MS}`,
+        `get ${ALL_PATH}`,
+        `wait ${SESSIONIZE_DOWNLOAD_GAP_MS}`,
+        `get ${ACCEPTED_PATH}`,
+      ])
+      expect(types(emits)).toEqual([
+        ...Array(3).fill(SessionizeActivityType.SUBMITTED_SESSION),
+        ...Array(2).fill(SessionizeActivityType.SPOKE_AT_SESSION),
+      ])
+      expect(emits[0].records.slice(3)).toMatchObject([
+        { sourceId: `5001-${SPEAKER_ONE}`, timestamp: '2026-03-21T14:00:00.000Z' },
+        { sourceId: `5001-${SPEAKER_TWO}`, timestamp: '2026-03-21T14:00:00.000Z' },
+      ])
+      expect(emits.map(({ overrides }) => overrides)).toEqual([{ backfill: true }])
+      expect(watermarks).toEqual([ENDED_WATERMARK(ENDED)])
+      expect(outcome).toEqual({ complete: true, finished: true })
+    },
+  )
 
   it.each([
     [
@@ -430,7 +405,7 @@ describe('runEventExport', () => {
         ),
         accepted: acceptedSheet(),
       },
-      watermark: liveWatermark({
+      watermark: watermarkAt(new Date('2026-03-21T08:00:00.000Z'), {
         lastGoodRun: {
           all: { ...ALL_PROFILE, columns: [...ALL_PROFILE.columns, 'Company'], rowCount: 10 },
           accepted: ACCEPTED_PROFILE,
@@ -506,9 +481,13 @@ describe('runEventExport', () => {
     expect(watermarks).toEqual([])
   })
 
-  it('refuses a unit whose event has no mapping row, before any download', async () => {
+  it.each<[string, CtxOptions]>([
+    ['whose event has no mapping row', { event: null }],
+    ['whose event key is not numeric', { channelId: '91001/../export' }],
+    ['whose watermark is malformed', { watermark: { lastRunStartedAt: 'yesterday' } }],
+  ])('refuses a unit %s, before any download', async (_, options) => {
     vi.setSystemTime(ENDED)
-    const { ctx, emits } = await makeCtx({ event: null })
+    const { ctx, emits } = await makeCtx(options)
 
     expect(await failure(runEventExport(ctx))).toBeInstanceOf(ConnectorCodeError)
     expect(steps).toEqual([])

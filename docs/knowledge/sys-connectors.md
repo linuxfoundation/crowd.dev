@@ -47,6 +47,20 @@ to a segment.
 | `integration."octolensKeywordMappings"`                  | Octolens keyword → subproject routing (fan-out exception)                       |
 | `integration."credlyTemplateMappings"`, `"credlyBadges"` | Credly resolver decisions (mapped/held, drives onboarding only) and badge state |
 
+## Sessionize event export
+
+The `eventExport` sync (`services/libs/connectors/src/connectors/sessionize/syncs/`) has one unit
+per Sessionize event and downloads the organizer's Excel exports.
+
+- Ongoing event: the first run sends every submitted session. Later runs, once a day, send only
+  submissions dated from 24 hours before the start of the last completed run. Export times are
+  the event's local time without a zone, hence the margin.
+- Ended event (two days after its end date): one full load of all submissions plus a spoke-at
+  activity per accepted speaker, then the unit stops (`finished`). It is not loaded again.
+- Full loads pass `backfill: true`. A run that runs out of budget commits nothing and repeats.
+- A 403 on an export means the account is not on the event's content team: the unit fails with
+  `provider.access_denied` and is dead-lettered.
+
 ## Decisions
 
 - [Integration Builder v2 architecture](https://linuxfoundation-dxwx.dsp.so/CQLF4CI1-integration-builder-v2-nango-deprecation)

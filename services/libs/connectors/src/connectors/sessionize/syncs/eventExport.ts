@@ -12,7 +12,7 @@ import {
   downloadSessionizeExport,
   readExportSheet,
 } from '../exportFile'
-import { compareWithLastGoodRun, parseSessionizeExport } from '../exportRows'
+import { compareWithLastGoodRun, exportProfileSchema, parseSessionizeExport } from '../exportRows'
 import type { ExportProfile, ExportVariant, ParsedExport, SessionizeExportRow } from '../exportRows'
 import { spokeAtSessionActivity, submittedSessionActivity } from '../mapper'
 import type { SessionizeActivity, SessionizeEventContext } from '../mapper'
@@ -22,40 +22,25 @@ export const EMIT_CHUNK_SIZE = 200
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const ENDED_AFTER_DAYS = 2
-const DAILY_UNTIL_DAYS = 90
-const WEEKLY_UNTIL_DAYS = 365
+const CHECKPOINT_MARGIN_MS = DAY_MS
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+const EVENT_KEY = /^\d+$/
 
 const EXPORT_PATHS: Record<ExportVariant, (eventKey: string) => string> = {
   all: SESSIONIZE_ALL_SESSIONS_PATH,
   accepted: SESSIONIZE_ACCEPTED_SESSIONS_PATH,
 }
 
-const exportProfileSchema = z.object({
-  columns: z.array(z.string()),
-  rowCount: z.number(),
-  emailFillRate: z.number(),
-  linkedinFillRate: z.number(),
-})
-
-type EventExportWatermark = {
-  loadedOnce: boolean
-  spokeAtEmitted: boolean
-  eventEnd: string
-  finished?: true
-  lastGoodRun: { all: ExportProfile; accepted?: ExportProfile }
-}
-
 const watermarkSchema = z.object({
-  loadedOnce: z.boolean(),
-  spokeAtEmitted: z.boolean(),
-  eventEnd: z.string(),
+  lastRunStartedAt: z.string().datetime(),
   finished: z.literal(true).optional(),
   lastGoodRun: z.object({
     all: exportProfileSchema,
     accepted: exportProfileSchema.optional(),
   }),
 })
+
+type EventExportWatermark = z.infer<typeof watermarkSchema>
 
 function eventEndMs(eventEnd: string): number {
   const ms = ISO_DATE.test(eventEnd) ? Date.parse(`${eventEnd}T00:00:00.000Z`) : NaN
@@ -69,20 +54,14 @@ export function hasEventEnded(eventEnd: string, now: Date): boolean {
   return now.getTime() >= eventEndMs(eventEnd) + ENDED_AFTER_DAYS * DAY_MS
 }
 
-export function nextEventExportRun(
-  eventEnd: string,
-  now: Date,
-): { nextRunAt: Date } | { finished: true } {
-  const daysSinceEnd = (now.getTime() - eventEndMs(eventEnd)) / DAY_MS
-  if (daysSinceEnd >= WEEKLY_UNTIL_DAYS) {
-    return { finished: true }
+function assertEventKey(eventKey: string): void {
+  if (!EVENT_KEY.test(eventKey)) {
+    throw new ConnectorCodeError(`sessionize event key "${eventKey}" is not numeric`)
   }
-  const gapDays = daysSinceEnd >= DAILY_UNTIL_DAYS ? 7 : 1
-  return { nextRunAt: new Date(now.getTime() + gapDays * DAY_MS) }
 }
 
 function readWatermark(raw: Record<string, unknown> | null): EventExportWatermark | null {
-  if (raw === null) {
+  if (raw === null || Object.keys(raw).length === 0) {
     return null
   }
   const parsed = watermarkSchema.safeParse(raw)
@@ -91,7 +70,7 @@ function readWatermark(raw: Record<string, unknown> | null): EventExportWatermar
       cause: parsed.error.issues.map((issue) => issue.path.join('.')),
     })
   }
-  return parsed.data as EventExportWatermark
+  return parsed.data
 }
 
 async function loadExport(
@@ -134,61 +113,73 @@ function mapRows(
   return { activities, unmapped: rows.length - activities.length }
 }
 
+function submittedSince(activities: SessionizeActivity[], since: number | null) {
+  return since === null
+    ? activities
+    : activities.filter((activity) => Date.parse(activity.timestamp) >= since)
+}
+
 function eventActivities(
   ctx: SyncContext<SessionizeDeps>,
   event: SessionizeEventContext,
   all: ParsedExport,
   accepted: ParsedExport | null,
+  since: number | null,
 ): SessionizeActivity[] {
   const submitted = mapRows(all.rows, (row) => submittedSessionActivity(row, event))
   logSkipped(ctx, event.eventKey, 'all', {
     ...all.skipped,
     withoutSubmissionDate: submitted.unmapped,
   })
+  const sent = submittedSince(submitted.activities, since)
   if (accepted === null) {
-    return submitted.activities
+    return sent
   }
   const spoke = mapRows(accepted.rows, (row) => spokeAtSessionActivity(row, event))
   logSkipped(ctx, event.eventKey, 'accepted', { ...accepted.skipped, notAccepted: spoke.unmapped })
-  return [...submitted.activities, ...spoke.activities]
+  return [...sent, ...spoke.activities]
+}
+
+function checkpointSince(previous: EventExportWatermark | null, ended: boolean): number | null {
+  return ended || previous === null
+    ? null
+    : Date.parse(previous.lastRunStartedAt) - CHECKPOINT_MARGIN_MS
 }
 
 function nextWatermark(
   previous: EventExportWatermark | null,
-  event: SessionizeEventContext,
+  startedAt: Date,
   ended: boolean,
-  finished: boolean,
   all: ParsedExport,
   accepted: ParsedExport | null,
 ): EventExportWatermark {
   const acceptedProfile = accepted?.profile ?? previous?.lastGoodRun.accepted
   return {
-    loadedOnce: true,
-    spokeAtEmitted: (previous?.spokeAtEmitted ?? false) || ended,
-    eventEnd: event.eventEnd,
-    ...(finished && { finished: true as const }),
+    lastRunStartedAt: startedAt.toISOString(),
+    ...(ended && { finished: true as const }),
     lastGoodRun: { all: all.profile, ...(acceptedProfile && { accepted: acceptedProfile }) },
   }
 }
 
 export async function runEventExport(ctx: SyncContext<SessionizeDeps>): Promise<SyncOutcome> {
   const eventKey = ctx.channel.channelId
+  assertEventKey(eventKey)
   const event = await ctx.deps.getEvent(eventKey)
   if (event === null) {
     throw new ConnectorCodeError(`sessionize event ${eventKey} has no mapping row`)
   }
   const previous = readWatermark(ctx.watermark)
-  const now = new Date()
-  const ended = hasEventEnded(event.eventEnd, now)
+  const startedAt = new Date()
+  const ended = hasEventEnded(event.eventEnd, startedAt)
+  const since = checkpointSince(previous, ended)
 
   const all = await loadExport(ctx, eventKey, 'all', previous?.lastGoodRun.all ?? null)
   const accepted = ended
     ? await loadExport(ctx, eventKey, 'accepted', previous?.lastGoodRun.accepted ?? null)
     : null
-  const activities = eventActivities(ctx, event, all, accepted)
+  const activities = eventActivities(ctx, event, all, accepted, since)
 
-  const overrides: EmitOverrides | undefined =
-    ended && !previous?.loadedOnce ? { backfill: true } : undefined
+  const overrides: EmitOverrides | undefined = since === null ? { backfill: true } : undefined
   for (let start = 0; start < activities.length; start += EMIT_CHUNK_SIZE) {
     if (!ctx.hasRunBudget()) {
       ctx.log.info(
@@ -198,21 +189,25 @@ export async function runEventExport(ctx: SyncContext<SessionizeDeps>): Promise<
           emitted: start,
           total: activities.length,
         },
-        'sessionize export run stopped for lack of budget, the next run loads the event again',
+        'sessionize export run stopped for lack of budget, the next run repeats the same load',
       )
       return { complete: false }
     }
     await ctx.emit(activities.slice(start, start + EMIT_CHUNK_SIZE), overrides)
   }
 
-  const next = nextEventExportRun(event.eventEnd, now)
-  const finished = 'finished' in next
-  await ctx.commitWatermark(nextWatermark(previous, event, ended, finished, all, accepted))
+  await ctx.commitWatermark(nextWatermark(previous, startedAt, ended, all, accepted))
   ctx.log.info(
-    { event: 'sessionize_export_loaded', eventKey, ended, emitted: activities.length, finished },
+    {
+      event: 'sessionize_export_loaded',
+      eventKey,
+      fullLoad: since === null,
+      ended,
+      emitted: activities.length,
+    },
     'sessionize event export loaded',
   )
-  return finished
+  return ended
     ? { complete: true, finished: true }
-    : { complete: true, nextRunAt: next.nextRunAt }
+    : { complete: true, nextRunAt: new Date(startedAt.getTime() + DAY_MS) }
 }
