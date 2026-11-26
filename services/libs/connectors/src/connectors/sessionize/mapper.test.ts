@@ -256,6 +256,7 @@ describe('organizations', () => {
     ],
     ['a registry-style domain', 'https://widgetco.uk.com', 'widgetco.uk.com', 'widgetco.uk.com'],
     ['a personal github pages host', 'avery-quill.github.io', null, null],
+    ['a bare registry suffix', 'https://uk.com', null, null],
     [
       'a company website with a path',
       'https://widgetco.example.com/en',
@@ -304,6 +305,9 @@ describe('linkedinHandle', () => {
     ['https://www.linkedin.com/in/Jane-Doe-123/?utm=x', 'Jane-Doe-123'],
     ['https://www.linkedin.com/in/jos%C3%A9-ruiz-9', 'josé-ruiz-9'],
     ['https://www.linkedin.com/in/bad%E0%A4', null],
+    ['https://www.linkedin.com/in/%20', null],
+    ['https://www.linkedin.com/in/jane%00doe', null],
+    ['https://www.linkedin.com/in/jane%2Fdoe', null],
     ['https://de.linkedin.com/in/jane', 'jane'],
     ['linkedin.com/in/jane', 'jane'],
     ['https://www.linkedin.com/company/acme', null],

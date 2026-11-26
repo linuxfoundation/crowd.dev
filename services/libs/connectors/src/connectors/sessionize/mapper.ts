@@ -82,6 +82,7 @@ export type SessionizeActivity = z.infer<typeof sessionizeActivitySchema>
 type SessionizeMember = SessionizeActivity['member']
 
 const LINKEDIN_HOST = 'linkedin.com'
+const LINKEDIN_HANDLE = /^[\p{L}\p{N}_-]+$/u
 const SHARED_HOSTS = [
   LINKEDIN_HOST,
   'github.com',
@@ -193,7 +194,8 @@ export function linkedinHandle(raw: string | null): string | null {
 
 function decodePathSegment(segment: string): string | null {
   try {
-    return decodeURIComponent(segment) || null
+    const decoded = decodeURIComponent(segment)
+    return LINKEDIN_HANDLE.test(decoded) ? decoded : null
   } catch {
     return null
   }
@@ -301,7 +303,7 @@ function speakerIdentities(row: SessionizeExportRow): SessionizeMember['identiti
 
 function isPersonalPageHost(hostname: string): boolean {
   const suffix = privateSuffix(hostname)
-  return suffix !== null && !REGISTRY_SUFFIXES.has(suffix)
+  return suffix !== null && (hostname === suffix || !REGISTRY_SUFFIXES.has(suffix))
 }
 
 function isSharedHost(hostname: string): boolean {
