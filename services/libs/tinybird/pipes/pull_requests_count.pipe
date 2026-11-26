@@ -54,7 +54,7 @@ SQL >
         {% end %}
         {% if defined(startDate) %}
             AND eventAt
-            > {{ DateTime(startDate, description="Filter state timestamp after", required=False) }}
+            >= {{ DateTime(startDate, description="Filter state timestamp after", required=False) }}
         {% end %}
         {% if defined(endDate) %}
             AND eventAt

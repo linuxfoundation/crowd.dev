@@ -19,7 +19,7 @@ SQL >
             AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
             {% if defined(startDate) %}
                 AND timestamp
-                > {{ DateTime(startDate, description="Filter after date", required=False) }}
+                >= {{ DateTime(startDate, description="Filter after date", required=False) }}
             {% end %}
             {% if defined(endDate) %}
                 AND timestamp

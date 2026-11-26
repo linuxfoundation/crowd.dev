@@ -55,7 +55,7 @@ SQL >
         AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
         {% if defined(startDate) %}
             AND timestamp
-            > {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}
+            >= {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}
         {% end %}
         {% if defined(endDate) %}
             AND timestamp
