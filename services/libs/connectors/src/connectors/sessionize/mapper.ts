@@ -82,7 +82,7 @@ export type SessionizeActivity = z.infer<typeof sessionizeActivitySchema>
 type SessionizeMember = SessionizeActivity['member']
 
 const LINKEDIN_HOST = 'linkedin.com'
-const LINKEDIN_HANDLE = /^[\p{L}\p{N}_-]+$/u
+const NOT_A_LINKEDIN_HANDLE = /[\s\p{Cc}/]/u
 const SHARED_HOSTS = [
   LINKEDIN_HOST,
   'github.com',
@@ -195,7 +195,7 @@ export function linkedinHandle(raw: string | null): string | null {
 function decodePathSegment(segment: string): string | null {
   try {
     const decoded = decodeURIComponent(segment)
-    return LINKEDIN_HANDLE.test(decoded) ? decoded : null
+    return decoded === '' || NOT_A_LINKEDIN_HANDLE.test(decoded) ? null : decoded
   } catch {
     return null
   }

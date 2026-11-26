@@ -305,6 +305,7 @@ describe('linkedinHandle', () => {
     ['https://www.linkedin.com/in/Jane-Doe-123/?utm=x', 'Jane-Doe-123'],
     ['https://www.linkedin.com/in/jos%C3%A9-ruiz-9', 'josé-ruiz-9'],
     ['https://www.linkedin.com/in/bad%E0%A4', null],
+    ['https://www.linkedin.com/in/%F0%9F%9A%80-jane.doe~9', '🚀-jane.doe~9'],
     ['https://www.linkedin.com/in/%20', null],
     ['https://www.linkedin.com/in/jane%00doe', null],
     ['https://www.linkedin.com/in/jane%2Fdoe', null],
