@@ -14,7 +14,7 @@ export default [
       auth: true,
       title: 'Data Quality Copilot',
       segments: {
-        requireSelectedProjectGroup: true,
+        optionalSelectedProjectGroup: true,
       },
     },
     children: [
@@ -26,9 +26,7 @@ export default [
           auth: true,
           eventKey: PageEventKey.DATA_QUALITY_ASSISTANT,
         },
-        beforeEnter: [
-          PermissionGuard(LfPermission.dataQualityRead),
-        ],
+        beforeEnter: [PermissionGuard(LfPermission.dataQualityRead)],
       },
     ],
   },

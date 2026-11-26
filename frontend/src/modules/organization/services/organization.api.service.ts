@@ -242,11 +242,8 @@ export async function fetchFakeOrganizationSuggestions(
 ): Promise<
   SuggestionsPage<DataQualityFakeOrganizationSuggestion & { organization?: Organization }>
 > {
-  const segments = [getSelectedProjectGroup()!.id];
-
   const response = await authAxios.get('/organization/fake-suggestions', {
     params: {
-      segments,
       offset,
       limit,
       detail: 'true',

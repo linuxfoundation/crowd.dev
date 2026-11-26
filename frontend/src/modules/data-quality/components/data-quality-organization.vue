@@ -3,7 +3,7 @@
     <div class="sticky top-18 bg-white z-10 -mt-1">
       <div class="flex mb-6 justify-between items-center">
         <div class="flex items-center gap-4">
-          <lf-data-quality-project-dropdown v-model="projectGroup" />
+          <lf-data-quality-project-dropdown v-if="projectGroup" v-model="projectGroup" />
           <lf-data-quality-type-dropdown
             v-model="tab"
             :config="[]"
@@ -47,5 +47,5 @@ defineOptions({
 const route = useRoute();
 
 const tab = ref('merge-suggestions');
-const projectGroup = ref(route.query.projectGroup as string);
+const projectGroup = ref(route.query.projectGroup as string | undefined);
 </script>
