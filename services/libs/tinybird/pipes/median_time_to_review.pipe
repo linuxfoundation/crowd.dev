@@ -70,7 +70,7 @@ SQL >
             {% end %}
             {% if defined(endDate) %}
                 AND prf.openedAt
-                <= {{
+                < {{
                     DateTime(
                         endDate,
                         description="Filter PRs opened before this timestamp",
@@ -113,7 +113,7 @@ SQL >
             {% end %}
             {% if defined(endDate) %}
                 AND prf.openedAt
-                <= {{
+                < {{
                     DateTime(
                         endDate,
                         description="Filter PRs opened before this timestamp",

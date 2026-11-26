@@ -106,8 +106,9 @@ SQL >
 
 NODE stars_count_summary
 DESCRIPTION >
-    No-granularity mode: total "new stars" across [startDate, endDate] - a GitLab star exactly at
-    startDate counts in this period, like every other pipe's start filter. GitHub = total as
+    No-granularity mode: total "new stars" across [startDate, endDate) - a GitLab star exactly at
+    startDate counts in this period and one exactly at endDate in the next, like every other
+    pipe's date filters. GitHub = total as
     of endDate minus total as of startDate (0 if a repo has no snapshot yet at startDate - can go
     negative on net unstars). GitLab = plain per-event range count, `platform != 'github'`.
 
@@ -150,8 +151,7 @@ SQL >
                         >= {{ DateTime(startDate, description="Range start", required=False) }}
                     {% end %}
                     {% if defined(endDate) %}
-                        AND timestamp
-                        <= {{ DateTime(endDate, description="Range end", required=False) }}
+                        AND timestamp < {{ DateTime(endDate, description="Range end", required=False) }}
                     {% end %}
             )
         SELECT (SELECT total FROM github_new) + (SELECT c FROM gitlab_new) AS activityCount
