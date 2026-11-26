@@ -32,7 +32,7 @@ export interface SessionizeEventContext {
 const sessionizeIdentitySchema = z.object({
   platform: z.literal(PlatformType.SESSIONIZE),
   type: z.enum([MemberIdentityType.USERNAME, MemberIdentityType.EMAIL]),
-  value: z.string().min(1),
+  value: z.string().refine((value) => isValidEmail(value)),
   verified: z.literal(true),
 })
 
@@ -60,7 +60,7 @@ const organizationSchema = z.object({
 
 const memberSchema = z.object({
   displayName: z.string().min(1),
-  identities: z.array(z.union([sessionizeIdentitySchema, linkedinIdentitySchema])).min(1),
+  identities: z.array(z.union([sessionizeIdentitySchema, linkedinIdentitySchema])).min(2),
   attributes: z.record(z.unknown()).optional(),
   organizations: z.array(organizationSchema).min(1).optional(),
 })
@@ -151,9 +151,11 @@ export function submittedSessionActivity(
   row: SessionizeExportRow,
   event: SessionizeEventContext,
 ): SessionizeActivity | null {
-  if (row.dateSubmitted === null) return null
+  const email = speakerEmail(row)
+  if (row.dateSubmitted === null || email === null) return null
   return sessionActivity(
     row,
+    email,
     event,
     SessionizeActivityType.SUBMITTED_SESSION,
     row.dateSubmitted,
@@ -165,9 +167,11 @@ export function spokeAtSessionActivity(
   row: SessionizeExportRow,
   event: SessionizeEventContext,
 ): SessionizeActivity | null {
-  if (row.status !== 'Accepted') return null
+  const email = speakerEmail(row)
+  if (row.status !== 'Accepted' || email === null) return null
   return sessionActivity(
     row,
+    email,
     event,
     SessionizeActivityType.SPOKE_AT_SESSION,
     row.scheduledAt ?? `${event.eventStart}T00:00:00.000Z`,
@@ -180,6 +184,14 @@ export function spokeAtSessionActivity(
       }),
     },
   )
+}
+
+export function hasSpeakerEmail(row: SessionizeExportRow): boolean {
+  return speakerEmail(row) !== null
+}
+
+function speakerEmail(row: SessionizeExportRow): string | null {
+  return row.email !== null && isValidEmail(row.email) ? row.email : null
 }
 
 export function linkedinHandle(raw: string | null): string | null {
@@ -215,6 +227,7 @@ function parseUrl(raw: string): URL | null {
 
 function sessionActivity(
   row: SessionizeExportRow,
+  email: string,
   event: SessionizeEventContext,
   type: SessionizeActivityType,
   timestamp: string,
@@ -229,7 +242,7 @@ function sessionActivity(
     title: row.title,
     channel: event.eventKey,
     attributes,
-    member: speakerMember(row),
+    member: speakerMember(row, email),
   }
 }
 
@@ -247,7 +260,7 @@ function sessionAttributes(
   })
 }
 
-function speakerMember(row: SessionizeExportRow): SessionizeMember {
+function speakerMember(row: SessionizeExportRow, email: string): SessionizeMember {
   const bio = row.bio ?? row.tagline
   const attributes = withoutNullish({
     [MemberAttributeName.AVATAR_URL]: row.photoUrl
@@ -257,37 +270,30 @@ function speakerMember(row: SessionizeExportRow): SessionizeMember {
   })
   const organizations = speakerOrganizations(row)
   return {
-    displayName: speakerDisplayName(row),
-    identities: speakerIdentities(row),
+    displayName: speakerDisplayName(row, email),
+    identities: speakerIdentities(row, email),
     ...(Object.keys(attributes).length > 0 && { attributes }),
     ...(organizations && { organizations }),
   }
 }
 
-function speakerDisplayName(row: SessionizeExportRow): string {
+function speakerDisplayName(row: SessionizeExportRow, email: string): string {
   const name = [row.firstName, row.lastName].filter(Boolean).join(' ')
-  return name || (row.email && getEmailLocalPart(row.email)) || row.speakerId
+  return name || getEmailLocalPart(email)
 }
 
-function speakerIdentities(row: SessionizeExportRow): SessionizeMember['identities'] {
+function speakerIdentities(
+  row: SessionizeExportRow,
+  email: string,
+): SessionizeMember['identities'] {
   const handle = linkedinHandle(row.linkedin)
   return [
-    {
+    ...[MemberIdentityType.USERNAME, MemberIdentityType.EMAIL].map((type) => ({
       platform: PlatformType.SESSIONIZE,
-      type: MemberIdentityType.USERNAME,
-      value: row.speakerId,
-      verified: true,
-    },
-    ...(row.email && isValidEmail(row.email)
-      ? [
-          {
-            platform: PlatformType.SESSIONIZE,
-            type: MemberIdentityType.EMAIL,
-            value: row.email,
-            verified: true,
-          } as const,
-        ]
-      : []),
+      type,
+      value: email,
+      verified: true as const,
+    })),
     ...(handle
       ? [
           {

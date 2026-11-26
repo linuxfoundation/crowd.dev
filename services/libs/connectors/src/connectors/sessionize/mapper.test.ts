@@ -11,6 +11,7 @@ import {
 import type { SessionizeExportRow } from './exportRows'
 import type { SessionizeEventContext } from './mapper'
 import {
+  hasSpeakerEmail,
   linkedinHandle,
   sessionizeActivitySchema,
   spokeAtSessionActivity,
@@ -51,12 +52,12 @@ function row(overrides: Partial<SessionizeExportRow> = {}): SessionizeExportRow 
   return { ...ROW, ...overrides }
 }
 
-const SPEAKER_IDENTITY = {
+const EMAIL_IDENTITIES = [MemberIdentityType.USERNAME, MemberIdentityType.EMAIL].map((type) => ({
   platform: PlatformType.SESSIONIZE,
-  type: MemberIdentityType.USERNAME,
-  value: SPEAKER_ID,
+  type,
+  value: 'avery.quill@widgetco.example',
   verified: true,
-}
+}))
 
 describe('submittedSessionActivity', () => {
   it('maps a row to a submitted-session activity', () => {
@@ -79,13 +80,7 @@ describe('submittedSessionActivity', () => {
       member: {
         displayName: 'Avery Quill',
         identities: [
-          SPEAKER_IDENTITY,
-          {
-            platform: PlatformType.SESSIONIZE,
-            type: MemberIdentityType.EMAIL,
-            value: 'avery.quill@widgetco.example',
-            verified: true,
-          },
+          ...EMAIL_IDENTITIES,
           {
             platform: PlatformType.LINKEDIN,
             type: MemberIdentityType.USERNAME,
@@ -124,6 +119,15 @@ describe('submittedSessionActivity', () => {
       eventName: 'Example Open Source Summit 2026',
     })
     expect(submittedSessionActivity(row({ dateSubmitted: null }), EVENT)).toBeNull()
+  })
+
+  it.each<[string, string | null]>([
+    ['no email', null],
+    ['an email cell that is not one address', 'avery.quill@widgetco.example; bob@example.org'],
+  ])('maps a speaker with %s to nothing, in both activities', (_, email) => {
+    expect(hasSpeakerEmail(row({ email }))).toBe(false)
+    expect(submittedSessionActivity(row({ email }), EVENT)).toBeNull()
+    expect(spokeAtSessionActivity(row({ email }), EVENT)).toBeNull()
   })
 })
 
@@ -184,28 +188,18 @@ describe('member', () => {
     ['first name only', { lastName: null }, 'Avery'],
     ['last name only', { firstName: null }, 'Quill'],
     ['the email local part without a name', { firstName: null, lastName: null }, 'avery.quill'],
-    [
-      'the speaker id without a name or email',
-      { firstName: null, lastName: null, email: null },
-      SPEAKER_ID,
-    ],
   ])('takes the display name from %s', (_, overrides, displayName) => {
     expect(submittedSessionActivity(row(overrides), EVENT)?.member.displayName).toBe(displayName)
   })
 
-  it('keeps only the speaker id identity and no attributes when nothing else is known', () => {
+  it('keeps only the email identities and no attributes when nothing else is known', () => {
     const member = submittedSessionActivity(
-      row({ email: null, linkedin: null, bio: null, tagline: null, photoUrl: null }),
+      row({ linkedin: null, bio: null, tagline: null, photoUrl: null }),
       EVENT,
     )?.member
-    const twoEmails = submittedSessionActivity(
-      row({ email: 'avery.quill@widgetco.example; bob@example.org', linkedin: null }),
-      EVENT,
-    )
 
-    expect(member?.identities).toEqual([SPEAKER_IDENTITY])
+    expect(member?.identities).toEqual(EMAIL_IDENTITIES)
     expect(member).not.toHaveProperty('attributes')
-    expect(twoEmails?.member.identities).toEqual([SPEAKER_IDENTITY])
   })
 
   it('uses the tagline as bio when the bio is empty', () => {
@@ -330,7 +324,6 @@ describe('sessionizeActivitySchema', () => {
       {
         firstName: null,
         lastName: null,
-        email: null,
         linkedin: null,
         bio: null,
         tagline: null,
