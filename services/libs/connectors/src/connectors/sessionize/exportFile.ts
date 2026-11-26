@@ -122,9 +122,6 @@ export async function readExportSheet(file: Buffer): Promise<ExportSheet> {
   }
   const headerRow = sheet.getRow(1)
   const width = headerWidth(headerRow)
-  if (width === 0) {
-    throw contractError(`worksheet "${sheet.name}" has no header row`)
-  }
   const rows: ExportCell[][] = []
   for (let number = 2; number <= sheet.rowCount; number++) {
     const row = sheet.getRow(number)

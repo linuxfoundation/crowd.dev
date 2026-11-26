@@ -182,6 +182,28 @@ describe('summarizeExport', () => {
   })
 })
 
+describe('summarizeExport of an empty export', () => {
+  it('reports every required column as missing for a sheet without a header row', () => {
+    const summary = summarizeExport(sheet([], []), ['Date Submitted'])
+
+    expect(summary).toMatchObject({
+      rowCount: 0,
+      headersTrusted: false,
+      headers: [],
+      missingRequiredColumns: [
+        'Session Id',
+        'Title',
+        'Status',
+        'Date Submitted',
+        'Speaker Id',
+        'FirstName',
+        'LastName',
+        'Email',
+      ],
+    })
+  })
+})
+
 describe('parseExportProbeArgs', () => {
   it('defaults download mode to every matched event, the all sessions path and 5 s pacing', () => {
     expect(parseExportProbeArgs(['--out-dir', '/tmp/made-up-exports'])).toEqual({
