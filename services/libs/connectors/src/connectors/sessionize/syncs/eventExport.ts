@@ -20,7 +20,12 @@ import type {
   ParsedExport,
   SessionizeExportRow,
 } from '../exportRows'
-import { spokeAtSessionActivity, submittedSessionActivity } from '../mapper'
+import {
+  hasScheduledSlot,
+  hasSpeakerEmail,
+  spokeAtSessionActivity,
+  submittedSessionActivity,
+} from '../mapper'
 import type { SessionizeActivity, SessionizeEventContext } from '../mapper'
 
 export const SESSIONIZE_DOWNLOAD_GAP_MS = 5_000
@@ -140,9 +145,14 @@ function logSkipped(
 function mapRows(
   rows: SessionizeExportRow[],
   toActivity: (row: SessionizeExportRow) => SessionizeActivity | null,
-): { activities: SessionizeActivity[]; unmapped: number } {
-  const activities = rows.map(toActivity).filter((activity) => activity !== null)
-  return { activities, unmapped: rows.length - activities.length }
+): { activities: SessionizeActivity[]; withoutEmail: number; unmapped: number } {
+  const withEmail = rows.filter(hasSpeakerEmail)
+  const activities = withEmail.map(toActivity).filter((activity) => activity !== null)
+  return {
+    activities,
+    withoutEmail: rows.length - withEmail.length,
+    unmapped: withEmail.length - activities.length,
+  }
 }
 
 function submittedSince(activities: SessionizeActivity[], since: number | null) {
@@ -161,6 +171,7 @@ function eventActivities(
   const submitted = mapRows(all.rows, (row) => submittedSessionActivity(row, event))
   logSkipped(ctx, event.eventKey, 'all', {
     ...all.skipped,
+    withoutEmail: submitted.withoutEmail,
     withoutSubmissionDate: submitted.unmapped,
   })
   const sent = submittedSince(submitted.activities, since)
@@ -168,7 +179,15 @@ function eventActivities(
     return sent
   }
   const spoke = mapRows(accepted.rows, (row) => spokeAtSessionActivity(row, event))
-  logSkipped(ctx, event.eventKey, 'accepted', { ...accepted.skipped, notAccepted: spoke.unmapped })
+  const withoutSlot = accepted.rows.filter(
+    (row) => hasSpeakerEmail(row) && !hasScheduledSlot(row),
+  ).length
+  logSkipped(ctx, event.eventKey, 'accepted', {
+    ...accepted.skipped,
+    withoutEmail: spoke.withoutEmail,
+    withoutSlot,
+    notAccepted: spoke.unmapped - withoutSlot,
+  })
   return [...sent, ...spoke.activities]
 }
 

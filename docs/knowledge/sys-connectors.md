@@ -60,6 +60,10 @@ per Sessionize event and downloads the organizer's Excel exports.
   It is not finished on an export that looks broken: an all-sessions export with less than half
   the rows of the last good run, or accepted sessions with an empty accepted export, fail the run
   with `provider.contract`.
+- A speaker without one valid email address gives no activity; the run counts these rows in its
+  skipped log (`withoutEmail`).
+- An accepted session with no scheduled slot gives no spoke-at activity; the run counts it as
+  `withoutSlot`.
 - Full loads pass `backfill: true`. A run that runs out of budget commits nothing and repeats.
 - A 403 on an export means the account is not on the event's content team: the unit fails with
   `provider.access_denied` and is dead-lettered.

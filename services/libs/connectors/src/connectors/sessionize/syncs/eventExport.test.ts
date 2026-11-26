@@ -54,6 +54,7 @@ const PERSONAL_VALUES = [
   'Cyrena',
   'cyrena@example.org',
   'adaeze-okonkwo-test',
+  'dov@example.org',
 ]
 
 const ALL_HEADERS = [
@@ -102,7 +103,17 @@ const ALL_ROWS: ExportCell[][] = [
     'cyrena@example.org',
     null,
   ],
-  [5003, 'An Undated Example Talk', 'Waitlisted', null, SPEAKER_FOUR, 'Dov', 'Marsh', null, null],
+  [
+    5003,
+    'An Undated Example Talk',
+    'Waitlisted',
+    null,
+    SPEAKER_FOUR,
+    'Dov',
+    'Marsh',
+    'dov@example.org',
+    null,
+  ],
   [5004, 'A Talk Without Speaker', 'Declined', new Date('2025-11-04T09:00:00.000Z'), null, null],
 ]
 
@@ -133,7 +144,7 @@ const ALL_PROFILE = {
     'LinkedIn',
   ],
   rowCount: 4,
-  emailFillRate: 0.75,
+  emailFillRate: 1,
   linkedinFillRate: 0.25,
 }
 const ACCEPTED_PROFILE = {
@@ -358,6 +369,43 @@ describe('runEventExport', () => {
     },
   )
 
+  it('counts accepted rows without an email or a slot and sends them no spoke-at', async () => {
+    vi.setSystemTime(ENDED)
+    const { ctx, emits, log } = await makeCtx({
+      files: {
+        all: allSheet(),
+        accepted: acceptedSheet([
+          ...ACCEPTED_ROWS,
+          [
+            5005,
+            'An Unscheduled Example Talk',
+            SPEAKER_THREE,
+            'Cyrena',
+            'Holt',
+            'cyrena@example.org',
+          ],
+          [5005, null, SPEAKER_FOUR, 'Dov', 'Marsh', null],
+        ]),
+      },
+    })
+
+    await runEventExport(ctx)
+
+    expect(
+      types(emits).filter((type) => type === SessionizeActivityType.SPOKE_AT_SESSION),
+    ).toHaveLength(2)
+    expect(log.info.mock.calls.map(([fields]) => fields)).toContainEqual({
+      event: 'sessionize_export_skipped',
+      eventKey: EVENT.eventKey,
+      variant: 'accepted',
+      testSubmissions: 0,
+      noSpeaker: 0,
+      withoutEmail: 1,
+      withoutSlot: 1,
+      notAccepted: 0,
+    })
+  })
+
   it('finishes an ended event that never had a session', async () => {
     vi.setSystemTime(ENDED)
     const { ctx, emits, watermarks } = await makeCtx({
@@ -420,8 +468,8 @@ describe('runEventExport', () => {
     const { ctx, log, watermarks } = await makeCtx({
       files: {
         all: allSheet(
-          ALL_ROWS.map((row) => [
-            ...row,
+          ALL_ROWS.map((row, index) => [
+            ...(index === 2 ? [...row.slice(0, 7), null, ...row.slice(8)] : row),
             ...Array(ALL_HEADERS.length - row.length).fill(null),
             'x',
           ]),
@@ -431,7 +479,12 @@ describe('runEventExport', () => {
       },
       watermark: watermarkAt(new Date('2026-03-21T08:00:00.000Z'), {
         lastGoodRun: {
-          all: { ...ALL_PROFILE, columns: [...ALL_PROFILE.columns, 'Company'], rowCount: 10 },
+          all: {
+            ...ALL_PROFILE,
+            columns: [...ALL_PROFILE.columns, 'Company'],
+            rowCount: 10,
+            emailFillRate: 0.75,
+          },
           accepted: ACCEPTED_PROFILE,
         },
       }),
@@ -474,6 +527,7 @@ describe('runEventExport', () => {
       variant: 'all',
       testSubmissions: 0,
       noSpeaker: 1,
+      withoutEmail: 1,
       withoutSubmissionDate: 1,
     })
     const logged = JSON.stringify(
@@ -494,7 +548,7 @@ describe('runEventExport', () => {
       `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
       'Example',
       'Speaker',
-      null,
+      `speaker${index}@example.org`,
       null,
     ])
     const hasRunBudget = vi.fn().mockReturnValueOnce(true).mockReturnValue(false)
