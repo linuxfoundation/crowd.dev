@@ -14,7 +14,7 @@
       title="Data Quality Copilot"
       icon="message-exclamation"
       :is-collapsed="isCollapsed"
-      :to="{ path: '/data-quality-assistant' }"
+      :to="{ path: '/data-quality-assistant', query: { projectGroup: selectedProjectGroup?.id } }"
     />
     <div class="px-3 py-4">
       <app-lf-menu-project-group-selection
