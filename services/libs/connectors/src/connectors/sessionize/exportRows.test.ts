@@ -576,7 +576,6 @@ describe('compareWithLastGoodRun', () => {
         emailFillRate: 0.6,
         linkedinFillRate: 0.2,
       },
-      [],
       ['Speaker Title'],
     )
 
