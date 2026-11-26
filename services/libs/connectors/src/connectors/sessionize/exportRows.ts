@@ -46,7 +46,6 @@ export interface ParsedExport {
   rows: SessionizeExportRow[]
   profile: ExportProfile
   skipped: { testSubmissions: number; noSpeaker: number }
-  sensitiveColumns: string[]
   duplicateOptionalColumns: string[]
 }
 
@@ -56,7 +55,6 @@ export interface ExportWarning {
     | 'duplicate_optional_column'
     | 'fill_rate_drop'
     | 'row_count_drop'
-    | 'sensitive_column'
   detail: Record<string, unknown>
 }
 
@@ -113,22 +111,6 @@ const VARIANT_CONTRACTS: Record<ExportVariant, VariantContract> = {
     optional: [...OPTIONAL_SPEAKER_COLUMNS, 'durationMinutes'],
   },
 }
-
-const SENSITIVE_HEADER_WORDS = [
-  'gender',
-  'ethnic',
-  'race',
-  'under-represent',
-  'underrepresent',
-  'country',
-  'travel',
-  'disab',
-  'pronoun',
-  'nationality',
-  'birth',
-  'visa',
-  'person of color',
-]
 
 const TEST_SUBMISSION_TITLE = 'this is my test submission'
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -208,15 +190,6 @@ function contractColumns(headers: string[], contract: VariantContract): Contract
     }
   }
   return { indexes, duplicateOptionalColumns }
-}
-
-function sensitiveColumns(headers: string[]): string[] {
-  return headers
-    .map((header) => header.trim())
-    .filter((header) => {
-      const normalized = header.toLowerCase()
-      return SENSITIVE_HEADER_WORDS.some((word) => normalized.includes(word))
-    })
 }
 
 function where(rowNumber: number, key: ColumnKey): string {
@@ -378,7 +351,6 @@ function emptyExport(): ParsedExport {
     rows: [],
     profile: { columns: [], rowCount: 0, emailFillRate: 0, linkedinFillRate: 0 },
     skipped: { testSubmissions: 0, noSpeaker: 0 },
-    sensitiveColumns: [],
     duplicateOptionalColumns: [],
   }
 }
@@ -445,7 +417,6 @@ export function parseSessionizeExport(sheet: ExportSheet, variant: ExportVariant
       linkedinFillRate: fillRate(rows, (row) => row.linkedin !== null),
     },
     skipped,
-    sensitiveColumns: sensitiveColumns(sheet.headers),
     duplicateOptionalColumns,
   }
 }
@@ -475,16 +446,10 @@ export function compareWithLastGoodRun(
   current: ParsedExport,
   last: ExportProfile | null,
 ): ExportWarning[] {
-  const warnings: ExportWarning[] = [
-    ...current.sensitiveColumns.map((column) => ({
-      kind: 'sensitive_column' as const,
-      detail: { column },
-    })),
-    ...current.duplicateOptionalColumns.map((column) => ({
-      kind: 'duplicate_optional_column' as const,
-      detail: { column },
-    })),
-  ]
+  const warnings: ExportWarning[] = current.duplicateOptionalColumns.map((column) => ({
+    kind: 'duplicate_optional_column',
+    detail: { column },
+  }))
   if (last === null) {
     return warnings
   }

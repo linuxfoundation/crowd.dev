@@ -153,7 +153,6 @@ describe('parseSessionizeExport', () => {
       linkedinFillRate: 1,
     })
     expect(parsed.skipped).toEqual({ testSubmissions: 0, noSpeaker: 0 })
-    expect(parsed.sensitiveColumns).toEqual([])
     expect(parsed.duplicateOptionalColumns).toEqual([])
   })
 
@@ -209,7 +208,6 @@ describe('parseSessionizeExport', () => {
       rows: [],
       profile: { columns: [], rowCount: 0, emailFillRate: 0, linkedinFillRate: 0 },
       skipped: { testSubmissions: 0, noSpeaker: 0 },
-      sensitiveColumns: [],
       duplicateOptionalColumns: [],
     }
 
@@ -375,7 +373,7 @@ describe('parseSessionizeExport', () => {
     }
   })
 
-  it('reads only contract columns, skips duplicated optional ones and lists sensitive headers', () => {
+  it('reads only contract columns and skips duplicated optional ones', () => {
     const headers = [
       ...ALL_HEADERS,
       ' company ',
@@ -405,13 +403,6 @@ describe('parseSessionizeExport', () => {
     expect(parsed.rows[0].company).toBeNull()
     expect(parsed.profile.columns).not.toContain('Company')
     expect(parsed.duplicateOptionalColumns).toEqual(['Company'])
-    expect(parsed.sensitiveColumns).toEqual([
-      'Gender Identity',
-      'Person of color',
-      'Racial/ethnic background',
-      'Country of residence',
-      'Do you require travel funding?',
-    ])
   })
 
   it('computes fill rates over the kept rows', () => {
@@ -539,7 +530,6 @@ describe('compareWithLastGoodRun', () => {
 
   function parsed(
     profile: Partial<ExportProfile>,
-    sensitiveColumns: string[] = [],
     duplicateOptionalColumns: string[] = [],
   ): ParsedExport {
     return {
@@ -552,7 +542,6 @@ describe('compareWithLastGoodRun', () => {
         ...profile,
       },
       skipped: { testSubmissions: 0, noSpeaker: 0 },
-      sensitiveColumns,
       duplicateOptionalColumns,
     }
   }
@@ -564,16 +553,10 @@ describe('compareWithLastGoodRun', () => {
     linkedinFillRate: 0.5,
   }
 
-  it('warns only about sensitive and duplicated columns without a last good run', () => {
+  it('warns only about duplicated columns without a last good run', () => {
     expect(
-      compareWithLastGoodRun(
-        parsed({ rowCount: 1, emailFillRate: 0 }, ['Gender Identity'], ['Company']),
-        null,
-      ),
-    ).toEqual([
-      { kind: 'sensitive_column', detail: { column: 'Gender Identity' } },
-      { kind: 'duplicate_optional_column', detail: { column: 'Company' } },
-    ])
+      compareWithLastGoodRun(parsed({ rowCount: 1, emailFillRate: 0 }, ['Company']), null),
+    ).toEqual([{ kind: 'duplicate_optional_column', detail: { column: 'Company' } }])
   })
 
   it('stays quiet when nothing dropped', () => {
