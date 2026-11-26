@@ -26,8 +26,10 @@ import {
   reassertUnitClaim,
   recordRunFailure,
   recordRunFinished,
+  recordRunSuccess,
   recordRunTimeout,
   renewRunningUnitLease,
+  rescheduleUnit,
   reviveDeadLetteredSyncUnits,
   upsertSyncUnits,
 } from './syncUnits'
@@ -559,6 +561,47 @@ describe('renewRunningUnitLease', () => {
 
     expect(await readClaimState(qx, id)).toEqual(before)
   })
+})
+
+describe('rescheduleUnit', () => {
+  const DEFERRED_RUN_AT = new Date(Date.now() + 60_000)
+  const CADENCE_RUN_AT = new Date(Date.now() + 3_600_000)
+
+  test.for([
+    [false, DEFERRED_RUN_AT],
+    [true, CADENCE_RUN_AT],
+  ] as const)(
+    'defers a re-claimed lapsed unit only while no run has recorded its end (run finished: %s)',
+    async ([runFinishedAfterClaim, expectedNextRunAt], { qx }) => {
+      const integrationId = await createIntegration(qx)
+      const id = await createSyncUnit(qx, integrationId, {
+        channelName: 'repo',
+        syncName: 'issues',
+        watermark: { cursor: 'before' },
+      })
+      await setClaimState(qx, id, { lockedAgo: '6 minutes', nextRunAgo: '1 minute' })
+      expect((await claimDueUnits(qx, 100)).find((unit) => unit.id === id)?.leaseLapsed).toBe(true)
+      if (runFinishedAfterClaim) {
+        await recordRunSuccess(
+          qx,
+          id,
+          { watermark: { cursor: 'after' }, emittedCount: 3, complete: true },
+          CADENCE_RUN_AT,
+        )
+      }
+
+      await rescheduleUnit(qx, id, DEFERRED_RUN_AT)
+
+      const state = await readClaimState(qx, id)
+      expect([state.lockedAgoSeconds, new Date(state.nextRunAt).toISOString()]).toEqual([
+        null,
+        expectedNextRunAt.toISOString(),
+      ])
+      expect((await readUnitById(qx, id)).watermark).toEqual({
+        cursor: runFinishedAfterClaim ? 'after' : 'before',
+      })
+    },
+  )
 })
 
 describe('claimDueUnits', () => {
