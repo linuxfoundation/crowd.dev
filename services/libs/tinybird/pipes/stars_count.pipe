@@ -70,8 +70,7 @@ SQL >
                     {% if defined(repos) %}
                         AND channel IN (SELECT channel FROM repos_to_channels)
                     {% end %}
-                    AND timestamp
-                    < {{ DateTime(startDate, description="Range start", required=False) }}
+                    AND timestamp < {{ DateTime(startDate, description="Range start", required=False) }}
             )
         SELECT
             toInt64(coalesce((SELECT total FROM github_before), 0))
