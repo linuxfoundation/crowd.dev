@@ -288,12 +288,18 @@ function speakerIdentities(
 ): SessionizeMember['identities'] {
   const handle = linkedinHandle(row.linkedin)
   return [
-    ...[MemberIdentityType.USERNAME, MemberIdentityType.EMAIL].map((type) => ({
+    {
       platform: PlatformType.SESSIONIZE,
-      type,
+      type: MemberIdentityType.USERNAME,
       value: email,
-      verified: true as const,
-    })),
+      verified: true,
+    },
+    {
+      platform: PlatformType.SESSIONIZE,
+      type: MemberIdentityType.EMAIL,
+      value: email,
+      verified: true,
+    },
     ...(handle
       ? [
           {
