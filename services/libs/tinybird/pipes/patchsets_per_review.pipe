@@ -62,7 +62,7 @@ SQL >
         {% end %}
         {% if defined(endDate) %}
             AND openedAt
-            <= {{
+            < {{
                 DateTime(
                     endDate,
                     description="Filter changesets opened before this timestamp",

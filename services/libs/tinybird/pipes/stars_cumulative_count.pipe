@@ -61,7 +61,7 @@ SQL >
 
 NODE stars_gitlab_summary
 DESCRIPTION >
-    No-granularity mode: total non-GitHub star events up to `endDate` (or all-time).
+    No-granularity mode: total non-GitHub star events before `endDate` (or all-time).
 
 SQL >
     %
@@ -89,7 +89,7 @@ SQL >
             {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
             {% if defined(endDate) %}
                 AND timestamp
-                <= {{ DateTime(endDate, description="Cumulative as of date", required=False) }}
+                < {{ DateTime(endDate, description="Cumulative as of date", required=False) }}
             {% end %}
     {% else %} SELECT 0 AS gitlabCumulativeStars
     {% end %}
@@ -170,7 +170,7 @@ SQL >
                             {% end %}
                             {% if defined(endDate) %}
                                 AND timestamp
-                                <= {{ DateTime(endDate, description="Filter before", required=False) }}
+                                < {{ DateTime(endDate, description="Filter before", required=False) }}
                             {% end %}
                     ) af
                     ON CASE
