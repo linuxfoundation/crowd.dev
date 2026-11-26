@@ -137,10 +137,18 @@ const FILL_RATE_TOLERANCE = 1e-9
 
 type ColumnIndexes = Partial<Record<ColumnKey, number>>
 
-type SessionFields = Pick<
-  SessionizeExportRow,
-  'sessionId' | 'title' | 'status' | 'dateSubmitted' | 'room' | 'scheduledAt' | 'durationMinutes'
->
+const SESSION_COLUMNS = [
+  'title',
+  'status',
+  'dateSubmitted',
+  'room',
+  'scheduledAt',
+  'durationMinutes',
+] as const satisfies readonly ColumnKey[]
+
+type SessionKey = (typeof SESSION_COLUMNS)[number]
+
+type SessionFields = Pick<SessionizeExportRow, 'sessionId' | SessionKey>
 
 interface ContractColumns {
   indexes: ColumnIndexes
@@ -265,13 +273,10 @@ function readSessionId(read: RowReader, rowNumber: number): string {
   return value
 }
 
-function readStatus(read: RowReader, rowNumber: number, inherited: SessionizeStatus | undefined) {
+function readKnownStatus(read: RowReader, rowNumber: number): SessionizeStatus | null {
   const status = read.text('status')
   if (status === null) {
-    if (inherited === undefined) {
-      throw contractError(`data row ${rowNumber} starts a session without a Status`)
-    }
-    return inherited
+    return null
   }
   const known = SESSIONIZE_STATUSES.find((candidate) => candidate === status)
   if (known === undefined) {
@@ -280,31 +285,59 @@ function readStatus(read: RowReader, rowNumber: number, inherited: SessionizeSta
   return known
 }
 
-function readTitle(read: RowReader, rowNumber: number, inherited: string | undefined): string {
-  const title = read.text('title') ?? inherited
-  if (title === undefined) {
+function readFirstTitle(read: RowReader, rowNumber: number): string {
+  const title = read.text('title')
+  if (title === null) {
     throw contractError(`data row ${rowNumber} starts a session without a Title`)
   }
   return title
 }
 
-function readSessionFields(
+function readFirstStatus(
+  read: RowReader,
+  rowNumber: number,
+  variant: ExportVariant,
+): SessionizeStatus {
+  if (variant === 'accepted') {
+    return 'Accepted'
+  }
+  const status = readKnownStatus(read, rowNumber)
+  if (status === null) {
+    throw contractError(`data row ${rowNumber} starts a session without a Status`)
+  }
+  return status
+}
+
+function readFirstSessionRow(
   read: RowReader,
   rowNumber: number,
   identity: Pick<SessionFields, 'sessionId' | 'title'>,
   variant: ExportVariant,
-  inherited: SessionFields | undefined,
 ): SessionFields {
-  const isAll = variant === 'all'
   return {
     ...identity,
-    status: isAll ? readStatus(read, rowNumber, inherited?.status) : 'Accepted',
-    dateSubmitted: isAll
-      ? (read.timestamp('dateSubmitted') ?? inherited?.dateSubmitted ?? null)
-      : null,
-    room: read.text('room') ?? inherited?.room ?? null,
-    scheduledAt: read.timestamp('scheduledAt') ?? inherited?.scheduledAt ?? null,
-    durationMinutes: read.minutes('durationMinutes') ?? inherited?.durationMinutes ?? null,
+    status: readFirstStatus(read, rowNumber, variant),
+    dateSubmitted: read.timestamp('dateSubmitted'),
+    room: read.text('room'),
+    scheduledAt: read.timestamp('scheduledAt'),
+    durationMinutes: read.minutes('durationMinutes'),
+  }
+}
+
+function checkLaterSessionRow(read: RowReader, rowNumber: number, first: SessionFields): void {
+  const cells: Record<SessionKey, string | number | null> = {
+    title: read.text('title'),
+    status: readKnownStatus(read, rowNumber),
+    dateSubmitted: read.timestamp('dateSubmitted'),
+    room: read.text('room'),
+    scheduledAt: read.timestamp('scheduledAt'),
+    durationMinutes: read.minutes('durationMinutes'),
+  }
+  for (const key of SESSION_COLUMNS) {
+    const value = cells[key]
+    if (value !== null && value !== first[key]) {
+      throw contractError(`${where(rowNumber, key)} differs from the first row of its session`)
+    }
   }
 }
 
@@ -316,7 +349,7 @@ function readSpeakerId(read: RowReader, rowNumber: number): string | null {
   if (typeof speakerId !== 'string' || !GUID.test(speakerId)) {
     throw contractError(`${where(rowNumber, 'speakerId')} is not a GUID`)
   }
-  return speakerId
+  return speakerId.toLowerCase()
 }
 
 function isTestSubmission(title: string): boolean {
@@ -364,22 +397,30 @@ export function parseSessionizeExport(sheet: ExportSheet, variant: ExportVariant
   const rows: SessionizeExportRow[] = []
   const skipped = { testSubmissions: 0, noSpeaker: 0 }
   const seenPairs = new Set<string>()
-  let previous: Pick<SessionFields, 'sessionId' | 'title'> | undefined
-  let session: SessionFields | undefined
+  const sessions = new Map<string, SessionFields>()
+  const testSessionIds = new Set<string>()
 
   for (const [index, row] of sheet.rows.entries()) {
     const rowNumber = index + 1
     const read = rowReader(row, indexes, rowNumber)
     const sessionId = readSessionId(read, rowNumber)
-    const continues = previous?.sessionId === sessionId
-    const title = readTitle(read, rowNumber, continues ? previous?.title : undefined)
-    previous = { sessionId, title }
-    if (isTestSubmission(title)) {
+    if (testSessionIds.has(sessionId)) {
       skipped.testSubmissions++
       continue
     }
-    const inherited = continues && session?.sessionId === sessionId ? session : undefined
-    session = readSessionFields(read, rowNumber, previous, variant, inherited)
+    let session = sessions.get(sessionId)
+    if (session === undefined) {
+      const title = readFirstTitle(read, rowNumber)
+      if (isTestSubmission(title)) {
+        testSessionIds.add(sessionId)
+        skipped.testSubmissions++
+        continue
+      }
+      session = readFirstSessionRow(read, rowNumber, { sessionId, title }, variant)
+      sessions.set(sessionId, session)
+    } else {
+      checkLaterSessionRow(read, rowNumber, session)
+    }
     const speakerId = readSpeakerId(read, rowNumber)
     if (speakerId === null) {
       skipped.noSpeaker++

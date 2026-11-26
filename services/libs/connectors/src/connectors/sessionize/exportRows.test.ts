@@ -47,6 +47,7 @@ const ACCEPTED_HEADERS = [
 const SPEAKER_A = '0a1b2c3d-1111-4aaa-8bbb-000000000001'
 const SPEAKER_B = '0a1b2c3d-1111-4aaa-8bbb-000000000002'
 const SPEAKER_C = '0a1b2c3d-1111-4aaa-8bbb-000000000003'
+const SPEAKER_D = '0a1b2c3d-1111-4aaa-8bbb-00000000000d'
 
 const SUBMITTED = new Date(Date.UTC(2027, 2, 4, 14, 30))
 
@@ -222,7 +223,7 @@ describe('parseSessionizeExport', () => {
     }
   })
 
-  it('groups speaker rows by Session Id, inheriting the empty session cells', () => {
+  it('groups rows by Session Id, taking the session cells from its first row', () => {
     const parsed = parseSessionizeExport(
       allSheet([
         talk(),
@@ -240,6 +241,12 @@ describe('parseSessionizeExport', () => {
           'Date Submitted': null,
           'Speaker Id': SPEAKER_C,
         }),
+        {
+          'Session Id': 501,
+          Title: 'A made-up talk',
+          Status: 'Accepted',
+          'Speaker Id': SPEAKER_D.toUpperCase(),
+        },
       ]),
       'all',
     )
@@ -273,6 +280,13 @@ describe('parseSessionizeExport', () => {
         status: 'Waitlisted',
         dateSubmitted: null,
         speakerId: SPEAKER_C,
+      },
+      {
+        sessionId: '501',
+        title: 'A made-up talk',
+        status: 'Accepted',
+        dateSubmitted: '2027-03-04T14:30:00.000Z',
+        speakerId: SPEAKER_D,
       },
     ])
   })
@@ -321,9 +335,28 @@ describe('parseSessionizeExport', () => {
       'Date Submitted',
     ],
     [
-      'a duplicate session and speaker pair',
-      [talk(), { 'Session Id': 501, 'Speaker Id': SPEAKER_A }],
+      'a later row with another status',
+      [talk(), { 'Session Id': 501, 'Speaker Id': SPEAKER_B, Status: 'Declined' }],
       'data row 2',
+      'column "Status"',
+    ],
+    [
+      'a later row dating an undated session',
+      [
+        talk({ 'Date Submitted': null }),
+        { 'Session Id': 501, 'Speaker Id': SPEAKER_B, 'Date Submitted': SUBMITTED },
+      ],
+      'data row 2',
+      'column "Date Submitted"',
+    ],
+    [
+      'a session and speaker pair repeated in another letter case',
+      [
+        talk(),
+        talk({ 'Session Id': 502, 'Speaker Id': SPEAKER_B }),
+        { 'Session Id': 501, 'Speaker Id': SPEAKER_A.toUpperCase() },
+      ],
+      'data row 3',
       'Speaker Id',
     ],
   ])('refuses %s, naming the row and column', (_, rows, rowLabel, detail) => {
@@ -331,7 +364,7 @@ describe('parseSessionizeExport', () => {
 
     expect(err.message).toContain(rowLabel)
     expect(err.message).toContain(detail)
-    for (const cellText of ['ada', '2027-03-04 14:30', 'Maybe Later', 'test-1', 'spk-1']) {
+    for (const cellText of ['ada', '2027-03-04', 'Maybe Later', 'Declined', 'test-1', 'spk-1']) {
       expect(err.message).not.toContain(cellText)
     }
   })
