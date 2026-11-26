@@ -212,7 +212,9 @@ export function createTokenPool(
         }
         return {
           token: null,
-          mintRetryAt: err.options?.resumeAt ?? new Date(nowMs + MINT_RETRY_DELAY_MS),
+          mintRetryAt: new Date(
+            Math.max(err.options?.resumeAt?.getTime() ?? 0, Date.now() + MINT_RETRY_DELAY_MS),
+          ),
         }
       }
       throw err
@@ -317,13 +319,14 @@ export function createTokenPool(
         logAcquired(id, preferredEntryId)
         return { id, value: token }
       }
-      const resumeAt = earliestDate([
-        earliestParkedUntil(states, nowMs),
-        earliestBudgetResetAt,
-        earliestMintRetryAt,
-      ])
+      const resumeAt = earliestDate([earliestParkedUntil(states, nowMs), earliestBudgetResetAt])
       if (resumeAt) {
         throw new RateLimitError('token pool exhausted', { resumeAt })
+      }
+      if (earliestMintRetryAt) {
+        throw new RateLimitError('token pool has no usable token, waiting to retry a failed mint', {
+          resumeAt: earliestMintRetryAt,
+        })
       }
       throw new ProviderAuthError('token pool empty')
     },

@@ -87,6 +87,10 @@ describe('token pool acquire', () => {
   const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs)
   const exhaustedUntil = (resumeAt: Date) =>
     new RateLimitError('token pool exhausted', { resumeAt })
+  const retryMintAt = (resumeAt: Date) =>
+    new RateLimitError('token pool has no usable token, waiting to retry a failed mint', {
+      resumeAt,
+    })
   const empty = new ProviderAuthError('token pool empty')
 
   beforeEach(() => {
@@ -102,25 +106,31 @@ describe('token pool acquire', () => {
       'a transient sign-in failure of the only entry waits for the mint retry delay',
       { only: {} },
       { only: new ProviderUnavailableError('sign-in page down') },
-      exhaustedUntil(at(MINT_RETRY_DELAY_MS)),
+      retryMintAt(at(MINT_RETRY_DELAY_MS)),
     ],
     [
-      'a rate-limited mint passes on when it may retry',
+      'a rate-limited mint that may retry sooner still waits for the mint retry delay',
       { only: {} },
       { only: new RateLimitError('slow down', { resumeAt: at(120_000) }) },
-      exhaustedUntil(at(120_000)),
+      retryMintAt(at(MINT_RETRY_DELAY_MS)),
     ],
     [
-      'a parked entry that frees up before the mint retry wins',
-      { parked: { parkedUntil: at(120_000).toISOString() }, failing: {} },
+      'a rate-limited mint that must wait longer passes that time on',
+      { only: {} },
+      { only: new RateLimitError('slow down', { resumeAt: at(900_000) }) },
+      retryMintAt(at(900_000)),
+    ],
+    [
+      'a parked entry decides the wait even when it frees up after the mint retry',
+      { parked: { parkedUntil: at(900_000).toISOString() }, failing: {} },
       { failing: new ProviderUnavailableError('sign-in page down') },
-      exhaustedUntil(at(120_000)),
+      exhaustedUntil(at(900_000)),
     ],
     [
       'one quarantined and one transiently failing entry waits for the mint retry delay',
       { broken: { quarantined: true }, failing: {} },
       { failing: new RateLimitError('slow down') },
-      exhaustedUntil(at(MINT_RETRY_DELAY_MS)),
+      retryMintAt(at(MINT_RETRY_DELAY_MS)),
     ],
     [
       'a rejected sign-in quarantines the entry and leaves the pool empty',
