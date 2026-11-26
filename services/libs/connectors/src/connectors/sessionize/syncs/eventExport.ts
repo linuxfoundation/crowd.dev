@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { timeout } from '@crowd/common'
 
 import type { EmitOverrides } from '../../../emit'
-import { ConnectorCodeError } from '../../../http/errors'
+import { ConnectorCodeError, ProviderContractError } from '../../../http/errors'
 import type { SyncContext, SyncOutcome } from '../../../types'
 import type { SessionizeDeps } from '../deps'
 import {
@@ -13,7 +13,13 @@ import {
   readExportSheet,
 } from '../exportFile'
 import { compareWithLastGoodRun, exportProfileSchema, parseSessionizeExport } from '../exportRows'
-import type { ExportProfile, ExportVariant, ParsedExport, SessionizeExportRow } from '../exportRows'
+import type {
+  ExportProfile,
+  ExportVariant,
+  ExportWarning,
+  ParsedExport,
+  SessionizeExportRow,
+} from '../exportRows'
 import { spokeAtSessionActivity, submittedSessionActivity } from '../mapper'
 import type { SessionizeActivity, SessionizeEventContext } from '../mapper'
 
@@ -78,17 +84,39 @@ async function loadExport(
   eventKey: string,
   variant: ExportVariant,
   lastGoodRun: ExportProfile | null,
-): Promise<ParsedExport> {
+): Promise<{ parsed: ParsedExport; warnings: ExportWarning[] }> {
   await timeout(SESSIONIZE_DOWNLOAD_GAP_MS)
   const file = await downloadSessionizeExport(ctx.http, EXPORT_PATHS[variant](eventKey))
   const parsed = parseSessionizeExport(await readExportSheet(file), variant)
-  for (const { kind, detail } of compareWithLastGoodRun(parsed, lastGoodRun)) {
+  const warnings = compareWithLastGoodRun(parsed, lastGoodRun)
+  for (const { kind, detail } of warnings) {
     ctx.log.warn(
       { event: 'sessionize_export_warning', eventKey, variant, kind, detail },
       'sessionize export needs a look',
     )
   }
-  return parsed
+  return { parsed, warnings }
+}
+
+function assertFinalLoadComplete(
+  eventKey: string,
+  all: ParsedExport,
+  allWarnings: ExportWarning[],
+  accepted: ParsedExport,
+): void {
+  const rowCountDrop = allWarnings.find(({ kind }) => kind === 'row_count_drop')
+  if (rowCountDrop) {
+    throw new ProviderContractError(
+      `sessionize event ${eventKey} has ended but its all sessions export lost more than half of its rows`,
+      { cause: rowCountDrop.detail },
+    )
+  }
+  const acceptedInAll = all.rows.filter(({ status }) => status === 'Accepted').length
+  if (acceptedInAll > 0 && accepted.rows.length === 0) {
+    throw new ProviderContractError(
+      `sessionize event ${eventKey} has ended with ${acceptedInAll} accepted rows but an empty accepted export`,
+    )
+  }
 }
 
 function logSkipped(
@@ -173,10 +201,18 @@ export async function runEventExport(ctx: SyncContext<SessionizeDeps>): Promise<
   const ended = hasEventEnded(event.eventEnd, startedAt)
   const since = checkpointSince(previous, ended)
 
-  const all = await loadExport(ctx, eventKey, 'all', previous?.lastGoodRun.all ?? null)
+  const { parsed: all, warnings: allWarnings } = await loadExport(
+    ctx,
+    eventKey,
+    'all',
+    previous?.lastGoodRun.all ?? null,
+  )
   const accepted = ended
-    ? await loadExport(ctx, eventKey, 'accepted', previous?.lastGoodRun.accepted ?? null)
+    ? (await loadExport(ctx, eventKey, 'accepted', previous?.lastGoodRun.accepted ?? null)).parsed
     : null
+  if (accepted !== null) {
+    assertFinalLoadComplete(eventKey, all, allWarnings, accepted)
+  }
   const activities = eventActivities(ctx, event, all, accepted, since)
 
   const overrides: EmitOverrides | undefined = since === null ? { backfill: true } : undefined

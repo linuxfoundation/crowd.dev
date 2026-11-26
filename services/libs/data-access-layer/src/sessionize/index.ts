@@ -23,12 +23,10 @@ export interface IStoredSessionizeEventMapping extends ISessionizeEventDecisionI
   deactivatedAt: string | null
 }
 
-export interface ISessionizeEvent {
-  eventKey: string
-  eventName: string
-  eventStart: string
-  eventEnd: string
-}
+export type ISessionizeEvent = Pick<
+  ISessionizeEventDecisionInput,
+  'eventKey' | 'eventName' | 'eventStart' | 'eventEnd'
+>
 
 export type SessionizeDecisionOutcome = 'inserted' | 'updated' | 'unchanged' | 'protected'
 

@@ -358,6 +358,17 @@ describe('runEventExport', () => {
     },
   )
 
+  it('finishes an ended event that never had a session', async () => {
+    vi.setSystemTime(ENDED)
+    const { ctx, emits, watermarks } = await makeCtx({
+      files: { all: allSheet([]), accepted: acceptedSheet([]) },
+    })
+
+    expect(await runEventExport(ctx)).toEqual({ complete: true, finished: true })
+    expect(types(emits)).toEqual([])
+    expect(watermarks).toMatchObject([{ finished: true }])
+  })
+
   it.each([
     [
       'the all sessions file',
@@ -377,11 +388,24 @@ describe('runEventExport', () => {
       },
       [`get ${ALL_PATH}`, `get ${ACCEPTED_PATH}`],
     ],
+    [
+      'the all sessions file of an ended event lost more than half of its rows',
+      ENDED,
+      { all: allSheet(ALL_ROWS.slice(0, 1)), accepted: acceptedSheet() },
+      [`get ${ALL_PATH}`, `get ${ACCEPTED_PATH}`],
+      watermarkAt(new Date('2026-03-21T08:00:00.000Z')),
+    ],
+    [
+      'the accepted file of an ended event is empty while sessions are accepted',
+      ENDED,
+      { all: allSheet(), accepted: acceptedSheet([]) },
+      [`get ${ALL_PATH}`, `get ${ACCEPTED_PATH}`],
+    ],
   ])(
     'emits nothing and commits nothing when %s breaks the contract',
-    async (_, now, files, requests) => {
+    async (_, now, files, requests, watermark: Record<string, unknown> | null = null) => {
       vi.setSystemTime(now)
-      const { ctx, emits, watermarks } = await makeCtx({ files })
+      const { ctx, emits, watermarks } = await makeCtx({ files, watermark })
 
       expect(await failure(runEventExport(ctx))).toBeInstanceOf(ProviderContractError)
       expect(steps.filter((step) => step.startsWith('get'))).toEqual(requests)
@@ -391,7 +415,7 @@ describe('runEventExport', () => {
   )
 
   it('logs warnings and skipped counts with counts and column names only', async () => {
-    vi.setSystemTime(ENDED)
+    vi.setSystemTime(new Date('2026-03-21T12:00:00.000Z'))
     const sensitiveHeaders = [...ALL_HEADERS, 'Gender identity']
     const { ctx, log } = await makeCtx({
       files: {

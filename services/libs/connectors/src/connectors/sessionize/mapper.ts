@@ -7,6 +7,7 @@ import {
   privateSuffix,
   registrableDomain,
 } from '@crowd/common'
+import type { ISessionizeEvent } from '@crowd/data-access-layer/src/sessionize'
 import {
   SESSIONIZE_GRID,
   SessionizeActivityType,
@@ -21,12 +22,7 @@ import {
 
 import type { SessionizeExportRow } from './exportRows'
 
-export interface SessionizeEventContext {
-  eventKey: string
-  eventName: string
-  eventStart: string
-  eventEnd: string
-}
+export type SessionizeEventContext = ISessionizeEvent
 
 const sessionizeIdentitySchema = z.object({
   platform: z.literal(PlatformType.SESSIONIZE),

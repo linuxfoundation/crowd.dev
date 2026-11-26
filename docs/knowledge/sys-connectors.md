@@ -57,6 +57,9 @@ per Sessionize event and downloads the organizer's Excel exports.
   the event's local time without a zone, hence the margin.
 - Ended event (two days after its end date): one full load of all submissions plus a spoke-at
   activity per accepted speaker, then the unit stops (`finished`). It is not loaded again.
+  It is not finished on an export that looks broken: an all-sessions export with less than half
+  the rows of the last good run, or accepted sessions with an empty accepted export, fail the run
+  with `provider.contract`.
 - Full loads pass `backfill: true`. A run that runs out of budget commits nothing and repeats.
 - A 403 on an export means the account is not on the event's content team: the unit fails with
   `provider.access_denied` and is dead-lettered.
