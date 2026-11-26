@@ -2,7 +2,12 @@ import type { Logger } from '@crowd/logging'
 import type { RedisClient } from '@crowd/redis'
 
 import type { IPooledToken } from '../http/client'
-import { ConnectorError, ProviderAuthError, RateLimitError } from '../http/errors'
+import {
+  ConnectorError,
+  ProviderAuthError,
+  ProviderUnavailableError,
+  RateLimitError,
+} from '../http/errors'
 
 export const PROBE_STALENESS_MS = 90_000
 const TOKEN_EXPIRY_MARGIN_MS = 120_000
@@ -44,6 +49,11 @@ interface IEntryState {
 }
 
 type EntryStateUpdate = { [K in keyof IEntryState]?: IEntryState[K] | null }
+
+interface ITokenResolution {
+  token: string | null
+  transientMintError?: ConnectorError
+}
 
 // atomic get-merge-set per entry; JSON null in the update deletes the field
 const MERGE_ENTRY_STATE_SCRIPT = `
@@ -167,20 +177,20 @@ export function createTokenPool(
     entryId: string,
     state: IEntryState,
     nowMs: number,
-  ): Promise<string | null> {
+  ): Promise<ITokenResolution> {
     const cached = usableToken(state, nowMs)
     if (cached) {
-      return cached
+      return { token: cached }
     }
     const mint = options?.mintToken
     if (!mint) {
-      return null
+      return { token: null }
     }
     try {
       const { token, expiresAt } = await mint(entryId)
       await updateState(entryId, { token, tokenExpiresAtMs: new Date(expiresAt).getTime() })
       log?.info({ event: 'pool_token_minted', entryId, expiresAt }, 'pool token minted')
-      return token
+      return { token }
     } catch (err) {
       if (err instanceof ConnectorError) {
         if (err.errorClass === 'provider.auth' || err.errorClass === 'provider.contract') {
@@ -194,13 +204,13 @@ export function createTokenPool(
             },
             'pool entry quarantined on mint failure',
           )
-          return null
+          return { token: null }
         }
         log?.warn(
           { event: 'pool_mint_failed', entryId, errorClass: err.errorClass, errMsg: err.message },
           'token mint failed, skipping entry',
         )
-        return null
+        return { token: null, transientMintError: err }
       }
       throw err
     }
@@ -266,6 +276,8 @@ export function createTokenPool(
           : lruOrder
       const probe = options?.probeBudget
       let earliestBudgetResetAt: Date | null = null
+      let transientMintError: ConnectorError | null = null
+      let earliestMintResumeAt: Date | null = null
       for (const id of ordered) {
         const state = states.get(id)
         if (!state) {
@@ -279,10 +291,18 @@ export function createTokenPool(
           logSkip(id, 'parked', { parkedUntil: state.parkedUntil })
           continue
         }
-        const token = await ensureUsableToken(id, state, nowMs)
-        if (!token) {
+        const resolution = await ensureUsableToken(id, state, nowMs)
+        if (!resolution.token) {
+          if (resolution.transientMintError) {
+            transientMintError = resolution.transientMintError
+            earliestMintResumeAt = earliestDate([
+              earliestMintResumeAt,
+              transientMintError.options?.resumeAt ?? null,
+            ])
+          }
           continue
         }
+        const token = resolution.token
         if (probe) {
           const bucket = await loadBucket(probe, id, token, nowMs)
           if (bucket && bucket.remaining <= 0) {
@@ -301,13 +321,19 @@ export function createTokenPool(
         logAcquired(id, preferredEntryId)
         return { id, value: token }
       }
-      const parkedResumeAt = earliestParkedUntil(states, nowMs)
-      const resumeAt =
-        parkedResumeAt && earliestBudgetResetAt
-          ? new Date(Math.min(parkedResumeAt.getTime(), earliestBudgetResetAt.getTime()))
-          : (parkedResumeAt ?? earliestBudgetResetAt)
+      const resumeAt = earliestDate([
+        earliestParkedUntil(states, nowMs),
+        earliestBudgetResetAt,
+        earliestMintResumeAt,
+      ])
       if (resumeAt) {
         throw new RateLimitError('token pool exhausted', { resumeAt })
+      }
+      if (transientMintError) {
+        throw new ProviderUnavailableError(
+          `token pool has no usable token, minting failed with ${transientMintError.errorClass}: ${transientMintError.message}`,
+          { cause: transientMintError },
+        )
       }
       throw new ProviderAuthError('token pool empty')
     },
@@ -373,4 +399,11 @@ export function createTokenPool(
       return earliestParkedUntil(states, Date.now())
     },
   }
+}
+
+function earliestDate(dates: (Date | null)[]): Date | null {
+  return dates.reduce<Date | null>(
+    (earliest, date) => (date && (!earliest || date < earliest) ? date : earliest),
+    null,
+  )
 }
