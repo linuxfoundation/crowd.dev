@@ -20,8 +20,6 @@ DESCRIPTION >
     - Without granularity: `issueCount` (total count)
     - With granularity: `startDate`, `endDate`, and `issueCount` for each time period
 
-TOKEN "insights-app-token" READ
-
 TAGS "Development metrics", "Widget", "Issues"
 
 NODE issues_by_state
@@ -52,7 +50,7 @@ SQL >
         {% end %}
         {% if defined(startDate) %}
             AND eventAt
-            > {{ DateTime(startDate, description="Filter state timestamp after", required=False) }}
+            >= {{ DateTime(startDate, description="Filter state timestamp after", required=False) }}
         {% end %}
         {% if defined(endDate) %}
             AND eventAt

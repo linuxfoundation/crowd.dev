@@ -8,8 +8,6 @@ DESCRIPTION >
     - `endDate`: Optional DateTime; only months starting before it are counted (e.g., '2026-10-31 00:00:00'). Defaults to now
     - Response: `country`, `flag`, `country_code`, `contributorCount` (the number of organizations), `contributorPercentage` (rounded, in percent)
 
-TOKEN "insights-app-token" READ
-
 TAGS "Report"
 
 NODE collection_contributors_geo_distribution_result

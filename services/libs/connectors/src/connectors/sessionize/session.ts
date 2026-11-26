@@ -5,6 +5,7 @@ import { getServiceChildLogger } from '@crowd/logging'
 
 import type { HttpResponse, IPooledToken } from '../../http/client'
 import {
+  ConnectorCodeError,
   ConnectorError,
   ProviderAuthError,
   ProviderUnavailableError,
@@ -29,6 +30,7 @@ const TRANSIENT_ERROR_CLASSES = new Set(['provider.unavailable', 'provider.rate_
 const ANTI_FORGERY_TOKEN_PATTERN =
   /<form[^>]*action="\/login\/classic"[^>]*>[\s\S]*?name="__RequestVerificationToken"[^>]*value="([^"]+)"/
 const SIGN_IN_FORM_PATTERN = /<form[^>]*action="\/login\/classic"/
+const ZIP_SIGNATURE = Buffer.from([0x50, 0x4b, 0x03, 0x04])
 
 const log = getServiceChildLogger('sessionizeSession')
 
@@ -42,10 +44,14 @@ interface SessionizeResponse {
 
 export async function signInToSessionize(
   credential: Credential,
+  maxAttempts = SESSIONIZE_SIGN_IN_MAX_ATTEMPTS,
 ): Promise<{ token: string; expiresAt: string }> {
   assertCredentialKind(credential, 'sessionize-organizer-account')
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new ConnectorCodeError(`sessionize sign-in needs at least 1 attempt, got ${maxAttempts}`)
+  }
   let lastError: ConnectorError | undefined
-  for (let attempt = 1; attempt <= SESSIONIZE_SIGN_IN_MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await requestSession(credential)
     } catch (err) {
@@ -57,13 +63,13 @@ export async function signInToSessionize(
         {
           event: 'sessionize_sign_in_retry',
           attempt,
-          maxAttempts: SESSIONIZE_SIGN_IN_MAX_ATTEMPTS,
+          maxAttempts,
           errorClass: err.errorClass,
           status: err.options?.status,
         },
         'sessionize sign-in failed with a transient error',
       )
-      if (attempt < SESSIONIZE_SIGN_IN_MAX_ATTEMPTS) {
+      if (attempt < maxAttempts) {
         await timeout(RETRY_BACKOFF_BASE_MS * 2 ** (attempt - 1))
       }
     }
@@ -99,6 +105,11 @@ export function applySessionizeCookie(
 export function interpretSessionizeResponse(response: HttpResponse): ConnectorError | null {
   if (isLoginRedirect(response.status, response.headers.location)) {
     return new ProviderAuthError('sessionize session rejected, redirected to the login page', {
+      status: response.status,
+    })
+  }
+  if (response.status === 200 && servesSignInForm(response.data)) {
+    return new ProviderAuthError('sessionize session rejected, served the sign-in page', {
       status: response.status,
     })
   }
@@ -217,6 +228,19 @@ function isSignInRefusal(response: SessionizeResponse): boolean {
     typeof response.data === 'string' &&
     SIGN_IN_FORM_PATTERN.test(response.data)
   )
+}
+
+function servesSignInForm(data: unknown): boolean {
+  if (typeof data === 'string') {
+    return SIGN_IN_FORM_PATTERN.test(data)
+  }
+  if (Buffer.isBuffer(data)) {
+    if (data.subarray(0, ZIP_SIGNATURE.length).equals(ZIP_SIGNATURE)) {
+      return false
+    }
+    return SIGN_IN_FORM_PATTERN.test(data.toString('utf8'))
+  }
+  return false
 }
 
 function isLoginRedirect(status: number, location: string | undefined): boolean {

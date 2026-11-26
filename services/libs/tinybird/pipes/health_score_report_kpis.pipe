@@ -10,8 +10,6 @@ DESCRIPTION >
     - `updated_at` — freshness timestamp: max `timestamp` from `tinybird.datasources_ops_log` for the
     last successful (`event_type = 'copy'`) copy into `project_insights_copy_ds`.
 
-TOKEN "insights-app-token" READ
-
 TAGS "Insights, Widget", "Health"
 
 NODE health_score_report_kpis_counts

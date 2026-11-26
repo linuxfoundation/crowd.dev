@@ -1,5 +1,5 @@
 import SequelizeRepository from '@/database/repositories/sequelizeRepository'
-import { Error400 } from '@crowd/common'
+import { getRequestedSegmentIds } from '@/middlewares/segmentMiddleware'
 import { findFakeOrganizationSuggestions } from '@crowd/data-access-layer/src/organizations'
 
 import Permissions from '../../security/permissions'
@@ -21,20 +21,15 @@ import PermissionChecker from '../../services/user/permissionChecker'
 export default async (req, res) => {
   new PermissionChecker(req).validateHas(Permissions.values.organizationRead)
 
-  const segmentId = SequelizeRepository.getSegmentIds(req)[0]
-  if (!segmentId) {
-    throw new Error400(req.language, 'member.segmentsRequired')
-  }
-
+  const segmentId = getRequestedSegmentIds(req)[0]
   const qx = SequelizeRepository.getQueryExecutor(req)
   const detail = String(req.query.detail) === 'true'
 
-  const payload = await findFakeOrganizationSuggestions(
-    qx,
+  const payload = await findFakeOrganizationSuggestions(qx, {
     segmentId,
-    Number(req.query.limit ?? 20),
-    Number(req.query.offset ?? 0),
-  )
+    limit: Number(req.query.limit ?? 20),
+    offset: Number(req.query.offset ?? 0),
+  })
 
   if (detail && payload.rows.length > 0) {
     const organizationService = new OrganizationService(req)

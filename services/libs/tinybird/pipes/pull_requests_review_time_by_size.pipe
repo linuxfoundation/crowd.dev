@@ -23,7 +23,7 @@ SQL >
         not empty(gitChangedLinesBucket) AND platform != 'gerrit'
         {% if defined(startDate) %}
             AND pra.reviewedAt
-            > {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}
+            >= {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}
         {% end %}
         {% if defined(endDate) %}
             AND pra.reviewedAt

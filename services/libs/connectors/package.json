@@ -11,6 +11,7 @@
     "@crowd/redis": "workspace:*",
     "@crowd/types": "workspace:*",
     "axios": "catalog:",
+    "exceljs": "catalog:",
     "jsonwebtoken": "^9.0.0",
     "zod": "^3.22.0"
   },

@@ -43,7 +43,7 @@ SQL >
         {% else %} AND channel IN (SELECT channel FROM repos_to_channels)
         {% end %}
         {% if defined(startDate) %}
-            AND openedAt > {{ DateTime(startDate, description="Filter after date", required=False) }}
+            AND openedAt >= {{ DateTime(startDate, description="Filter after date", required=False) }}
         {% end %}
         {% if defined(endDate) %}
             AND openedAt < {{ DateTime(endDate, description="Filter before date", required=False) }}

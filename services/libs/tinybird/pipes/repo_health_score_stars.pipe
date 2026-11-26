@@ -63,7 +63,7 @@ SQL >
                     AND channel NOT IN (SELECT channel FROM repos_to_channels_excluded)
                     {% if defined(endDate) %}
                         AND timestamp
-                        <= {{ DateTime(endDate, description="Cumulative as of date", required=False) }}
+                        < {{ DateTime(endDate, description="Cumulative as of date", required=False) }}
                     {% end %}
                 GROUP BY channel
             {% else %}

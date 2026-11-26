@@ -33,8 +33,6 @@ DESCRIPTION >
     snapshot to `argMax` over and reads as 0 stars for that repo, not "unknown" - undercounts
     early buckets until the star-snapshot backfill fully lands, never overcounts.
 
-TOKEN "insights-app-token" READ
-
 NODE stars_github_summary
 DESCRIPTION >
     No-granularity mode: GitHub total as of `endDate`, or the latest snapshots without it.
@@ -63,7 +61,7 @@ SQL >
 
 NODE stars_gitlab_summary
 DESCRIPTION >
-    No-granularity mode: total non-GitHub star events up to `endDate` (or all-time).
+    No-granularity mode: total non-GitHub star events before `endDate` (or all-time).
 
 SQL >
     %
@@ -91,7 +89,7 @@ SQL >
             {% if defined(repos) %} AND channel IN (SELECT channel FROM repos_to_channels) {% end %}
             {% if defined(endDate) %}
                 AND timestamp
-                <= {{ DateTime(endDate, description="Cumulative as of date", required=False) }}
+                < {{ DateTime(endDate, description="Cumulative as of date", required=False) }}
             {% end %}
     {% else %} SELECT 0 AS gitlabCumulativeStars
     {% end %}
@@ -132,7 +130,7 @@ SQL >
                     {% end %}
                     {% if defined(startDate) %}
                         AND timestamp
-                        <= {{ DateTime(startDate, description="Historical cutoff", required=False) }}
+                        < {{ DateTime(startDate, description="Historical cutoff", required=False) }}
                     {% else %} AND 1 = 0
                     {% end %}
             ),
@@ -168,11 +166,11 @@ SQL >
                             {% end %}
                             {% if defined(startDate) %}
                                 AND timestamp
-                                > {{ DateTime(startDate, description="Filter after", required=False) }}
+                                >= {{ DateTime(startDate, description="Filter after", required=False) }}
                             {% end %}
                             {% if defined(endDate) %}
                                 AND timestamp
-                                <= {{ DateTime(endDate, description="Filter before", required=False) }}
+                                < {{ DateTime(endDate, description="Filter before", required=False) }}
                             {% end %}
                     ) af
                     ON CASE

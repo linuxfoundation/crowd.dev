@@ -11,12 +11,19 @@ import {
   getSync,
   RepositoryRenamedError,
 } from '@crowd/connectors'
-import type { ConnectorHttp, Emitter, ErrorClass, SyncContext } from '@crowd/connectors'
+import type {
+  ConnectorHttp,
+  Emitter,
+  ErrorClass,
+  SyncContext,
+  SyncOutcome,
+} from '@crowd/connectors'
 import {
   getUnitById,
   parkUnit,
   reassertUnitClaim,
   recordRunFailure,
+  recordRunFinished,
   recordRunPartial,
   recordRunSuccess,
   recordRunTimeout,
@@ -36,7 +43,7 @@ import { applyGithubRenameWorkflowId } from '../githubLifecycle'
 import { svc } from '../main'
 import { RUN_BUDGET_MS } from '../runLimits'
 import { resolveRunSegmentId } from '../runSegment'
-import { cadenceRunAt, failureRunAt, shortDeferRunAt } from '../scheduling'
+import { cadenceRunAt, failureRunAt, requestedRunAt, shortDeferRunAt } from '../scheduling'
 import { SYNC_RUN_FAILURE_RECORDED } from '../syncRunFailure'
 import type { IOwnedGithubRename } from './githubLifecycleActivities'
 
@@ -84,6 +91,15 @@ async function startGithubRename(unit: ISyncUnit, currentUrl: string, log: Logge
       'failed to start the github rename workflow',
     )
   }
+}
+
+function nextRunAtFor(outcome: SyncOutcome, cadenceMinutes: number): Date {
+  if (outcome.complete && outcome.nextRunAt) {
+    return requestedRunAt(outcome.nextRunAt)
+  }
+  return outcome.complete || outcome.resumeAtCadence
+    ? cadenceRunAt(cadenceMinutes)
+    : shortDeferRunAt()
 }
 
 export async function executeSync(unitId: string): Promise<void> {
@@ -234,21 +250,19 @@ export async function executeSync(unitId: string): Promise<void> {
       log.info(runSummary({ outcome: 'deferred', complete: false, nextRunAt }), 'sync run summary')
       return
     }
-    const nextRunAt =
-      outcome.complete || outcome.resumeAtCadence
-        ? cadenceRunAt(sync.cadenceMinutes)
-        : shortDeferRunAt()
+    const runResult = {
+      watermark: committedWatermark ?? {},
+      emittedCount: emitter.emittedCount(),
+      complete: outcome.complete,
+    }
+    if (outcome.complete && outcome.finished) {
+      await recordRunFinished(qx, unitId, runResult)
+      log.info(runSummary({ outcome: 'finished', complete: true }), 'sync run summary')
+      return
+    }
+    const nextRunAt = nextRunAtFor(outcome, sync.cadenceMinutes)
 
-    await recordRunSuccess(
-      qx,
-      unitId,
-      {
-        watermark: committedWatermark ?? {},
-        emittedCount: emitter.emittedCount(),
-        complete: outcome.complete,
-      },
-      nextRunAt,
-    )
+    await recordRunSuccess(qx, unitId, runResult, nextRunAt)
     log.info(
       runSummary({ outcome: 'success', complete: outcome.complete, nextRunAt }),
       'sync run summary',

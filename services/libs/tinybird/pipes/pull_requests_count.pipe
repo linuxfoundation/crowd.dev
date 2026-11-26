@@ -18,8 +18,6 @@ DESCRIPTION >
     - Without granularity: `pullRequestCount` (total count)
     - With granularity: `startDate`, `endDate`, and `pullRequestCount` for each time period
 
-TOKEN "insights-app-token" READ
-
 TAGS "Development metrics", "Widget", "Pull requests"
 
 NODE pull_requests_by_state
@@ -56,7 +54,7 @@ SQL >
         {% end %}
         {% if defined(startDate) %}
             AND eventAt
-            > {{ DateTime(startDate, description="Filter state timestamp after", required=False) }}
+            >= {{ DateTime(startDate, description="Filter state timestamp after", required=False) }}
         {% end %}
         {% if defined(endDate) %}
             AND eventAt

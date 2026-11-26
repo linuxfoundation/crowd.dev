@@ -18,8 +18,6 @@ DESCRIPTION >
     - `max_pts` — the signal's max points, the same literal divisor used in every `pN_pct` column.
     - No parameters — this pipe is not scope-filtered.
 
-TOKEN "insights-app-token" READ
-
 TAGS "Insights, Widget", "Health"
 
 NODE health_score_report_signal_scores_tracked_repos

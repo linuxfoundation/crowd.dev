@@ -1,15 +1,22 @@
 import { createTokenPool, findManifest, mapWithConcurrency } from '@crowd/connectors'
 import {
   claimDueUnits,
+  countRunningUnits,
   renewRunningUnitLease,
   rescheduleUnit,
 } from '@crowd/data-access-layer/src/connectors'
 import type { IClaimedUnit } from '@crowd/data-access-layer/src/connectors'
 import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { RedisCache } from '@crowd/redis'
-import { WorkflowIdConflictPolicy, WorkflowIdReusePolicy } from '@crowd/temporal'
+import {
+  WorkflowIdConflictPolicy,
+  WorkflowIdReusePolicy,
+  WorkflowNotFoundError,
+} from '@crowd/temporal'
 
 import { svc } from '../main'
+import { applyRunCaps, releaseOrphan } from '../runCap'
+import { RUNNING_LOCK_MAX_AGE_MINUTES } from '../runLimits'
 import { shortDeferRunAt } from '../scheduling'
 import type { IAdmissionResult, IDispatchCounts, StartRunResult } from '../types'
 
@@ -31,17 +38,74 @@ export async function admitByBudget(units: IClaimedUnit[]): Promise<IAdmissionRe
     })
     return pool.hasHeadroom(manifest?.runCostEstimate ?? DEFAULT_RUN_ESTIMATE)
   })
-  const result = {
+  const byHeadroom = {
     admitted: units.filter((_, index) => headrooms[index]),
     deferred: units.filter((_, index) => !headrooms[index]),
   }
-  if (result.deferred.length > 0) {
+  if (byHeadroom.deferred.length > 0) {
     svc.log.info(
-      { unitIds: result.deferred.map((unit) => unit.id) },
+      { unitIds: byHeadroom.deferred.map((unit) => unit.id) },
       'units deferred: no token headroom',
     )
   }
-  return result
+
+  const caps = runCapsOf(units)
+  const cappedPlatforms = Object.keys(caps)
+  if (cappedPlatforms.length === 0) {
+    return byHeadroom
+  }
+
+  const liveUnitIds = await findLiveLapsedUnitIds(
+    units.filter((unit) => unit.leaseLapsed && caps[unit.platform] !== undefined),
+  )
+  const running = await countRunningUnits(
+    dbStoreQx(svc.postgres.writer),
+    cappedPlatforms,
+    units.map((unit) => unit.id),
+    RUNNING_LOCK_MAX_AGE_MINUTES,
+  )
+  const byRunCap = applyRunCaps(byHeadroom.admitted, units, caps, running, liveUnitIds)
+  if (byRunCap.deferred.length > 0) {
+    svc.log.info(
+      { unitIds: byRunCap.deferred.map((unit) => unit.id) },
+      'units deferred: platform run cap',
+    )
+  }
+  return {
+    admitted: byRunCap.admitted,
+    deferred: [
+      ...byHeadroom.deferred.map((unit) => releaseOrphan(unit, caps, liveUnitIds)),
+      ...byRunCap.deferred,
+    ],
+  }
+}
+
+async function findLiveLapsedUnitIds(lapsedUnits: IClaimedUnit[]): Promise<Set<string>> {
+  const live = await mapWithConcurrency(lapsedUnits, BUDGET_PROBE_CONCURRENCY, isRunLive)
+  return new Set(lapsedUnits.filter((_, index) => live[index]).map((unit) => unit.id))
+}
+
+async function isRunLive(unit: IClaimedUnit): Promise<boolean> {
+  try {
+    const { status } = await svc.temporal.workflow.getHandle(syncRunWorkflowId(unit)).describe()
+    return status.name === 'RUNNING'
+  } catch (err) {
+    if (err instanceof WorkflowNotFoundError) {
+      return false
+    }
+    throw err
+  }
+}
+
+function runCapsOf(units: IClaimedUnit[]): Record<string, number> {
+  const caps: Record<string, number> = {}
+  for (const platform of new Set(units.map((unit) => unit.platform))) {
+    const cap = findManifest(platform)?.maxConcurrentRuns
+    if (cap !== undefined) {
+      caps[platform] = cap
+    }
+  }
+  return caps
 }
 
 // A lapsed lease may belong to a run still in flight, so that claim is kept instead of released.

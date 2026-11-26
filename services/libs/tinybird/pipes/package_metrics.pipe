@@ -29,7 +29,7 @@ SQL >
         {% else %} insightsProjectId = (select insightsProjectId from segments_filtered)
         {% end %}
         {% if defined(startDate) %}
-            AND p.date > toDate(
+            AND p.date >= toDate(
                 {{ DateTime(startDate, description="Filter package downloads after", required=False) }}
             )
         {% end %}

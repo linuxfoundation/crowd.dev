@@ -8,8 +8,6 @@ DESCRIPTION >
     - `limit`: Optional integer for the number of projects returned, defaults to 10
     - Response: `name`, `slug`, `logoUrl`, `contributorCount`, `contributionCount`
 
-TOKEN "insights-app-token" READ
-
 TAGS "Report"
 
 NODE cncf_country_top_projects_projects

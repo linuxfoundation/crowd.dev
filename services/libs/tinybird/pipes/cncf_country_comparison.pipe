@@ -14,8 +14,6 @@ DESCRIPTION >
     - `includeCodeContributions`, `includeCollaborations`, `includeOtherContributions`: Optional booleans inherited from `activityTypes_filtered` (defaults: code contributions only)
     - Response: optional `startDate`, `endDate`, then `{country,region,world}{Contributor,Contribution,Organization}Count`
 
-TOKEN "insights-app-token" READ
-
 TAGS "Report"
 
 NODE cncf_country_comparison_located
@@ -57,7 +55,7 @@ SQL >
         AND (type, platform) IN (SELECT activityType, platform FROM activityTypes_filtered)
         {% if defined(startDate) %}
             AND timestamp
-            > {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}
+            >= {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}
         {% end %}
         {% if defined(endDate) %}
             AND timestamp

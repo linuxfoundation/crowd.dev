@@ -16,8 +16,6 @@ DESCRIPTION >
     `repos` value from a different project can't leak that project's repo-level data into this response.
     - Parameters: `slug` (required, the calling project's slug), `repos` (required array of repo URLs).
 
-TOKEN "insights-app-token" READ
-
 TAGS "Insights, Widget", "Project", "Health"
 
 NODE repo_lifecycle_v2_endpoint

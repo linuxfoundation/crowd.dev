@@ -25,14 +25,14 @@ export default class DataQualityService extends LoggerBase {
    * Finds issues related to member data quality based on the specified type.
    *
    * @param {IDataQualityParams} params - The parameters for finding member issues, including the type of issue, limit, and offset.
-   * @param {string} segmentId - The ID of the segment where the members belong.
+   * @param {string} [segmentId] - The ID of the segment where the members belong. Searches all members when omitted.
    * @return {Promise<Array>} A promise that resolves to an array of members with the specified data quality issues.
    */
-  async findMemberIssues(params: IDataQualityParams, segmentId: string) {
+  async findMemberIssues(params: IDataQualityParams, segmentId?: string) {
     const qx = SequelizeRepository.getQueryExecutor(this.options)
 
-    const limit = params.limit || 10
-    const offset = params.offset || 0
+    const limit = Number(params.limit) || 10
+    const offset = Number(params.offset) || 0
 
     switch (params.type) {
       case IDataQualityType.NO_WORK_EXPERIENCE:

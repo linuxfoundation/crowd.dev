@@ -88,7 +88,7 @@ SQL >
                     {% end %}
                     {% if defined(endDate) %}
                         AND timestamp
-                        <= {{ DateTime(endDate, description="Cumulative as of date", required=False) }}
+                        < {{ DateTime(endDate, description="Cumulative as of date", required=False) }}
                     {% end %}
                 GROUP BY segmentId
             {% else %}

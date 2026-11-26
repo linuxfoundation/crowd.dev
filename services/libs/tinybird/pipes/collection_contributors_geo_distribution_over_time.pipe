@@ -8,8 +8,6 @@ DESCRIPTION >
     - `endDate`: Optional DateTime; only periods starting before it are returned (e.g., '2024-12-31 00:00:00'). Defaults to now
     - Response: `startDate`, `endDate`, `country`, `flag`, `country_code`, `contributorCount` (the number of organizations)
 
-TOKEN "insights-app-token" READ
-
 TAGS "Report"
 
 NODE collection_contributors_geo_distribution_over_time_result
