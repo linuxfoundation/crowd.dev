@@ -228,7 +228,7 @@ describe('parseSessionizeExport', () => {
       allSheet([
         talk(),
         {
-          'Session Id': 501,
+          'Session Id': '0501',
           'Speaker Id': SPEAKER_B,
           FirstName: 'Bob',
           LastName: 'Sample',
@@ -357,6 +357,12 @@ describe('parseSessionizeExport', () => {
         { 'Session Id': 501, 'Speaker Id': SPEAKER_A.toUpperCase() },
       ],
       'data row 3',
+      'Speaker Id',
+    ],
+    [
+      'a session and speaker pair repeated with a zero-padded Session Id',
+      [talk(), { 'Session Id': '0501', 'Speaker Id': SPEAKER_A }],
+      'data row 2',
       'Speaker Id',
     ],
   ])('refuses %s, naming the row and column', (_, rows, rowLabel, detail) => {

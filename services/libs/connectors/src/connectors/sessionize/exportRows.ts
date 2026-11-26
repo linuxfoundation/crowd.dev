@@ -258,19 +258,17 @@ function readSessionId(read: RowReader, rowNumber: number): string {
   if (value === null) {
     throw contractError(`data row ${rowNumber} has no Session Id`)
   }
-  if (typeof value === 'number') {
-    if (!Number.isSafeInteger(value) || value < 0) {
-      throw contractError(`${where(rowNumber, 'sessionId')} holds a number that is not an id`)
-    }
-    return String(value)
-  }
   if (value instanceof Date) {
     throw contractError(`${where(rowNumber, 'sessionId')} holds a date`)
   }
-  if (!/^\d+$/.test(value)) {
+  if (typeof value === 'string' && !/^\d+$/.test(value)) {
     throw contractError(`${where(rowNumber, 'sessionId')} is not numeric`)
   }
-  return value
+  const id = Number(value)
+  if (!Number.isSafeInteger(id) || id < 0) {
+    throw contractError(`${where(rowNumber, 'sessionId')} holds a number that is not an id`)
+  }
+  return String(id)
 }
 
 function readKnownStatus(read: RowReader, rowNumber: number): SessionizeStatus | null {
