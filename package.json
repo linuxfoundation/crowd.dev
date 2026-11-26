@@ -19,7 +19,7 @@
     "oxfmt": "^0.68.0",
     "oxlint": "^1.83.0",
     "typescript": "catalog:",
-    "vite": "7.3.7",
+    "vite": "8.4.0",
     "vitest": "4.1.11"
   },
   "engines": {
