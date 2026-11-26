@@ -1,7 +1,7 @@
 import axios, { AxiosHeaders } from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ProviderAuthError, RateLimitError } from '../../http/errors'
+import { ProviderAccessDeniedError, ProviderAuthError, RateLimitError } from '../../http/errors'
 import type { Credential } from '../../types'
 import { signInToSessionize } from './session'
 import { createSessionizeFixedSessionHttp, createSessionizeSessionHttp } from './sessionHttp'
@@ -82,27 +82,37 @@ describe('createSessionizeFixedSessionHttp', () => {
     expect(signInToSessionize).not.toHaveBeenCalled()
   })
 
-  it.each([
-    [302, { location: '/login?ReturnUrl=%2Fmade-up-secret' }],
-    [403, {}],
-  ])(
-    'fails as an auth error naming status %s once the session is rejected, without signing in again',
-    async (status, headers) => {
-      mockedRequest.mockResolvedValue({ status, headers, data: '' })
-      const http = createSessionizeFixedSessionHttp('made-up-fixed-cookie')
+  it('fails as an auth error naming the status once the session is rejected, without signing in again', async () => {
+    mockedRequest.mockResolvedValue({
+      status: 302,
+      headers: { location: '/login?ReturnUrl=%2Fmade-up-secret' },
+      data: '',
+    })
+    const http = createSessionizeFixedSessionHttp('made-up-fixed-cookie')
 
-      for (let i = 0; i < 2; i++) {
-        const err = await http.request(request).catch((e: unknown) => e)
-        expect(err).toBeInstanceOf(ProviderAuthError)
-        expect(err).toMatchObject({
-          message: `sessionize rejected the session (status ${status}) and this client does not renew it`,
-          options: { status },
-        })
-      }
-      expect(mockedRequest).toHaveBeenCalledTimes(1)
-      expect(signInToSessionize).not.toHaveBeenCalled()
-    },
-  )
+    for (let i = 0; i < 2; i++) {
+      const err = await http.request(request).catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(ProviderAuthError)
+      expect(err).toMatchObject({
+        message: 'sessionize rejected the session (status 302) and this client does not renew it',
+        options: { status: 302 },
+      })
+    }
+    expect(mockedRequest).toHaveBeenCalledTimes(1)
+    expect(signInToSessionize).not.toHaveBeenCalled()
+  })
+
+  it('keeps the session after a refused event, so the next request still goes out', async () => {
+    mockedRequest
+      .mockResolvedValueOnce({ status: 403, headers: {}, data: '' })
+      .mockResolvedValueOnce({ status: 200, headers: {}, data: 'events page' })
+    const http = createSessionizeFixedSessionHttp('made-up-fixed-cookie')
+
+    await expect(http.request(request)).rejects.toBeInstanceOf(ProviderAccessDeniedError)
+    await expect(http.request(request)).resolves.toBe('events page')
+    expect(mockedRequest).toHaveBeenCalledTimes(2)
+    expect(signInToSessionize).not.toHaveBeenCalled()
+  })
 
   it('refuses requests while rate limited and serves them again once the limit has passed', async () => {
     mockedRequest

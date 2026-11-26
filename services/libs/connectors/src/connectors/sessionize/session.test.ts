@@ -5,6 +5,7 @@ import { createHttpClient } from '../../http/client'
 import type { IPooledToken } from '../../http/client'
 import {
   ConnectorCodeError,
+  ProviderAccessDeniedError,
   ProviderAuthError,
   ProviderUnavailableError,
   RateLimitError,
@@ -220,6 +221,16 @@ describe('interpretSessionizeResponse', () => {
     expect(error instanceof ProviderAuthError).toBe(rejected)
   })
 
+  it('treats a 403 as refused access to the event, not as a rejected session', () => {
+    const error = interpretSessionizeResponse({ status: 403, headers: {}, data: 'Forbidden' })
+
+    expect(error).toBeInstanceOf(ProviderAccessDeniedError)
+    expect(error?.message).toBe(
+      "sessionize refused access, the account is not on the event's content team",
+    )
+    expect(error?.options?.status).toBe(403)
+  })
+
   it('leaves non-redirect responses to the default classification', () => {
     expect(interpretSessionizeResponse({ status: 200, headers: {}, data: '' })).toBeNull()
   })
@@ -290,6 +301,32 @@ describe('session renewal through the http client', () => {
       '__Host-Sessionize.Auth=auth-cookie',
     )
     expect(renewed.maxRedirects).toBe(0)
+  })
+
+  it('keeps the session and does not sign in again when sessionize refuses an export', async () => {
+    const acquireToken = vi.fn(async () => ({
+      id: SESSIONIZE_POOL_ENTRY_ID,
+      value: 'live-session-cookie',
+    }))
+    const invalidateToken = vi.fn()
+    const http = createHttpClient({
+      acquireToken,
+      parkToken: vi.fn(),
+      invalidateToken,
+      applyToken: applySessionizeCookie,
+      interpretResponse: interpretSessionizeResponse,
+      log: logMocks as never,
+    })
+    mockedRequest.mockResolvedValueOnce(reply(403, 'Forbidden'))
+
+    const err = await http
+      .request({ url: 'https://sessionize.com/app/organizer/export/excel/1/Flattened_sessions' })
+      .catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(ProviderAccessDeniedError)
+    expect(mockedRequest).toHaveBeenCalledTimes(1)
+    expect(acquireToken).toHaveBeenCalledTimes(1)
+    expect(invalidateToken).not.toHaveBeenCalled()
   })
 
   it('keeps the session cookie out of the error when sessionize does not answer', async () => {

@@ -12,6 +12,7 @@ sources:
   - services/libs/data-access-layer/src/connectors/
   - services/libs/data-access-layer/src/octolens/
   - services/libs/data-access-layer/src/credly/
+  - services/libs/data-access-layer/src/sessionize/
 ---
 
 # Connector framework (integrations v2)
@@ -24,17 +25,17 @@ to a segment.
 
 ## Where things are
 
-| What                                        | Where                                                                                                           |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Manifests (GitHub, Octolens, Credly)        | `services/libs/connectors/src/connectors/<platform>/`                                                           |
-| Framework types, emit, registry             | `services/libs/connectors/src/` (`types.ts`, `emit.ts`, `registry.ts`)                                          |
-| HTTP client, error classes, token pool      | `services/libs/connectors/src/http/`, `src/pool/`                                                               |
-| Credentials                                 | `services/libs/connectors/src/credentials.ts`                                                                   |
-| Registration, dispatcher, sync runs         | `services/apps/connectors_worker/src/` (`main.ts`, `workflows/`, `activities/`)                                 |
-| GitHub onboarding, lifecycle, renames       | `services/apps/connectors_worker/src/` (`onboardGithubRepo.ts`, `githubLifecycle.ts`, `githubRenames.ts`)       |
-| Sessionize event matching (daily 05:30 UTC) | `services/apps/connectors_worker/src/sessionizeEventMatching.ts`, table `integration."sessionizeEventMappings"` |
-| Sync unit, shadow and completeness DAL      | `services/libs/data-access-layer/src/connectors/`                                                               |
-| Platform-specific DAL                       | `services/libs/data-access-layer/src/octolens/`, `src/credly/`                                                  |
+| What                                             | Where                                                                                                           |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Manifests (GitHub, Octolens, Credly, Sessionize) | `services/libs/connectors/src/connectors/<platform>/`                                                           |
+| Framework types, emit, registry                  | `services/libs/connectors/src/` (`types.ts`, `emit.ts`, `registry.ts`)                                          |
+| HTTP client, error classes, token pool           | `services/libs/connectors/src/http/`, `src/pool/`                                                               |
+| Credentials                                      | `services/libs/connectors/src/credentials.ts`                                                                   |
+| Registration, dispatcher, sync runs              | `services/apps/connectors_worker/src/` (`main.ts`, `workflows/`, `activities/`)                                 |
+| GitHub onboarding, lifecycle, renames            | `services/apps/connectors_worker/src/` (`onboardGithubRepo.ts`, `githubLifecycle.ts`, `githubRenames.ts`)       |
+| Sessionize event matching (daily 05:30 UTC)      | `services/apps/connectors_worker/src/sessionizeEventMatching.ts`, table `integration."sessionizeEventMappings"` |
+| Sync unit, shadow and completeness DAL           | `services/libs/data-access-layer/src/connectors/`                                                               |
+| Platform-specific DAL                            | `services/libs/data-access-layer/src/octolens/`, `src/credly/`, `src/sessionize/`                               |
 
 ## Tables
 

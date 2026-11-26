@@ -7,6 +7,7 @@ import type { HttpResponse, IPooledToken } from '../../http/client'
 import {
   ConnectorCodeError,
   ConnectorError,
+  ProviderAccessDeniedError,
   ProviderAuthError,
   ProviderUnavailableError,
   RateLimitError,
@@ -103,6 +104,12 @@ export function applySessionizeCookie(
 }
 
 export function interpretSessionizeResponse(response: HttpResponse): ConnectorError | null {
+  if (response.status === 403) {
+    return new ProviderAccessDeniedError(
+      "sessionize refused access, the account is not on the event's content team",
+      { status: response.status },
+    )
+  }
   if (isLoginRedirect(response.status, response.headers.location)) {
     return new ProviderAuthError('sessionize session rejected, redirected to the login page', {
       status: response.status,

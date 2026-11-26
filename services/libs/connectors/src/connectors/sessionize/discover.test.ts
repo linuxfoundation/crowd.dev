@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Credential } from '../../types'
 import { parseActivatedEvents } from './consoleEvents'
 import { SESSIONIZE_CONSOLE_FIXTURE } from './consoleEvents.fixture'
+import { createSessionizeDeps } from './deps'
 import { discoverSessionize } from './discover'
 import { sessionizeConnector } from './index'
 import { SESSIONIZE_POOL_ENTRY_ID, signInToSessionize } from './session'
+import { runEventExport } from './syncs/eventExport'
 
 vi.mock('./session', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./session')>()),
@@ -91,9 +93,13 @@ describe('discoverSessionize', () => {
 })
 
 describe('sessionizeConnector', () => {
-  it('registers the sessionize platform with discovery only', () => {
+  it('registers the sessionize platform with its one paced eventExport sync', () => {
     expect(sessionizeConnector.platform).toBe('sessionize')
-    expect(sessionizeConnector.syncs).toEqual([])
+    expect(sessionizeConnector.syncs).toEqual([
+      expect.objectContaining({ name: 'eventExport', cadenceMinutes: 1440, run: runEventExport }),
+    ])
+    expect(sessionizeConnector.createDeps).toBe(createSessionizeDeps)
+    expect(sessionizeConnector.maxConcurrentRuns).toBe(1)
     expect(sessionizeConnector.discover).toBe(discoverSessionize)
     expect(SESSIONIZE_POOL_ENTRY_ID).toBe('sessionize-organizer')
   })
