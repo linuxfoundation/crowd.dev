@@ -42,7 +42,7 @@ SQL >
             isNotNull(pra.reviewedAt)
             {% if defined(startDate) %}
                 AND pra.reviewedAt
-                > {{
+                >= {{
                     DateTime(
                         startDate,
                         description="Filter pull request reviewed at after",
@@ -73,7 +73,7 @@ SQL >
             isNotNull(pra.reviewedAt)
             {% if defined(startDate) %}
                 AND pra.reviewedAt
-                > {{
+                >= {{
                     DateTime(
                         startDate, description="Filter pull request reviewed at after", required=False
                     )

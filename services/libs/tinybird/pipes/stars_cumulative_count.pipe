@@ -130,7 +130,7 @@ SQL >
                     {% end %}
                     {% if defined(startDate) %}
                         AND timestamp
-                        <= {{ DateTime(startDate, description="Historical cutoff", required=False) }}
+                        < {{ DateTime(startDate, description="Historical cutoff", required=False) }}
                     {% else %} AND 1 = 0
                     {% end %}
             ),
@@ -166,7 +166,7 @@ SQL >
                             {% end %}
                             {% if defined(startDate) %}
                                 AND timestamp
-                                > {{ DateTime(startDate, description="Filter after", required=False) }}
+                                >= {{ DateTime(startDate, description="Filter after", required=False) }}
                             {% end %}
                             {% if defined(endDate) %}
                                 AND timestamp

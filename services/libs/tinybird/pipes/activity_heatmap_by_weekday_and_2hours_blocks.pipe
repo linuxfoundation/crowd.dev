@@ -25,7 +25,7 @@ SQL >
         {% end %}
         {% if defined(startDate) %}
             AND a.timestamp
-            > {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}
+            >= {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}
         {% end %}
         {% if defined(endDate) %}
             AND a.timestamp

@@ -34,7 +34,7 @@ SQL >
         {% end %}
         {% if defined(startDate) %}
             AND a.timestamp
-            > {% if defined(granularity) and granularity == "daily" %}
+            >= {% if defined(granularity) and granularity == "daily" %}
                 {{ DateTime(startDate, description="Filter activity timestamp after", required=False) }}
                 - INTERVAL 1 DAY
             {% elif defined(granularity) and granularity == "weekly" %}

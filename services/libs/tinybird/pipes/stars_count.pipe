@@ -38,7 +38,7 @@ DESCRIPTION >
     Scalar: cumulative stars total as of `startDate`, used as the first bucket's baseline in
     `stars_count_bucketed` instead of a hardcoded 0 - mirrors `stars_count_summary`'s
     `github_new`/`gitlab_new` logic (github: latest snapshot captured at or before
-    `startDate`; gitlab: event count up to and including `startDate`). 0 when `startDate` isn't
+    `startDate`; gitlab: event count before `startDate`). 0 when `startDate` isn't
     given - an open-ended range legitimately has nothing before its first bucket.
 
 SQL >
@@ -70,8 +70,7 @@ SQL >
                     {% if defined(repos) %}
                         AND channel IN (SELECT channel FROM repos_to_channels)
                     {% end %}
-                    AND timestamp
-                    <= {{ DateTime(startDate, description="Range start", required=False) }}
+                    AND timestamp < {{ DateTime(startDate, description="Range start", required=False) }}
             )
         SELECT
             toInt64(coalesce((SELECT total FROM github_before), 0))
@@ -107,8 +106,8 @@ SQL >
 
 NODE stars_count_summary
 DESCRIPTION >
-    No-granularity mode: total "new stars" across (startDate, endDate] - a star captured/counted
-    exactly at startDate belongs to the prior period's baseline, not this one. GitHub = total as
+    No-granularity mode: total "new stars" across [startDate, endDate] - a GitLab star exactly at
+    startDate counts in this period, like every other pipe's start filter. GitHub = total as
     of endDate minus total as of startDate (0 if a repo has no snapshot yet at startDate - can go
     negative on net unstars). GitLab = plain per-event range count, `platform != 'github'`.
 
@@ -148,7 +147,7 @@ SQL >
                     {% end %}
                     {% if defined(startDate) %}
                         AND timestamp
-                        > {{ DateTime(startDate, description="Range start", required=False) }}
+                        >= {{ DateTime(startDate, description="Range start", required=False) }}
                     {% end %}
                     {% if defined(endDate) %}
                         AND timestamp

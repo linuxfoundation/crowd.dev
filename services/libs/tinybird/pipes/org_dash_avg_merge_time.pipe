@@ -44,7 +44,7 @@ SQL >
             isNotNull(pra.mergedAt)
             {% if defined(startDate) %}
                 AND pra.mergedAt
-                > {{
+                >= {{
                     DateTime(
                         startDate, description="Filter pull request merged at after", required=False
                     )

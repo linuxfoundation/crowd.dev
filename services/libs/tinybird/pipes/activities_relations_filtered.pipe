@@ -101,7 +101,7 @@ SQL >
             WHERE
                 (length(segments_arr) = 0 OR ar.segmentId IN segments_arr)
                 {% if defined(startDate) %}
-                    AND ar.timestamp > parseDateTimeBestEffort({{ String(startDate) }})
+                    AND ar.timestamp >= parseDateTimeBestEffort({{ String(startDate) }})
                 {% end %}
                 {% if defined(endDate) %}
                     AND ar.timestamp < parseDateTimeBestEffort({{ String(endDate) }})
@@ -439,7 +439,7 @@ SQL >
                     WHERE
                         1
                         {% if defined(startDate) %}
-                            AND timestamp > parseDateTimeBestEffort({{ String(startDate) }})
+                            AND timestamp >= parseDateTimeBestEffort({{ String(startDate) }})
                         {% end %}
                         {% if defined(endDate) %}
                             AND timestamp < parseDateTimeBestEffort({{ String(endDate) }})
@@ -473,7 +473,7 @@ SQL >
                     WHERE
                         1
                         {% if defined(startDate) %}
-                            AND timestamp > parseDateTimeBestEffort({{ String(startDate) }})
+                            AND timestamp >= parseDateTimeBestEffort({{ String(startDate) }})
                         {% end %}
                         {% if defined(endDate) %}
                             AND timestamp < parseDateTimeBestEffort({{ String(endDate) }})
