@@ -569,16 +569,20 @@ describe('compareWithLastGoodRun', () => {
   })
 
   it('warns about missing optional columns, fill rate drops and a row count drop', () => {
-    const current = parsed({
-      columns: ['Session Id', 'Title', 'Email', 'LinkedIn'],
-      rowCount: 49,
-      emailFillRate: 0.6,
-      linkedinFillRate: 0.2,
-    })
+    const current = parsed(
+      {
+        columns: ['Session Id', 'Title', 'Email', 'LinkedIn'],
+        rowCount: 49,
+        emailFillRate: 0.6,
+        linkedinFillRate: 0.2,
+      },
+      [],
+      ['Speaker Title'],
+    )
 
     expect(compareWithLastGoodRun(current, last)).toEqual([
+      { kind: 'duplicate_optional_column', detail: { column: 'Speaker Title' } },
       { kind: 'missing_optional_column', detail: { column: 'Company' } },
-      { kind: 'missing_optional_column', detail: { column: 'Speaker Title' } },
       { kind: 'fill_rate_drop', detail: { field: 'email', last: 0.9, current: 0.6 } },
       { kind: 'fill_rate_drop', detail: { field: 'linkedin', last: 0.5, current: 0.2 } },
       { kind: 'row_count_drop', detail: { last: 100, current: 49 } },
