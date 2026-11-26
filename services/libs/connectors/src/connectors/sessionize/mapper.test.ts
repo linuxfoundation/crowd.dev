@@ -158,11 +158,7 @@ describe('spokeAtSessionActivity', () => {
   })
 
   it.each<[string, Partial<SessionizeExportRow>, string | null]>([
-    [
-      'an unscheduled accepted row at the event start',
-      { scheduledAt: null },
-      '2026-06-10T00:00:00.000Z',
-    ],
+    ['an unscheduled accepted row as nothing', { scheduledAt: null }, null],
     ['an accepted row of the accepted export', { dateSubmitted: null }, '2026-06-11T09:30:00.000Z'],
     ['a declined row as nothing', { status: 'Declined' }, null],
     ['a waitlisted row as nothing', { status: 'Waitlisted' }, null],
@@ -173,21 +169,20 @@ describe('spokeAtSessionActivity', () => {
 
   it('leaves out schedule attributes the row does not have', () => {
     const attributes = spokeAtSessionActivity(
-      row({ room: null, scheduledAt: null, durationMinutes: null }),
+      row({ room: null, durationMinutes: null }),
       EVENT,
     )?.attributes
 
     expect(attributes).not.toHaveProperty('room')
-    expect(attributes).not.toHaveProperty('scheduledAt')
     expect(attributes).not.toHaveProperty('durationMinutes')
   })
 })
 
 describe('member', () => {
-  it.each<[string, Partial<SessionizeExportRow>, string]>([
+  it.each<[string, Partial<SessionizeExportRow>, string | undefined]>([
     ['first name only', { lastName: null }, 'Avery'],
     ['last name only', { firstName: null }, 'Quill'],
-    ['the email local part without a name', { firstName: null, lastName: null }, 'avery.quill'],
+    ['no name at all', { firstName: null, lastName: null }, undefined],
   ])('takes the display name from %s', (_, overrides, displayName) => {
     expect(submittedSessionActivity(row(overrides), EVENT)?.member.displayName).toBe(displayName)
   })
@@ -202,10 +197,9 @@ describe('member', () => {
     expect(member).not.toHaveProperty('attributes')
   })
 
-  it('uses the tagline as bio when the bio is empty', () => {
+  it('sends no bio when the bio is empty, even with a tagline', () => {
     expect(submittedSessionActivity(row({ bio: null }), EVENT)?.member.attributes).toEqual({
       avatarUrl: { [PlatformType.SESSIONIZE]: 'https://cdn.example.com/avatars/avery.png' },
-      bio: { [PlatformType.SESSIONIZE]: 'Widget engineer' },
     })
   })
 
@@ -332,7 +326,6 @@ describe('sessionizeActivitySchema', () => {
         companyWebsite: null,
         jobTitle: null,
         room: null,
-        scheduledAt: null,
         durationMinutes: null,
       },
     ],

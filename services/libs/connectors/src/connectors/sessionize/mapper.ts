@@ -1,7 +1,6 @@
 import { z } from 'zod'
 
 import {
-  getEmailLocalPart,
   isDomainExcluded,
   isValidEmail,
   normalizeHostname,
@@ -59,7 +58,7 @@ const organizationSchema = z.object({
 })
 
 const memberSchema = z.object({
-  displayName: z.string().min(1),
+  displayName: z.string().min(1).optional(),
   identities: z.array(z.union([sessionizeIdentitySchema, linkedinIdentitySchema])).min(2),
   attributes: z.record(z.unknown()).optional(),
   organizations: z.array(organizationSchema).min(1).optional(),
@@ -168,13 +167,13 @@ export function spokeAtSessionActivity(
   event: SessionizeEventContext,
 ): SessionizeActivity | null {
   const email = speakerEmail(row)
-  if (row.status !== 'Accepted' || email === null) return null
+  if (row.status !== 'Accepted' || email === null || !hasScheduledSlot(row)) return null
   return sessionActivity(
     row,
     email,
     event,
     SessionizeActivityType.SPOKE_AT_SESSION,
-    row.scheduledAt ?? `${event.eventStart}T00:00:00.000Z`,
+    row.scheduledAt,
     {
       ...sessionAttributes(row, event),
       ...withoutNullish({
@@ -184,6 +183,12 @@ export function spokeAtSessionActivity(
       }),
     },
   )
+}
+
+export function hasScheduledSlot(
+  row: SessionizeExportRow,
+): row is SessionizeExportRow & { scheduledAt: string } {
+  return row.scheduledAt !== null
 }
 
 export function hasSpeakerEmail(row: SessionizeExportRow): boolean {
@@ -261,25 +266,24 @@ function sessionAttributes(
 }
 
 function speakerMember(row: SessionizeExportRow, email: string): SessionizeMember {
-  const bio = row.bio ?? row.tagline
   const attributes = withoutNullish({
     [MemberAttributeName.AVATAR_URL]: row.photoUrl
       ? { [PlatformType.SESSIONIZE]: row.photoUrl }
       : null,
-    [MemberAttributeName.BIO]: bio ? { [PlatformType.SESSIONIZE]: bio } : null,
+    [MemberAttributeName.BIO]: row.bio ? { [PlatformType.SESSIONIZE]: row.bio } : null,
   })
   const organizations = speakerOrganizations(row)
+  const displayName = speakerDisplayName(row)
   return {
-    displayName: speakerDisplayName(row, email),
+    ...(displayName && { displayName }),
     identities: speakerIdentities(row, email),
     ...(Object.keys(attributes).length > 0 && { attributes }),
     ...(organizations && { organizations }),
   }
 }
 
-function speakerDisplayName(row: SessionizeExportRow, email: string): string {
-  const name = [row.firstName, row.lastName].filter(Boolean).join(' ')
-  return name || getEmailLocalPart(email)
+function speakerDisplayName(row: SessionizeExportRow): string {
+  return [row.firstName, row.lastName].filter(Boolean).join(' ')
 }
 
 function speakerIdentities(
