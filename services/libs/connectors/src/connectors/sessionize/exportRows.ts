@@ -47,10 +47,16 @@ export interface ParsedExport {
   profile: ExportProfile
   skipped: { testSubmissions: number; noSpeaker: number }
   sensitiveColumns: string[]
+  duplicateOptionalColumns: string[]
 }
 
 export interface ExportWarning {
-  kind: 'missing_optional_column' | 'fill_rate_drop' | 'row_count_drop' | 'sensitive_column'
+  kind:
+    | 'missing_optional_column'
+    | 'duplicate_optional_column'
+    | 'fill_rate_drop'
+    | 'row_count_drop'
+    | 'sensitive_column'
   detail: Record<string, unknown>
 }
 
@@ -127,17 +133,18 @@ const SENSITIVE_HEADER_WORDS = [
 const TEST_SUBMISSION_TITLE = 'this is my test submission'
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const FILL_RATE_DROP = 0.2
+const FILL_RATE_TOLERANCE = 1e-9
 
 type ColumnIndexes = Partial<Record<ColumnKey, number>>
 
-interface SessionFields {
-  sessionId: string
-  title: string
-  status: SessionizeStatus
-  dateSubmitted: string | null
-  room: string | null
-  scheduledAt: string | null
-  durationMinutes: number | null
+type SessionFields = Pick<
+  SessionizeExportRow,
+  'sessionId' | 'title' | 'status' | 'dateSubmitted' | 'room' | 'scheduledAt' | 'durationMinutes'
+>
+
+interface ContractColumns {
+  indexes: ColumnIndexes
+  duplicateOptionalColumns: string[]
 }
 
 function contractError(message: string): ProviderContractError {
@@ -172,23 +179,27 @@ export function toExportTimestamp(cell: ExportCell): string | null {
   return readTimestamp(cell, 'a date cell')
 }
 
-function columnIndexes(headers: string[], contract: VariantContract): ColumnIndexes {
+function contractColumns(headers: string[], contract: VariantContract): ContractColumns {
   const indexes: ColumnIndexes = {}
+  const duplicateOptionalColumns: string[] = []
   for (const key of [...contract.required, ...contract.optional]) {
     const wanted = normalizeHeader(COLUMNS[key])
     const matches = headers.flatMap((header, index) =>
       normalizeHeader(header) === wanted ? [index] : [],
     )
-    if (matches.length > 1) {
-      throw contractError(`column "${COLUMNS[key]}" appears ${matches.length} times`)
+    const required = contract.required.includes(key)
+    if (matches.length > 1 && required) {
+      throw contractError(`required column "${COLUMNS[key]}" appears ${matches.length} times`)
     }
-    if (matches.length === 1) {
+    if (matches.length > 1) {
+      duplicateOptionalColumns.push(COLUMNS[key])
+    } else if (matches.length === 1) {
       indexes[key] = matches[0]
-    } else if (contract.required.includes(key)) {
+    } else if (required) {
       throw contractError(`required column "${COLUMNS[key]}" is missing`)
     }
   }
-  return indexes
+  return { indexes, duplicateOptionalColumns }
 }
 
 function sensitiveColumns(headers: string[]): string[] {
@@ -201,7 +212,7 @@ function sensitiveColumns(headers: string[]): string[] {
 }
 
 function where(rowNumber: number, key: ColumnKey): string {
-  return `row ${rowNumber} column "${COLUMNS[key]}"`
+  return `data row ${rowNumber} column "${COLUMNS[key]}"`
 }
 
 function rowReader(row: ExportCell[], indexes: ColumnIndexes, rowNumber: number) {
@@ -214,7 +225,7 @@ function rowReader(row: ExportCell[], indexes: ColumnIndexes, rowNumber: number)
     if (value instanceof Date) {
       throw contractError(`${where(rowNumber, key)} holds a date, not text`)
     }
-    return value === null ? null : String(value)
+    return value === null ? null : String(value).trim() || null
   }
   const timestamp = (key: ColumnKey): string | null =>
     readTimestamp(cell(key), where(rowNumber, key))
@@ -234,10 +245,10 @@ function rowReader(row: ExportCell[], indexes: ColumnIndexes, rowNumber: number)
 
 type RowReader = ReturnType<typeof rowReader>
 
-function readSessionId(read: RowReader, rowNumber: number): string | null {
+function readSessionId(read: RowReader, rowNumber: number): string {
   const value = read.cell('sessionId')
   if (value === null) {
-    throw contractError(`row ${rowNumber} has no Session Id`)
+    throw contractError(`data row ${rowNumber} has no Session Id`)
   }
   if (typeof value === 'number') {
     if (!Number.isSafeInteger(value) || value < 0) {
@@ -248,39 +259,45 @@ function readSessionId(read: RowReader, rowNumber: number): string | null {
   if (value instanceof Date) {
     throw contractError(`${where(rowNumber, 'sessionId')} holds a date`)
   }
-  return /^\d+$/.test(value) ? value : null
+  if (!/^\d+$/.test(value)) {
+    throw contractError(`${where(rowNumber, 'sessionId')} is not numeric`)
+  }
+  return value
 }
 
 function readStatus(read: RowReader, rowNumber: number, inherited: SessionizeStatus | undefined) {
   const status = read.text('status')
   if (status === null) {
     if (inherited === undefined) {
-      throw contractError(`row ${rowNumber} starts a session without a Status`)
+      throw contractError(`data row ${rowNumber} starts a session without a Status`)
     }
     return inherited
   }
   const known = SESSIONIZE_STATUSES.find((candidate) => candidate === status)
   if (known === undefined) {
-    throw contractError(`row ${rowNumber} has the unknown Status "${status}"`)
+    throw contractError(`${where(rowNumber, 'status')} holds an unknown status`)
   }
   return known
+}
+
+function readTitle(read: RowReader, rowNumber: number, inherited: string | undefined): string {
+  const title = read.text('title') ?? inherited
+  if (title === undefined) {
+    throw contractError(`data row ${rowNumber} starts a session without a Title`)
+  }
+  return title
 }
 
 function readSessionFields(
   read: RowReader,
   rowNumber: number,
-  sessionId: string,
+  identity: Pick<SessionFields, 'sessionId' | 'title'>,
   variant: ExportVariant,
   inherited: SessionFields | undefined,
 ): SessionFields {
-  const title = read.text('title') ?? inherited?.title
-  if (title === undefined) {
-    throw contractError(`row ${rowNumber} starts a session without a Title`)
-  }
   const isAll = variant === 'all'
   return {
-    sessionId,
-    title,
+    ...identity,
     status: isAll ? readStatus(read, rowNumber, inherited?.status) : 'Accepted',
     dateSubmitted: isAll
       ? (read.timestamp('dateSubmitted') ?? inherited?.dateSubmitted ?? null)
@@ -310,7 +327,7 @@ function speakerFields(read: RowReader) {
   return {
     firstName: read.text('firstName'),
     lastName: read.text('lastName'),
-    email: read.text('email')?.trim().toLowerCase() || null,
+    email: read.text('email')?.toLowerCase() ?? null,
     linkedin: read.text('linkedin'),
     bio: read.text('bio'),
     tagline: read.text('tagline'),
@@ -331,39 +348,38 @@ function emptyExport(): ParsedExport {
     profile: { columns: [], rowCount: 0, emailFillRate: 0, linkedinFillRate: 0 },
     skipped: { testSubmissions: 0, noSpeaker: 0 },
     sensitiveColumns: [],
+    duplicateOptionalColumns: [],
   }
 }
 
 export function parseSessionizeExport(sheet: ExportSheet, variant: ExportVariant): ParsedExport {
+  const contract = VARIANT_CONTRACTS[variant]
+  if (sheet.sheetNames[0] !== contract.sheetName) {
+    throw contractError(`the ${variant} export must come from worksheet "${contract.sheetName}"`)
+  }
   if (sheet.headers.length === 0) {
     return emptyExport()
   }
-  const contract = VARIANT_CONTRACTS[variant]
-  if (sheet.sheetNames[0] !== contract.sheetName) {
-    throw contractError(
-      `the ${variant} export must come from worksheet "${contract.sheetName}", not "${sheet.sheetNames[0]}"`,
-    )
-  }
-  const indexes = columnIndexes(sheet.headers, contract)
+  const { indexes, duplicateOptionalColumns } = contractColumns(sheet.headers, contract)
   const rows: SessionizeExportRow[] = []
   const skipped = { testSubmissions: 0, noSpeaker: 0 }
   const seenPairs = new Set<string>()
+  let previous: Pick<SessionFields, 'sessionId' | 'title'> | undefined
   let session: SessionFields | undefined
 
   for (const [index, row] of sheet.rows.entries()) {
     const rowNumber = index + 1
     const read = rowReader(row, indexes, rowNumber)
     const sessionId = readSessionId(read, rowNumber)
-    if (sessionId === null) {
+    const continues = previous?.sessionId === sessionId
+    const title = readTitle(read, rowNumber, continues ? previous?.title : undefined)
+    previous = { sessionId, title }
+    if (isTestSubmission(title)) {
       skipped.testSubmissions++
       continue
     }
-    const inherited = session?.sessionId === sessionId ? session : undefined
-    session = readSessionFields(read, rowNumber, sessionId, variant, inherited)
-    if (isTestSubmission(session.title)) {
-      skipped.testSubmissions++
-      continue
-    }
+    const inherited = continues && session?.sessionId === sessionId ? session : undefined
+    session = readSessionFields(read, rowNumber, previous, variant, inherited)
     const speakerId = readSpeakerId(read, rowNumber)
     if (speakerId === null) {
       skipped.noSpeaker++
@@ -372,7 +388,7 @@ export function parseSessionizeExport(sheet: ExportSheet, variant: ExportVariant
     const pair = `${sessionId}-${speakerId}`
     if (seenPairs.has(pair)) {
       throw contractError(
-        `row ${rowNumber} repeats the Session Id and Speaker Id of an earlier row`,
+        `data row ${rowNumber} repeats the Session Id and Speaker Id of an earlier row`,
       )
     }
     seenPairs.add(pair)
@@ -391,6 +407,7 @@ export function parseSessionizeExport(sheet: ExportSheet, variant: ExportVariant
     },
     skipped,
     sensitiveColumns: sensitiveColumns(sheet.headers),
+    duplicateOptionalColumns,
   }
 }
 
@@ -400,7 +417,9 @@ function fillRateWarnings(current: ExportProfile, last: ExportProfile): ExportWa
     ['linkedin', last.linkedinFillRate, current.linkedinFillRate],
   ] as const
   return rates
-    .filter(([, lastRate, currentRate]) => lastRate - currentRate > FILL_RATE_DROP)
+    .filter(
+      ([, lastRate, currentRate]) => lastRate - currentRate > FILL_RATE_DROP + FILL_RATE_TOLERANCE,
+    )
     .map(([field, lastRate, currentRate]) => ({
       kind: 'fill_rate_drop',
       detail: { field, last: lastRate, current: currentRate },
@@ -417,10 +436,16 @@ export function compareWithLastGoodRun(
   current: ParsedExport,
   last: ExportProfile | null,
 ): ExportWarning[] {
-  const warnings: ExportWarning[] = current.sensitiveColumns.map((column) => ({
-    kind: 'sensitive_column',
-    detail: { column },
-  }))
+  const warnings: ExportWarning[] = [
+    ...current.sensitiveColumns.map((column) => ({
+      kind: 'sensitive_column' as const,
+      detail: { column },
+    })),
+    ...current.duplicateOptionalColumns.map((column) => ({
+      kind: 'duplicate_optional_column' as const,
+      detail: { column },
+    })),
+  ]
   if (last === null) {
     return warnings
   }

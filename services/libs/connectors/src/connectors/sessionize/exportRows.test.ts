@@ -95,11 +95,11 @@ describe('parseSessionizeExport', () => {
         talk({
           'Owner Email': 'owner@example.org',
           Email: '  Ada.Example@Example.ORG ',
-          TagLine: 'Made-up engineer',
-          Bio: 'Writes made-up code',
+          TagLine: '   ',
+          Bio: ' Writes made-up code ',
           LinkedIn: 'https://www.linkedin.com/in/ada-example',
           'Profile Picture': 'https://example.org/ada.png',
-          Company: 'Example Corp',
+          Company: 1234,
           'Company Website': 'https://example.com',
           'Speaker Title': 'Staff Engineer',
         }),
@@ -119,9 +119,9 @@ describe('parseSessionizeExport', () => {
         email: 'ada.example@example.org',
         linkedin: 'https://www.linkedin.com/in/ada-example',
         bio: 'Writes made-up code',
-        tagline: 'Made-up engineer',
+        tagline: null,
         photoUrl: 'https://example.org/ada.png',
-        company: 'Example Corp',
+        company: '1234',
         companyWebsite: 'https://example.com',
         jobTitle: 'Staff Engineer',
         room: null,
@@ -153,6 +153,7 @@ describe('parseSessionizeExport', () => {
     })
     expect(parsed.skipped).toEqual({ testSubmissions: 0, noSpeaker: 0 })
     expect(parsed.sensitiveColumns).toEqual([])
+    expect(parsed.duplicateOptionalColumns).toEqual([])
   })
 
   it('matches the required columns trimmed and case-insensitive', () => {
@@ -165,33 +166,42 @@ describe('parseSessionizeExport', () => {
     expect(parsed.rows[0].email).toBe('ada@example.org')
   })
 
-  it.each([
-    'Session Id',
-    'Title',
-    'Status',
-    'Date Submitted',
-    'Speaker Id',
-    'FirstName',
-    'LastName',
-    'Email',
-  ])('refuses an all sessions export without %s', (column) => {
-    const headers = ALL_HEADERS.filter((header) => header !== column)
-
+  it.each(
+    [
+      'Session Id',
+      'Title',
+      'Status',
+      'Date Submitted',
+      'Speaker Id',
+      'FirstName',
+      'LastName',
+      'Email',
+    ].flatMap((column) => [
+      ['without', column, ALL_HEADERS.filter((header) => header !== column)],
+      ['with two', column, [...ALL_HEADERS, ` ${column.toLowerCase()}`]],
+    ]),
+  )('refuses an all sessions export %s %s columns', (_, column, headers) => {
     const err = parseError(() => parseSessionizeExport(allSheet([talk()], headers), 'all'))
 
     expect(err.message).toContain(`"${column}"`)
   })
 
   it.each([
-    ['all', 'Accepted sessions and speakers'],
-    ['accepted', 'Sessions and speakers'],
-  ] as const)('refuses a %s export from the worksheet "%s"', (variant, sheetName) => {
-    const err = parseError(() =>
-      parseSessionizeExport(allSheet([talk()], ALL_HEADERS, sheetName), variant),
-    )
+    ['all', 'Accepted sessions and speakers', ALL_HEADERS, 'Sessions and speakers'],
+    ['accepted', 'Sessions and speakers', ALL_HEADERS, 'Accepted sessions and speakers'],
+    ['all', 'Sheet1', [], 'Sessions and speakers'],
+    ['accepted', 'Sheet1', [], 'Accepted sessions and speakers'],
+  ] as const)(
+    'refuses a %s export from the worksheet "%s"',
+    (variant, sheetName, headers, expected) => {
+      const err = parseError(() =>
+        parseSessionizeExport(allSheet([], [...headers], sheetName), variant),
+      )
 
-    expect(err.message).toContain(sheetName)
-  })
+      expect(err.message).toContain(`"${expected}"`)
+      expect(err.message).not.toContain(`"${sheetName}"`)
+    },
+  )
 
   it('parses a sheet without a header row as an empty export', () => {
     const empty: ParsedExport = {
@@ -199,11 +209,15 @@ describe('parseSessionizeExport', () => {
       profile: { columns: [], rowCount: 0, emailFillRate: 0, linkedinFillRate: 0 },
       skipped: { testSubmissions: 0, noSpeaker: 0 },
       sensitiveColumns: [],
+      duplicateOptionalColumns: [],
     }
 
-    for (const variant of ['all', 'accepted'] as const) {
+    for (const [variant, sheetName] of [
+      ['all', 'Sessions and speakers'],
+      ['accepted', 'Accepted sessions and speakers'],
+    ] as const) {
       expect(
-        parseSessionizeExport({ sheetNames: ['Sheet1'], headers: [], rows: [] }, variant),
+        parseSessionizeExport({ sheetNames: [sheetName], headers: [], rows: [] }, variant),
       ).toEqual(empty)
     }
   })
@@ -266,9 +280,9 @@ describe('parseSessionizeExport', () => {
   it('drops test submissions and rows without a speaker, counting them', () => {
     const parsed = parseSessionizeExport(
       allSheet([
-        talk({ Title: ' this is my TEST submission ' }),
+        talk({ Title: ' this is my TEST submission ', Status: 'Maybe Later' }),
         { 'Session Id': 501, 'Speaker Id': SPEAKER_B },
-        talk({ 'Session Id': 'test-1' }),
+        talk({ 'Session Id': 504, Title: 'This is my test submission', Status: null }),
         talk({ 'Session Id': 502, 'Speaker Id': null }),
         talk({ 'Session Id': 503 }),
       ]),
@@ -280,25 +294,36 @@ describe('parseSessionizeExport', () => {
   })
 
   it.each([
-    ['an empty Session Id', [talk({ 'Session Id': null })], 'row 1', 'Session Id'],
+    ['an empty Session Id', [talk({ 'Session Id': null })], 'data row 1', 'Session Id'],
+    [
+      'a non-numeric Session Id',
+      [talk({ 'Session Id': 'test-1' })],
+      'data row 1',
+      'column "Session Id"',
+    ],
     [
       'a new session without a Status',
       [talk(), talk({ 'Session Id': 502, Status: null, 'Speaker Id': SPEAKER_B })],
-      'row 2',
+      'data row 2',
       'Status',
     ],
-    ['an unknown status', [talk({ Status: 'Maybe Later' })], 'row 1', '"Maybe Later"'],
-    ['a Speaker Id that is not a GUID', [talk({ 'Speaker Id': 'spk-1' })], 'row 1', 'Speaker Id'],
+    ['an unknown status', [talk({ Status: 'Maybe Later' })], 'data row 1', 'column "Status"'],
+    [
+      'a Speaker Id that is not a GUID',
+      [talk({ 'Speaker Id': 'spk-1' })],
+      'data row 1',
+      'Speaker Id',
+    ],
     [
       'a date column holding text',
       [talk({ 'Date Submitted': '2027-03-04 14:30' })],
-      'row 1',
+      'data row 1',
       'Date Submitted',
     ],
     [
       'a duplicate session and speaker pair',
       [talk(), { 'Session Id': 501, 'Speaker Id': SPEAKER_A }],
-      'row 2',
+      'data row 2',
       'Speaker Id',
     ],
   ])('refuses %s, naming the row and column', (_, rows, rowLabel, detail) => {
@@ -306,13 +331,15 @@ describe('parseSessionizeExport', () => {
 
     expect(err.message).toContain(rowLabel)
     expect(err.message).toContain(detail)
-    expect(err.message).not.toContain('ada')
-    expect(err.message).not.toContain('2027-03-04 14:30')
+    for (const cellText of ['ada', '2027-03-04 14:30', 'Maybe Later', 'test-1', 'spk-1']) {
+      expect(err.message).not.toContain(cellText)
+    }
   })
 
-  it('reads only contract columns and lists the sensitive ones by header', () => {
+  it('reads only contract columns, skips duplicated optional ones and lists sensitive headers', () => {
     const headers = [
       ...ALL_HEADERS,
+      ' company ',
       'Gender Identity',
       'Person of color',
       'Racial/ethnic background',
@@ -322,11 +349,23 @@ describe('parseSessionizeExport', () => {
     ]
 
     const parsed = parseSessionizeExport(
-      allSheet([talk({ 'Gender Identity': 'made-up answer', 'T-shirt size': 'M' })], headers),
+      allSheet(
+        [
+          talk({
+            'Gender Identity': 'made-up answer',
+            'T-shirt size': 'M',
+            Company: 'Example Corp',
+          }),
+        ],
+        headers,
+      ),
       'all',
     )
 
     expect(JSON.stringify(parsed.rows)).not.toContain('made-up answer')
+    expect(parsed.rows[0].company).toBeNull()
+    expect(parsed.profile.columns).not.toContain('Company')
+    expect(parsed.duplicateOptionalColumns).toEqual(['Company'])
     expect(parsed.sensitiveColumns).toEqual([
       'Gender Identity',
       'Person of color',
@@ -459,7 +498,11 @@ describe('toExportTimestamp', () => {
 describe('compareWithLastGoodRun', () => {
   const COLUMNS = ['Session Id', 'Title', 'Email', 'LinkedIn', 'Company', 'Speaker Title']
 
-  function parsed(profile: Partial<ExportProfile>, sensitiveColumns: string[] = []): ParsedExport {
+  function parsed(
+    profile: Partial<ExportProfile>,
+    sensitiveColumns: string[] = [],
+    duplicateOptionalColumns: string[] = [],
+  ): ParsedExport {
     return {
       rows: [],
       profile: {
@@ -471,6 +514,7 @@ describe('compareWithLastGoodRun', () => {
       },
       skipped: { testSubmissions: 0, noSpeaker: 0 },
       sensitiveColumns,
+      duplicateOptionalColumns,
     }
   }
 
@@ -481,16 +525,22 @@ describe('compareWithLastGoodRun', () => {
     linkedinFillRate: 0.5,
   }
 
-  it('warns only about sensitive columns without a last good run', () => {
+  it('warns only about sensitive and duplicated columns without a last good run', () => {
     expect(
-      compareWithLastGoodRun(parsed({ rowCount: 1, emailFillRate: 0 }, ['Gender Identity']), null),
-    ).toEqual([{ kind: 'sensitive_column', detail: { column: 'Gender Identity' } }])
+      compareWithLastGoodRun(
+        parsed({ rowCount: 1, emailFillRate: 0 }, ['Gender Identity'], ['Company']),
+        null,
+      ),
+    ).toEqual([
+      { kind: 'sensitive_column', detail: { column: 'Gender Identity' } },
+      { kind: 'duplicate_optional_column', detail: { column: 'Company' } },
+    ])
   })
 
   it('stays quiet when nothing dropped', () => {
     expect(
       compareWithLastGoodRun(
-        parsed({ rowCount: 51, emailFillRate: 0.71, linkedinFillRate: 0.31 }),
+        parsed({ rowCount: 50, emailFillRate: 0.7, linkedinFillRate: 0.31 }),
         last,
       ),
     ).toEqual([])
