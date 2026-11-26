@@ -10,6 +10,7 @@
 import { DEFAULT_TENANT_ID } from '@crowd/common'
 import { DbConnOrTx, DbConnection, WRITE_DB_CONFIG, getDbConnection, pgpQx } from '@crowd/database'
 import { getServiceChildLogger } from '@crowd/logging'
+import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 import { MetadataStore, S3Service, SnowflakeExportJob, buildPlatformFilter } from '@crowd/snowflake'
 
 import { parsePccRow } from '../parser'
@@ -28,6 +29,7 @@ import type { CdpSubprojectIndex } from './existingProjects'
 import {
   PROJECT_CREATION_BLOCKED,
   PROJECT_CREATION_FAILED,
+  buildCreationFailureAlert,
   createMissingProjects,
   describeBlockedCreation,
   effectiveCreationMode,
@@ -372,7 +374,19 @@ export class PccProjectConsumer {
         recordFailure: ({ pccProjectId, pccSlug, details }) =>
           this.recordSyncError(pccProjectId, pccSlug, PROJECT_CREATION_FAILED, details),
       })
-      log.info({ jobId: job.id, ...summary }, 'PCC project creation completed')
+      const { failures, ...counts } = summary
+      log.info({ jobId: job.id, ...counts }, 'PCC project creation completed')
+
+      const alert = buildCreationFailureAlert(summary)
+      if (alert) {
+        log.warn({ jobId: job.id, failures: failures.length }, 'Sending PCC creation failure alert')
+        await sendSlackNotificationAsync(
+          SlackChannel.CDP_INTEGRATIONS_ALERTS,
+          SlackPersona.ERROR_REPORTER,
+          alert.title,
+          alert.text,
+        )
+      }
       return summary.createdPccProjectIds
     } catch (err) {
       log.error({ jobId: job.id, err }, 'PCC project creation failed')

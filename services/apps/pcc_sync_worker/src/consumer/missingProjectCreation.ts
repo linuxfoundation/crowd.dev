@@ -1,4 +1,5 @@
 import { getServiceChildLogger } from '@crowd/logging'
+import { escapeSlackText } from '@crowd/slack'
 import { SegmentStatus } from '@crowd/types'
 
 import type { ParsedPccProject } from '../parser'
@@ -86,23 +87,39 @@ export interface MissingProjectCreationOptions {
   recordFailure: (failure: CreationFailure) => Promise<void>
 }
 
+export interface FailedCreation {
+  name: string
+  endpoint: CreationStep['endpoint']
+  slug: string
+  error: string
+}
+
 export interface MissingProjectCreationSummary {
   mode: Exclude<CreationMode, 'off'>
   creatable: number
   created: number
   createdPccProjectIds: string[]
   failed: number
+  failures: FailedCreation[]
   waitingForFailedLevel: number
   notAttempted: number
   stoppedWithoutAnswers: boolean
 }
 
 function describeStep(step: CreationStep) {
-  return { endpoint: step.endpoint, pccProjectId: step.node.pccProjectId, slug: step.node.slug }
+  return {
+    endpoint: step.endpoint,
+    pccProjectId: step.node.pccProjectId,
+    slug: step.node.slug,
+  }
 }
 
 function describeProject(project: ProjectToCreate) {
-  return { pccProjectId: project.pccProjectId, pccSlug: project.pccSlug, name: project.name }
+  return {
+    pccProjectId: project.pccProjectId,
+    pccSlug: project.pccSlug,
+    name: project.name,
+  }
 }
 
 function logDryRun(projects: ProjectToCreate[], maxProjects: number): number {
@@ -175,6 +192,7 @@ export async function createMissingProjects(
     created: 0,
     createdPccProjectIds: [],
     failed: 0,
+    failures: [],
     waitingForFailedLevel: 0,
     notAttempted: projects.length,
     stoppedWithoutAnswers: false,
@@ -196,11 +214,75 @@ export async function createMissingProjects(
       summary.created++
       summary.createdPccProjectIds.push(outcome.project.pccProjectId)
     }
-    if (outcome.outcome === 'failed') summary.failed++
+    if (outcome.outcome === 'failed') {
+      summary.failed++
+      summary.failures.push({
+        name: outcome.project.name,
+        endpoint: outcome.step.endpoint,
+        slug: outcome.step.node.slug,
+        error: outcome.error,
+      })
+    }
     if (outcome.outcome === 'waiting_for_failed_level') summary.waitingForFailedLevel++
   }
   summary.notAttempted = result.notAttempted
   summary.stoppedWithoutAnswers = result.stoppedWithoutAnswers
 
   return summary
+}
+
+const MAX_FAILURES_IN_ALERT = 20
+const MAX_ERROR_LENGTH_IN_ALERT = 200
+
+export interface CreationFailureAlert {
+  title: string
+  text: string
+}
+
+function onOneLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+function shortened(error: string): string {
+  const line = onOneLine(error)
+  return line.length > MAX_ERROR_LENGTH_IN_ALERT
+    ? `${line.slice(0, MAX_ERROR_LENGTH_IN_ALERT)}…`
+    : line
+}
+
+export function buildCreationFailureAlert(
+  summary: MissingProjectCreationSummary,
+): CreationFailureAlert | null {
+  if (summary.mode !== 'on') return null
+  if (summary.failed === 0 && !summary.stoppedWithoutAnswers) return null
+
+  const lines = [
+    `*Created:* ${summary.created} | *Failed:* ${summary.failed} | *Waiting for a failed level:* ${summary.waitingForFailedLevel} | *Left for the next run:* ${summary.notAttempted}`,
+  ]
+  if (summary.stoppedWithoutAnswers) {
+    lines.push('The run stopped early because the backend was not answering.')
+  }
+
+  const listed = summary.failures.slice(0, MAX_FAILURES_IN_ALERT)
+  if (listed.length > 0) lines.push('')
+  for (const failure of listed) {
+    lines.push(
+      `• *${escapeSlackText(onOneLine(failure.name))}* (${failure.endpoint} \`${escapeSlackText(failure.slug)}\`): ${escapeSlackText(shortened(failure.error))}`,
+    )
+  }
+  if (summary.failures.length > listed.length) {
+    lines.push(`… and ${summary.failures.length - listed.length} more.`)
+  }
+  lines.push(
+    '',
+    `Each failure is in \`pcc_projects_sync_errors\` as \`${PROJECT_CREATION_FAILED}\`.`,
+  )
+
+  const projects = summary.failed === 1 ? 'project' : 'projects'
+  return {
+    title: summary.stoppedWithoutAnswers
+      ? 'PCC sync stopped creating projects: the backend is not answering'
+      : `PCC sync could not create ${summary.failed} ${projects}`,
+    text: lines.join('\n'),
+  }
 }
