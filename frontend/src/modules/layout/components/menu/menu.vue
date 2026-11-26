@@ -9,6 +9,13 @@
       :is-collapsed="isCollapsed"
       :to="{ path: '/overview' }"
     />
+    <lf-menu-link
+      v-if="hasPermission(LfPermission.dataQualityRead)"
+      title="Data Quality Copilot"
+      icon="message-exclamation"
+      :is-collapsed="isCollapsed"
+      :to="{ path: '/data-quality-assistant' }"
+    />
     <div class="px-3 py-4">
       <app-lf-menu-project-group-selection
         v-if="!isCollapsed"
@@ -38,19 +45,6 @@
       :to="{ path: '/activities', query: { projectGroup: selectedProjectGroup?.id } }"
       :disabled="!selectedProjectGroup"
     />
-    <template v-if="hasPermission(LfPermission.dataQualityRead)">
-      <div class="px-3 py-2">
-        <div class="border-b border-gray-200" />
-      </div>
-      <lf-menu-link
-
-        title="Data Quality Copilot"
-        icon="message-exclamation"
-        :is-collapsed="isCollapsed"
-        :to="{ path: '/data-quality-assistant', query: { projectGroup: selectedProjectGroup?.id } }"
-        :disabled="!selectedProjectGroup"
-      />
-    </template>
 
     <div class="flex-grow" />
     <div class="flex justify-end pb-8">
