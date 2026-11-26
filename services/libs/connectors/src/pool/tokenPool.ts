@@ -2,15 +2,12 @@ import type { Logger } from '@crowd/logging'
 import type { RedisClient } from '@crowd/redis'
 
 import type { IPooledToken } from '../http/client'
-import {
-  ConnectorError,
-  ProviderAuthError,
-  ProviderUnavailableError,
-  RateLimitError,
-} from '../http/errors'
+import { ConnectorError, ProviderAuthError, RateLimitError } from '../http/errors'
 
 export const PROBE_STALENESS_MS = 90_000
 const TOKEN_EXPIRY_MARGIN_MS = 120_000
+export const MINT_RETRY_DELAY_MS = 300_000
+const TRANSIENT_MINT_ERROR_CLASSES = new Set(['provider.unavailable', 'provider.rate_limit'])
 
 export interface BudgetSnapshot {
   limit: number
@@ -52,7 +49,7 @@ type EntryStateUpdate = { [K in keyof IEntryState]?: IEntryState[K] | null }
 
 interface ITokenResolution {
   token: string | null
-  transientMintError?: ConnectorError
+  mintRetryAt?: Date
 }
 
 // atomic get-merge-set per entry; JSON null in the update deletes the field
@@ -210,7 +207,13 @@ export function createTokenPool(
           { event: 'pool_mint_failed', entryId, errorClass: err.errorClass, errMsg: err.message },
           'token mint failed, skipping entry',
         )
-        return { token: null, transientMintError: err }
+        if (!TRANSIENT_MINT_ERROR_CLASSES.has(err.errorClass)) {
+          return { token: null }
+        }
+        return {
+          token: null,
+          mintRetryAt: err.options?.resumeAt ?? new Date(nowMs + MINT_RETRY_DELAY_MS),
+        }
       }
       throw err
     }
@@ -276,8 +279,7 @@ export function createTokenPool(
           : lruOrder
       const probe = options?.probeBudget
       let earliestBudgetResetAt: Date | null = null
-      let transientMintError: ConnectorError | null = null
-      let earliestMintResumeAt: Date | null = null
+      let earliestMintRetryAt: Date | null = null
       for (const id of ordered) {
         const state = states.get(id)
         if (!state) {
@@ -293,13 +295,7 @@ export function createTokenPool(
         }
         const resolution = await ensureUsableToken(id, state, nowMs)
         if (!resolution.token) {
-          if (resolution.transientMintError) {
-            transientMintError = resolution.transientMintError
-            earliestMintResumeAt = earliestDate([
-              earliestMintResumeAt,
-              transientMintError.options?.resumeAt ?? null,
-            ])
-          }
+          earliestMintRetryAt = earliestDate([earliestMintRetryAt, resolution.mintRetryAt ?? null])
           continue
         }
         const token = resolution.token
@@ -324,16 +320,10 @@ export function createTokenPool(
       const resumeAt = earliestDate([
         earliestParkedUntil(states, nowMs),
         earliestBudgetResetAt,
-        earliestMintResumeAt,
+        earliestMintRetryAt,
       ])
       if (resumeAt) {
         throw new RateLimitError('token pool exhausted', { resumeAt })
-      }
-      if (transientMintError) {
-        throw new ProviderUnavailableError(
-          `token pool has no usable token, minting failed with ${transientMintError.errorClass}: ${transientMintError.message}`,
-          { cause: transientMintError },
-        )
       }
       throw new ProviderAuthError('token pool empty')
     },

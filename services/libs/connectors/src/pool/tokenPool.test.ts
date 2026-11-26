@@ -1,14 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { Logger } from '@crowd/logging'
 import type { RedisClient } from '@crowd/redis'
 
+import { createHttpClient } from '../http/client'
 import {
+  ConnectorCodeError,
   ConnectorError,
   ProviderAuthError,
   ProviderUnavailableError,
   RateLimitError,
 } from '../http/errors'
-import { type TokenMinter, createTokenPool } from './tokenPool'
+import { MINT_RETRY_DELAY_MS, type TokenMinter, createTokenPool } from './tokenPool'
 
 const PLATFORM = 'example'
 const ENTRIES_KEY = `connectors:pool:${PLATFORM}:entries`
@@ -80,43 +83,56 @@ function minterFailingWith(failures: Record<string, ConnectorError>): TokenMinte
 }
 
 describe('token pool acquire', () => {
-  const parkedUntil = new Date(Date.now() + 600_000)
-  const mintRetryAt = new Date(Date.now() + 120_000)
+  const NOW = new Date('2026-11-26T10:00:00.000Z')
+  const at = (offsetMs: number) => new Date(NOW.getTime() + offsetMs)
+  const exhaustedUntil = (resumeAt: Date) =>
+    new RateLimitError('token pool exhausted', { resumeAt })
+  const empty = new ProviderAuthError('token pool empty')
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
 
   it.each<[string, Record<string, object>, Record<string, ConnectorError>, ConnectorError]>([
     [
-      'a transient sign-in failure of the only entry is unavailable, not a broken credential',
+      'a transient sign-in failure of the only entry waits for the mint retry delay',
       { only: {} },
       { only: new ProviderUnavailableError('sign-in page down') },
-      new ProviderUnavailableError(
-        'token pool has no usable token, minting failed with provider.unavailable: sign-in page down',
-      ),
+      exhaustedUntil(at(MINT_RETRY_DELAY_MS)),
     ],
     [
       'a rate-limited mint passes on when it may retry',
       { only: {} },
-      { only: new RateLimitError('slow down', { resumeAt: mintRetryAt }) },
-      new RateLimitError('token pool exhausted', { resumeAt: mintRetryAt }),
+      { only: new RateLimitError('slow down', { resumeAt: at(120_000) }) },
+      exhaustedUntil(at(120_000)),
     ],
     [
-      'a parked entry keeps the rate-limit path ahead of a transient mint failure',
-      { parked: { parkedUntil: parkedUntil.toISOString() }, failing: {} },
+      'a parked entry that frees up before the mint retry wins',
+      { parked: { parkedUntil: at(120_000).toISOString() }, failing: {} },
       { failing: new ProviderUnavailableError('sign-in page down') },
-      new RateLimitError('token pool exhausted', { resumeAt: parkedUntil }),
+      exhaustedUntil(at(120_000)),
     ],
     [
-      'one quarantined and one transiently failing entry is still unavailable',
+      'one quarantined and one transiently failing entry waits for the mint retry delay',
       { broken: { quarantined: true }, failing: {} },
       { failing: new RateLimitError('slow down') },
-      new ProviderUnavailableError(
-        'token pool has no usable token, minting failed with provider.rate_limit: slow down',
-      ),
+      exhaustedUntil(at(MINT_RETRY_DELAY_MS)),
     ],
     [
       'a rejected sign-in quarantines the entry and leaves the pool empty',
       { only: {} },
       { only: new ProviderAuthError('bad password') },
-      new ProviderAuthError('token pool empty'),
+      empty,
+    ],
+    [
+      'a mint failure of any other class leaves the pool empty',
+      { only: {} },
+      { only: new ConnectorCodeError('minter bug') },
+      empty,
     ],
   ])('%s', async (_name, entries, failures, expected) => {
     const pool = await poolWithEntries(entries, minterFailingWith(failures))
@@ -128,6 +144,23 @@ describe('token pool acquire', () => {
       expected.message,
       expected.options?.resumeAt,
     ])
+  })
+
+  it('makes a request mint once and fail without retrying when the only mint fails transiently', async () => {
+    const mint = minterFailingWith({ only: new ProviderUnavailableError('sign-in page down') })
+    const pool = await poolWithEntries({ only: {} }, mint)
+    const http = createHttpClient({
+      acquireToken: () => pool.acquire('only'),
+      parkToken: pool.park,
+      invalidateToken: pool.invalidate,
+      log: { info: vi.fn(), warn: vi.fn() } as unknown as Logger,
+    })
+
+    await expect(http.request({ url: 'https://example.test/items' })).rejects.toMatchObject({
+      errorClass: 'provider.rate_limit',
+      options: { resumeAt: at(MINT_RETRY_DELAY_MS) },
+    })
+    expect(mint).toHaveBeenCalledTimes(1)
   })
 
   it('borrows the next entry when one installation fails to mint, and quarantines nothing', async () => {
