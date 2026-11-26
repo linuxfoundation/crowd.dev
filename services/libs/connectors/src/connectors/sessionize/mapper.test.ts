@@ -72,7 +72,7 @@ describe('submittedSessionActivity', () => {
         status: 'Accepted',
         sessionTitle: 'Scaling Widgets in Practice',
         company: 'WidgetCo',
-        companyWebsite: 'https://widgetco.example.com',
+        companyWebsite: 'widgetco.example.com',
         jobTitle: 'Principal Engineer',
         eventName: 'Example Open Source Summit 2026',
       },
@@ -105,7 +105,7 @@ describe('submittedSessionActivity', () => {
               {
                 platform: PlatformType.SESSIONIZE,
                 type: OrganizationIdentityType.PRIMARY_DOMAIN,
-                value: 'https://widgetco.example.com',
+                value: 'widgetco.example.com',
                 verified: true,
               },
             ],
@@ -143,7 +143,7 @@ describe('spokeAtSessionActivity', () => {
         status: 'Accepted',
         sessionTitle: 'Scaling Widgets in Practice',
         company: 'WidgetCo',
-        companyWebsite: 'https://widgetco.example.com',
+        companyWebsite: 'widgetco.example.com',
         jobTitle: 'Principal Engineer',
         eventName: 'Example Open Source Summit 2026',
         room: 'Hall B',
@@ -220,21 +220,47 @@ describe('member', () => {
 })
 
 describe('organizations', () => {
-  it.each<[string, Partial<SessionizeExportRow>]>([
-    ['no website', { companyWebsite: null }],
-    ['a public email provider domain', { companyWebsite: 'https://gmail.com' }],
-    ['a website that is not a URL', { companyWebsite: 'not a url' }],
-  ])('leaves organizations out for %s', (_, overrides) => {
-    expect(submittedSessionActivity(row(overrides), EVENT)?.member).not.toHaveProperty(
-      'organizations',
-    )
-  })
+  it.each<[string, string | null, string | null]>([
+    ['no website', null, null],
+    ['a public email provider domain', 'https://gmail.com', 'gmail.com'],
+    ['a website that is not a URL', 'not a url', null],
+    ['an email typed as the website', 'avery.quill@widgetco.example', null],
+    ['a linkedin company page', 'https://www.linkedin.com/company/widgetco', null],
+    ['a regional linkedin host', 'uk.linkedin.com/in/avery-quill-42', null],
+    ['a github profile', 'github.com/avery-quill', null],
+    ['a link-in-bio page', 'https://linktr.ee/averyquill', null],
+    ['a sessionize profile', 'https://sessionize.com/avery-quill', null],
+  ])(
+    'leaves organizations out for %s and keeps only a hostname attribute',
+    (_, companyWebsite, attribute) => {
+      const activity = submittedSessionActivity(row({ companyWebsite }), EVENT)
 
-  it('names the organization after the website when the company is empty', () => {
-    expect(
-      submittedSessionActivity(row({ company: null }), EVENT)?.member.organizations?.[0]
-        .displayName,
-    ).toBe('https://widgetco.example.com')
+      expect(activity?.member).not.toHaveProperty('organizations')
+      expect(activity?.attributes.companyWebsite).toBe(attribute ?? undefined)
+    },
+  )
+
+  it('keys the organization on the hostname and names it after it when the company is empty', () => {
+    const activity = submittedSessionActivity(
+      row({ company: null, companyWebsite: 'https://www.WidgetCo.example.com/about?ref=talk' }),
+      EVENT,
+    )
+
+    expect(activity?.attributes.companyWebsite).toBe('widgetco.example.com')
+    expect(activity?.member.organizations).toEqual([
+      {
+        displayName: 'widgetco.example.com',
+        source: OrganizationSource.SESSIONIZE,
+        identities: [
+          {
+            platform: PlatformType.SESSIONIZE,
+            type: OrganizationIdentityType.PRIMARY_DOMAIN,
+            value: 'widgetco.example.com',
+            verified: true,
+          },
+        ],
+      },
+    ])
   })
 })
 

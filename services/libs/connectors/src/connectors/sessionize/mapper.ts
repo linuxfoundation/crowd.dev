@@ -75,6 +75,19 @@ export type SessionizeActivity = z.infer<typeof sessionizeActivitySchema>
 type SessionizeMember = SessionizeActivity['member']
 
 const LINKEDIN_HOST = 'linkedin.com'
+const SHARED_HOSTS = [
+  LINKEDIN_HOST,
+  'github.com',
+  'gitlab.com',
+  'twitter.com',
+  'x.com',
+  'facebook.com',
+  'instagram.com',
+  'youtube.com',
+  'medium.com',
+  'linktr.ee',
+  'sessionize.com',
+]
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i
 
 export function submittedSessionActivity(
@@ -158,7 +171,7 @@ function sessionAttributes(
     status: row.status,
     sessionTitle: row.title,
     company: row.company,
-    companyWebsite: row.companyWebsite,
+    companyWebsite: companyHostname(row.companyWebsite),
     jobTitle: row.jobTitle,
     eventName: event.eventName,
   })
@@ -218,20 +231,28 @@ function speakerIdentities(row: SessionizeExportRow): SessionizeMember['identiti
   ]
 }
 
-function speakerOrganizations(row: SessionizeExportRow): SessionizeMember['organizations'] {
-  const website = row.companyWebsite
-  if (website === null) return undefined
+function isSharedHost(hostname: string): boolean {
+  return SHARED_HOSTS.some((shared) => hostname === shared || hostname.endsWith(`.${shared}`))
+}
+
+function companyHostname(website: string | null): string | null {
+  if (website === null || website.includes('@')) return null
   const hostname = normalizeHostname(website, false)
-  if (hostname === undefined || isDomainExcluded(hostname)) return undefined
+  return hostname === undefined || isSharedHost(hostname) ? null : hostname
+}
+
+function speakerOrganizations(row: SessionizeExportRow): SessionizeMember['organizations'] {
+  const hostname = companyHostname(row.companyWebsite)
+  if (hostname === null || isDomainExcluded(hostname)) return undefined
   return [
     {
-      displayName: row.company ?? website,
+      displayName: row.company ?? hostname,
       source: OrganizationSource.SESSIONIZE,
       identities: [
         {
           platform: PlatformType.SESSIONIZE,
           type: OrganizationIdentityType.PRIMARY_DOMAIN,
-          value: website,
+          value: hostname,
           verified: true,
         },
       ],
