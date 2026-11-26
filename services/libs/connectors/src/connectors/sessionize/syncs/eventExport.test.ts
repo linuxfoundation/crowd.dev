@@ -464,7 +464,7 @@ describe('runEventExport', () => {
 
   it('logs warnings and skipped counts with counts and column names only', async () => {
     vi.setSystemTime(new Date('2026-03-21T12:00:00.000Z'))
-    const sensitiveHeaders = [...ALL_HEADERS, 'Gender identity']
+    const headersWithExtraColumn = [...ALL_HEADERS, 'Gender identity']
     const { ctx, log, watermarks } = await makeCtx({
       files: {
         all: allSheet(
@@ -473,7 +473,7 @@ describe('runEventExport', () => {
             ...Array(ALL_HEADERS.length - row.length).fill(null),
             'x',
           ]),
-          sensitiveHeaders,
+          headersWithExtraColumn,
         ),
         accepted: acceptedSheet(),
       },
@@ -494,13 +494,6 @@ describe('runEventExport', () => {
 
     const warnings = log.warn.mock.calls.map(([fields]) => fields)
     expect(warnings).toEqual([
-      {
-        event: 'sessionize_export_warning',
-        eventKey: EVENT.eventKey,
-        variant: 'all',
-        kind: 'sensitive_column',
-        detail: { column: 'Gender identity' },
-      },
       {
         event: 'sessionize_export_warning',
         eventKey: EVENT.eventKey,
