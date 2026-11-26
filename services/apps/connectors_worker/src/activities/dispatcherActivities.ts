@@ -13,6 +13,7 @@ import {
   WorkflowIdReusePolicy,
   WorkflowNotFoundError,
 } from '@crowd/temporal'
+import type { WorkflowExecutionStatusName } from '@crowd/temporal'
 
 import { svc } from '../main'
 import { applyRunCaps, releaseOrphan } from '../runCap'
@@ -25,6 +26,7 @@ const HEARTBEAT_TTL_SECONDS = 300
 const DEFAULT_RUN_ESTIMATE = 50
 const BUDGET_PROBE_CONCURRENCY = 10
 const CHANNEL_LABEL_MAX_LENGTH = 80
+const LIVE_RUN_STATUSES: WorkflowExecutionStatusName[] = ['RUNNING', 'PAUSED']
 
 export async function claimDue(limit: number): Promise<IClaimedUnit[]> {
   return claimDueUnits(dbStoreQx(svc.postgres.writer), limit)
@@ -88,7 +90,7 @@ async function findLiveLapsedUnitIds(lapsedUnits: IClaimedUnit[]): Promise<Set<s
 async function isRunLive(unit: IClaimedUnit): Promise<boolean> {
   try {
     const { status } = await svc.temporal.workflow.getHandle(syncRunWorkflowId(unit)).describe()
-    return status.name === 'RUNNING'
+    return LIVE_RUN_STATUSES.includes(status.name)
   } catch (err) {
     if (err instanceof WorkflowNotFoundError) {
       return false
