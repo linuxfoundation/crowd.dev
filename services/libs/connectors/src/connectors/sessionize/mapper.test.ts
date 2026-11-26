@@ -89,7 +89,7 @@ describe('submittedSessionActivity', () => {
           {
             platform: PlatformType.LINKEDIN,
             type: MemberIdentityType.USERNAME,
-            value: 'avery-quill-42',
+            value: 'Avery-Quill-42',
             verified: false,
           },
         ],
@@ -198,9 +198,14 @@ describe('member', () => {
       row({ email: null, linkedin: null, bio: null, tagline: null, photoUrl: null }),
       EVENT,
     )?.member
+    const twoEmails = submittedSessionActivity(
+      row({ email: 'avery.quill@widgetco.example; bob@example.org', linkedin: null }),
+      EVENT,
+    )
 
     expect(member?.identities).toEqual([SPEAKER_IDENTITY])
     expect(member).not.toHaveProperty('attributes')
+    expect(twoEmails?.member.identities).toEqual([SPEAKER_IDENTITY])
   })
 
   it('uses the tagline as bio when the bio is empty', () => {
@@ -235,6 +240,22 @@ describe('organizations', () => {
     ['a google doc', 'https://docs.google.com/document/d/made-up-doc', null, null],
     ['a personal github pages site', 'https://avery-quill.github.io', null, null],
     ['a hosted blog', 'averyquill.wordpress.com', null, null],
+    ['a website with userinfo', 'https://avery@widgetco.example.com/', null, null],
+    ['an email provider subdomain', 'https://mail.yahoo.com', 'mail.yahoo.com', null],
+    [
+      'a company website with an @ in its path',
+      'https://widgetco.example.com/@team',
+      'widgetco.example.com',
+      'widgetco.example.com',
+    ],
+    [
+      'a company website with an @ in its query',
+      'https://widgetco.example.com/contact?ref=a@b.example',
+      'widgetco.example.com',
+      'widgetco.example.com',
+    ],
+    ['a registry-style domain', 'https://widgetco.uk.com', 'widgetco.uk.com', 'widgetco.uk.com'],
+    ['a personal github pages host', 'avery-quill.github.io', null, null],
     [
       'a company website with a path',
       'https://widgetco.example.com/en',
@@ -280,7 +301,9 @@ describe('organizations', () => {
 
 describe('linkedinHandle', () => {
   it.each<[string | null, string | null]>([
-    ['https://www.linkedin.com/in/Jane-Doe-123/?utm=x', 'jane-doe-123'],
+    ['https://www.linkedin.com/in/Jane-Doe-123/?utm=x', 'Jane-Doe-123'],
+    ['https://www.linkedin.com/in/jos%C3%A9-ruiz-9', 'josé-ruiz-9'],
+    ['https://www.linkedin.com/in/bad%E0%A4', null],
     ['https://de.linkedin.com/in/jane', 'jane'],
     ['linkedin.com/in/jane', 'jane'],
     ['https://www.linkedin.com/company/acme', null],

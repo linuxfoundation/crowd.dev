@@ -3,8 +3,10 @@ import { z } from 'zod'
 import {
   getEmailLocalPart,
   isDomainExcluded,
-  isOnPrivateSuffix,
+  isValidEmail,
   normalizeHostname,
+  privateSuffix,
+  registrableDomain,
 } from '@crowd/common'
 import {
   SESSIONIZE_GRID,
@@ -117,7 +119,32 @@ const SHARED_HOSTS = [
   'notion.site',
   'hashnode.dev',
 ]
+const REGISTRY_SUFFIXES = new Set([
+  'uk.com',
+  'us.com',
+  'eu.com',
+  'de.com',
+  'co.com',
+  'za.com',
+  'br.com',
+  'cn.com',
+  'gb.net',
+  'uk.net',
+  'in.net',
+  'it.com',
+  'co.nl',
+  'co.no',
+  'co.dk',
+  'co.ca',
+  'co.pl',
+  'co.cz',
+  'com.de',
+  'com.se',
+  'co.ua',
+  'eu.org',
+])
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i
+const WHOLE_EMAIL = /^[^@\s/]+@[^@\s/]+$/
 
 export function submittedSessionActivity(
   row: SessionizeExportRow,
@@ -156,12 +183,24 @@ export function spokeAtSessionActivity(
 
 export function linkedinHandle(raw: string | null): string | null {
   if (raw === null) return null
-  const url = parseUrl(URL_SCHEME.test(raw) ? raw : `https://${raw}`)
+  const url = parseUrl(withScheme(raw))
   if (url === null) return null
   const host = url.hostname.toLowerCase()
   if (host !== LINKEDIN_HOST && !host.endsWith(`.${LINKEDIN_HOST}`)) return null
   const [section, handle] = url.pathname.split('/').filter(Boolean)
-  return section === 'in' && handle ? handle.toLowerCase() : null
+  return section === 'in' && handle ? decodePathSegment(handle) : null
+}
+
+function decodePathSegment(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment) || null
+  } catch {
+    return null
+  }
+}
+
+function withScheme(raw: string): string {
+  return URL_SCHEME.test(raw) ? raw : `https://${raw}`
 }
 
 function parseUrl(raw: string): URL | null {
@@ -237,7 +276,7 @@ function speakerIdentities(row: SessionizeExportRow): SessionizeMember['identiti
       value: row.speakerId,
       verified: true,
     },
-    ...(row.email
+    ...(row.email && isValidEmail(row.email)
       ? [
           {
             platform: PlatformType.SESSIONIZE,
@@ -260,22 +299,37 @@ function speakerIdentities(row: SessionizeExportRow): SessionizeMember['identiti
   ]
 }
 
+function isPersonalPageHost(hostname: string): boolean {
+  const suffix = privateSuffix(hostname)
+  return suffix !== null && !REGISTRY_SUFFIXES.has(suffix)
+}
+
 function isSharedHost(hostname: string): boolean {
   return (
-    isOnPrivateSuffix(hostname) ||
+    isPersonalPageHost(hostname) ||
     SHARED_HOSTS.some((shared) => hostname === shared || hostname.endsWith(`.${shared}`))
   )
 }
 
+function isEmailOrUserinfo(website: string): boolean {
+  if (!URL_SCHEME.test(website) && WHOLE_EMAIL.test(website)) return true
+  const url = parseUrl(withScheme(website))
+  return url !== null && (url.username !== '' || url.password !== '')
+}
+
+function isEmailProviderHost(hostname: string): boolean {
+  return isDomainExcluded(hostname) || isDomainExcluded(registrableDomain(hostname) ?? hostname)
+}
+
 function companyHostname(website: string | null): string | null {
-  if (website === null || website.includes('@')) return null
+  if (website === null || isEmailOrUserinfo(website)) return null
   const hostname = normalizeHostname(website, false)
   return hostname === undefined || isSharedHost(hostname) ? null : hostname
 }
 
 function speakerOrganizations(row: SessionizeExportRow): SessionizeMember['organizations'] {
   const hostname = companyHostname(row.companyWebsite)
-  if (hostname === null || isDomainExcluded(hostname)) return undefined
+  if (hostname === null || isEmailProviderHost(hostname)) return undefined
   return [
     {
       displayName: row.company ?? hostname,
