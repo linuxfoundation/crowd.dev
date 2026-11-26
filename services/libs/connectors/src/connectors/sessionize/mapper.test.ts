@@ -220,23 +220,37 @@ describe('member', () => {
 })
 
 describe('organizations', () => {
-  it.each<[string, string | null, string | null]>([
-    ['no website', null, null],
-    ['a public email provider domain', 'https://gmail.com', 'gmail.com'],
-    ['a website that is not a URL', 'not a url', null],
-    ['an email typed as the website', 'avery.quill@widgetco.example', null],
-    ['a linkedin company page', 'https://www.linkedin.com/company/widgetco', null],
-    ['a regional linkedin host', 'uk.linkedin.com/in/avery-quill-42', null],
-    ['a github profile', 'github.com/avery-quill', null],
-    ['a link-in-bio page', 'https://linktr.ee/averyquill', null],
-    ['a sessionize profile', 'https://sessionize.com/avery-quill', null],
+  it.each<[string, string | null, string | null, string | null]>([
+    ['no website', null, null, null],
+    ['a public email provider domain', 'https://gmail.com', 'gmail.com', null],
+    ['a website that is not a URL', 'not a url', null, null],
+    ['an email typed as the website', 'avery.quill@widgetco.example', null, null],
+    ['a linkedin company page', 'https://www.linkedin.com/company/widgetco', null, null],
+    ['a regional linkedin host', 'uk.linkedin.com/in/avery-quill-42', null, null],
+    ['a github profile', 'github.com/avery-quill', null, null],
+    ['a link-in-bio page', 'https://linktr.ee/averyquill', null, null],
+    ['a sessionize profile', 'https://sessionize.com/avery-quill', null, null],
+    ['a short link', 'https://bit.ly/3AvQuil', null, null],
+    ['a linkedin short link', 'lnkd.in/averyq', null, null],
+    ['a google doc', 'https://docs.google.com/document/d/made-up-doc', null, null],
+    ['a personal github pages site', 'https://avery-quill.github.io', null, null],
+    ['a hosted blog', 'averyquill.wordpress.com', null, null],
+    [
+      'a company website with a path',
+      'https://widgetco.example.com/en',
+      'widgetco.example.com',
+      'widgetco.example.com',
+    ],
+    ['a google product site', 'https://cloud.google.com', 'cloud.google.com', 'cloud.google.com'],
   ])(
-    'leaves organizations out for %s and keeps only a hostname attribute',
-    (_, companyWebsite, attribute) => {
+    'maps %s (%s) to the website attribute %s and organization domain %s',
+    (_, companyWebsite, attribute, organizationDomain) => {
       const activity = submittedSessionActivity(row({ companyWebsite }), EVENT)
 
-      expect(activity?.member).not.toHaveProperty('organizations')
       expect(activity?.attributes.companyWebsite).toBe(attribute ?? undefined)
+      expect(activity?.member.organizations?.[0]?.identities[0]?.value).toBe(
+        organizationDomain ?? undefined,
+      )
     },
   )
 

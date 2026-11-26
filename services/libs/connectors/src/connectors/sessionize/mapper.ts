@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { getEmailLocalPart, isDomainExcluded, normalizeHostname } from '@crowd/common'
+import {
+  getEmailLocalPart,
+  isDomainExcluded,
+  isOnPrivateSuffix,
+  normalizeHostname,
+} from '@crowd/common'
 import {
   SESSIONIZE_GRID,
   SessionizeActivityType,
@@ -87,6 +92,30 @@ const SHARED_HOSTS = [
   'medium.com',
   'linktr.ee',
   'sessionize.com',
+  'bit.ly',
+  'tinyurl.com',
+  't.co',
+  'lnkd.in',
+  'youtu.be',
+  't.me',
+  'bio.link',
+  'about.me',
+  'beacons.ai',
+  'carrd.co',
+  'calendly.com',
+  'dev.to',
+  'substack.com',
+  'meetup.com',
+  'bsky.app',
+  'mastodon.social',
+  'huggingface.co',
+  'sites.google.com',
+  'docs.google.com',
+  'drive.google.com',
+  'notion.so',
+  'wordpress.com',
+  'notion.site',
+  'hashnode.dev',
 ]
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i
 
@@ -232,7 +261,10 @@ function speakerIdentities(row: SessionizeExportRow): SessionizeMember['identiti
 }
 
 function isSharedHost(hostname: string): boolean {
-  return SHARED_HOSTS.some((shared) => hostname === shared || hostname.endsWith(`.${shared}`))
+  return (
+    isOnPrivateSuffix(hostname) ||
+    SHARED_HOSTS.some((shared) => hostname === shared || hostname.endsWith(`.${shared}`))
+  )
 }
 
 function companyHostname(website: string | null): string | null {

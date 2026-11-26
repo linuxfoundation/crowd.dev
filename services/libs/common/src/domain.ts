@@ -76,3 +76,6 @@ export const registrableDomain = (urlOrHost: string): string | null => {
   const parsed = parse(urlOrHost, { allowPrivateDomains: true })
   return parsed.domain ?? null
 }
+
+export const isOnPrivateSuffix = (hostname: string): boolean =>
+  parse(hostname, { allowPrivateDomains: true }).isPrivate === true
