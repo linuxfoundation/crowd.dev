@@ -4,7 +4,10 @@ import type {
   SessionizeHoldReason,
   SessionizeMatchCandidate,
 } from '@crowd/connectors/src/connectors/sessionize/matching'
-import { suggestSessionizeMapping } from '@crowd/connectors/src/connectors/sessionize/suggestions'
+import {
+  aliasProjectSlug,
+  suggestSessionizeMapping,
+} from '@crowd/connectors/src/connectors/sessionize/suggestions'
 import type {
   SessionizeSuggestion,
   SessionizeSuggestionKind,
@@ -137,6 +140,15 @@ function subprojectOfEvent(
   return single(index.bySourceId, event.projectId.toLowerCase())
 }
 
+function subprojectOfCventSuggestion(
+  index: SubprojectIndex,
+  suggestion: SessionizeSuggestion,
+  eventName: string,
+): SubprojectForMapping | null {
+  const ofCventEvent = subprojectOfEvent(index, suggestion.cventEvent)
+  return ofCventEvent === null ? single(index.bySlug, aliasProjectSlug(eventName)) : ofCventEvent
+}
+
 function toCandidate(stored: z.infer<typeof candidateSchema>): SessionizeMatchCandidate {
   return {
     eventId: stored.eventId,
@@ -164,7 +176,7 @@ function resolveSuggestion(
     const suggested =
       suggestion.kind === 'project_alias'
         ? single(index.bySlug, suggestion.projectSlug)
-        : subprojectOfEvent(index, suggestion.cventEvent)
+        : subprojectOfCventSuggestion(index, suggestion, event.eventName)
     return {
       suggestion,
       match: suggested === null ? 'project_not_in_cdp' : suggestion.kind,
@@ -207,7 +219,8 @@ function stateOf(
 function buildRow(event: ISessionizeEventForReview, index: SubprojectIndex): EventMappingRow {
   const { suggestion, match, suggested } = resolveSuggestion(event, index)
   const state = stateOf(event, suggested)
-  const { cventEvent } = suggestion
+  const cventEvent =
+    suggestion.reason === 'ambiguous' ? suggestion.hintCventEvent : suggestion.cventEvent
   return {
     platform: 'sessionize',
     eventKey: event.eventKey,

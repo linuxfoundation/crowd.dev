@@ -62,6 +62,26 @@ function rowOf(event: ISessionizeEventForReview, subprojects = SUBPROJECTS) {
   return rows[0]
 }
 
+const TORCH_PROJECT = {
+  segmentId: 'segment-torch',
+  name: 'Torch Project',
+  groupName: 'Torch Foundation',
+}
+
+const TORCH_CONFERENCE: Partial<ISessionizeEventForReview> = {
+  eventName: 'PyTorch Conference Example 2026',
+  evidence: {
+    candidates: [
+      {
+        ...EXAMPLE_CON,
+        eventId: 'cvent-torch',
+        eventName: 'PyTorch Conference Example 2026',
+        projectId: 'pcc-unknown',
+      },
+    ],
+  },
+}
+
 const EXAMPLE_PROJECT = {
   segmentId: 'segment-example',
   name: 'Example Project',
@@ -197,8 +217,13 @@ describe('buildEventMappingRows', () => {
       }),
     )
 
-    expect(row.hintProject).toEqual(EXAMPLE_PROJECT)
-    expect(row.cventEvent).toBeNull()
+    expect(row).toMatchObject({
+      state: 'unresolved',
+      match: 'ambiguous',
+      cventEvent: { name: 'ExampleCon 2027', startDate: '2027-03-10', dayGap: 0 },
+      suggestedProject: null,
+      hintProject: EXAMPLE_PROJECT,
+    })
   })
 
   it('marks a Cvent event whose project has no subproject as not in CDP, keeping the event', () => {
@@ -213,6 +238,17 @@ describe('buildEventMappingRows', () => {
       match: 'project_not_in_cdp',
       cventEvent: { name: 'ExampleCon 2027', startDate: '2027-03-10', dayGap: 0 },
       suggestedProject: null,
+    })
+  })
+
+  it('falls back to the name rule when the Cvent event project has no subproject', () => {
+    const row = rowOf(heldEvent(TORCH_CONFERENCE))
+
+    expect(row).toMatchObject({
+      state: 'suggested',
+      match: 'same_name',
+      cventEvent: { name: 'PyTorch Conference Example 2026', startDate: '2027-03-10', dayGap: 0 },
+      suggestedProject: TORCH_PROJECT,
     })
   })
 
@@ -339,5 +375,12 @@ describe('catalogueEventSuggester', () => {
     })
 
     expect(suggestedCatalogueEvent(alias, 'segment-torch')).toEqual(NONE)
+  })
+
+  it('returns the Cvent event of a suggestion resolved through the name rule', () => {
+    expect(suggestedCatalogueEvent(heldEvent(TORCH_CONFERENCE), 'segment-torch')).toEqual({
+      cventEventId: 'cvent-torch',
+      catalogueSource: 'cvent',
+    })
   })
 })

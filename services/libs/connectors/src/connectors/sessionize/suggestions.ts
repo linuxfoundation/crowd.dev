@@ -65,6 +65,8 @@ const SUB_EVENT_PATTERNS: {
 ]
 
 const PROJECT_ALIASES: { pattern: RegExp; projectSlug: string }[] = [
+  { pattern: /kubecon/i, projectSlug: 'cncf' },
+  { pattern: /cncf[- ]hosted co-located/i, projectSlug: 'cncf' },
   { pattern: /pytorch/i, projectSlug: 'ptproject' },
   { pattern: /sonic/i, projectSlug: 'sonic-foundation' },
   { pattern: /jupyter/i, projectSlug: 'project-jupyter' },
@@ -74,6 +76,17 @@ const PROJECT_ALIASES: { pattern: RegExp; projectSlug: string }[] = [
   { pattern: /agntcon/i, projectSlug: 'agentic-ai-foundation' },
   { pattern: /bazelcon/i, projectSlug: 'community-for-bazel' },
   { pattern: /\bp4\b|europ4/i, projectSlug: 'p4-project' },
+  { pattern: /graphqlconf/i, projectSlug: 'gql' },
+  { pattern: /cephalocon/i, projectSlug: 'cephfoundation' },
+  { pattern: /open source in finance forum/i, projectSlug: 'finos' },
+  { pattern: /finops/i, projectSlug: 'finops' },
+  { pattern: /risc-v/i, projectSlug: 'risc-v-international' },
+  { pattern: /cloud foundry/i, projectSlug: 'cloud-foundry' },
+  { pattern: /sel4/i, projectSlug: 'sel4' },
+  { pattern: /sodacon/i, projectSlug: 'soda-foundation' },
+  { pattern: /openpower/i, projectSlug: 'openpowerfoundation' },
+  { pattern: /ai[_.]dev/i, projectSlug: 'tlf' },
+  { pattern: /open source summit/i, projectSlug: 'tlf' },
 ]
 
 function suggestionOf(overrides: Partial<SessionizeSuggestion>): SessionizeSuggestion {
@@ -145,6 +158,14 @@ function findMainEventName(eventName: string): string | null {
   return null
 }
 
+export function aliasProjectSlug(eventName: string): string | null {
+  if (eventName.length > MAX_COMPARED_NAME_LENGTH) {
+    return null
+  }
+  const alias = PROJECT_ALIASES.find(({ pattern }) => pattern.test(eventName))
+  return alias === undefined ? null : alias.projectSlug
+}
+
 export function suggestSessionizeMapping(input: SessionizeSuggestionInput): SessionizeSuggestion {
   const { eventName, holdReason, candidates } = input
 
@@ -185,9 +206,9 @@ export function suggestSessionizeMapping(input: SessionizeSuggestionInput): Sess
     }
   }
 
-  const alias = PROJECT_ALIASES.find(({ pattern }) => pattern.test(eventName))
-  if (alias) {
-    return suggestionOf({ kind: 'project_alias', projectSlug: alias.projectSlug })
+  const projectSlug = aliasProjectSlug(eventName)
+  if (projectSlug !== null) {
+    return suggestionOf({ kind: 'project_alias', projectSlug })
   }
 
   if (mainEventName !== null) {
