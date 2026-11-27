@@ -5,7 +5,7 @@ export const MATCH_WINDOW_DAYS = 21
 export const SUGGESTION_WINDOW_DAYS = 3
 
 const MILLISECONDS_PER_DAY = 86_400_000
-const CVENT_SOURCE = 'cvent'
+export const CVENT_SOURCE = 'cvent'
 
 const NAME_SYNONYMS = new Map<string, string>([
   ['na', 'north america'],
@@ -95,7 +95,7 @@ function toCandidate(entry: CventCatalogueEvent, gap: number): SessionizeMatchCa
   }
 }
 
-function compareEventIds(
+export function compareEventIds(
   first: SessionizeMatchCandidate,
   second: SessionizeMatchCandidate,
 ): number {

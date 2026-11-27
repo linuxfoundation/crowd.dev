@@ -1,3 +1,4 @@
+import { CVENT_SOURCE, compareEventIds } from './matching'
 import type { SessionizeHoldReason, SessionizeMatchCandidate } from './matching'
 import { isNameContained, nameSimilarity } from './nameSimilarity'
 
@@ -11,7 +12,11 @@ export type SessionizeSuggestionKind =
   | 'name_contained'
   | 'sub_event'
   | 'project_alias'
-export type SessionizeUnresolvedReason = 'ambiguous' | 'no_cvent_event' | 'main_event_not_in_cdp'
+export type SessionizeUnresolvedReason =
+  | 'ambiguous'
+  | 'no_cvent_event'
+  | 'main_event_not_in_cdp'
+  | 'not_checked'
 
 export interface SessionizeSuggestion {
   kind: SessionizeSuggestionKind | null
@@ -23,7 +28,6 @@ export interface SessionizeSuggestion {
 
 export interface SessionizeSuggestionInput {
   eventName: string
-  eventStart: string
   holdReason: SessionizeHoldReason
   candidates: SessionizeMatchCandidate[]
   nearby?: SessionizeMatchCandidate[]
@@ -86,7 +90,7 @@ function suggestionOf(overrides: Partial<SessionizeSuggestion>): SessionizeSugge
 function scoreEvents(eventName: string, events: SessionizeMatchCandidate[]): ScoredEvent[] {
   return events
     .map((event) => ({ event, score: nameSimilarity(eventName, event.eventName) }))
-    .sort((a, b) => b.score - a.score || a.event.eventId.localeCompare(b.event.eventId))
+    .sort((a, b) => b.score - a.score || compareEventIds(a.event, b.event))
 }
 
 function isClearlyTop(scored: ScoredEvent[]): boolean {
@@ -107,6 +111,20 @@ function relabelSubEvent(
   })
 }
 
+function sameNameEvent(
+  holdReason: SessionizeHoldReason,
+  candidates: SessionizeMatchCandidate[],
+): SessionizeMatchCandidate | null {
+  if (holdReason === 'not_cvent') {
+    return candidates.length === 1 ? candidates[0] : null
+  }
+  if (holdReason === 'no_segment') {
+    const cventCandidates = candidates.filter(({ source }) => source === CVENT_SOURCE)
+    return cventCandidates.length === 1 ? cventCandidates[0] : null
+  }
+  return null
+}
+
 function findMainEventName(eventName: string): string | null {
   for (const { pattern, mainEventName } of SUB_EVENT_PATTERNS) {
     const match = eventName.match(pattern)
@@ -118,11 +136,15 @@ function findMainEventName(eventName: string): string | null {
 }
 
 export function suggestSessionizeMapping(input: SessionizeSuggestionInput): SessionizeSuggestion {
-  const { eventName, holdReason, candidates } = input
-  const nearby = input.nearby ?? []
+  const { eventName, holdReason, candidates, nearby } = input
 
-  if ((holdReason === 'no_segment' || holdReason === 'not_cvent') && candidates.length === 1) {
-    return suggestionOf({ kind: 'same_name', cventEvent: candidates[0] })
+  const sameName = sameNameEvent(holdReason, candidates)
+  if (sameName !== null) {
+    return suggestionOf({ kind: 'same_name', cventEvent: sameName })
+  }
+
+  if (nearby === undefined) {
+    return suggestionOf({ reason: 'not_checked' })
   }
 
   const scored = scoreEvents(eventName, nearby)

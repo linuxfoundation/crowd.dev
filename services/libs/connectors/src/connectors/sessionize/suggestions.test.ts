@@ -24,6 +24,10 @@ const mainEvent = event('main', 'Example Con Europe 2026')
 const kubeCon = event('kube', 'KubeCon + CloudNativeCon Europe 2026')
 const loose = event('loose', 'Acme Cloud Summit Dublin')
 const unrelated = event('unrelated', 'Zephyr Hack Night')
+const nonCventTwin: SessionizeMatchCandidate = {
+  ...event('twin', 'Example Con Europe 2026'),
+  source: 'other',
+}
 
 function suggestion(overrides: Partial<SessionizeSuggestion>): SessionizeSuggestion {
   return {
@@ -55,6 +59,30 @@ const rows: Row[] = [
     expected: suggestion({ kind: 'same_name', cventEvent: stored }),
   },
   {
+    name: 'no_segment keeps the cvent candidate over a non-cvent twin that is the only nearby event',
+    eventName: 'Example Con Europe 2026',
+    holdReason: 'no_segment',
+    candidates: [nonCventTwin, stored],
+    nearby: [nonCventTwin],
+    expected: suggestion({ kind: 'same_name', cventEvent: stored }),
+  },
+  {
+    name: 'no_segment keeps the cvent candidate when both same-name events are nearby',
+    eventName: 'Example Con Europe 2026',
+    holdReason: 'no_segment',
+    candidates: [nonCventTwin, stored],
+    nearby: [nonCventTwin, stored],
+    expected: suggestion({ kind: 'same_name', cventEvent: stored }),
+  },
+  {
+    name: 'no_segment with two cvent candidates does not guess a same_name',
+    eventName: 'Example Con Europe 2026',
+    holdReason: 'no_segment',
+    candidates: [stored, mainEvent],
+    nearby: [],
+    expected: suggestion({ reason: 'no_cvent_event' }),
+  },
+  {
     name: 'a single stored candidate held for not_cvent is same_name',
     eventName: 'Example Con Europe 2026',
     holdReason: 'not_cvent',
@@ -66,6 +94,7 @@ const rows: Row[] = [
     eventName: 'Example Con Europe 2026',
     holdReason: 'ambiguous',
     candidates: [stored, mainEvent],
+    nearby: [],
     expected: suggestion({ reason: 'ambiguous' }),
   },
   {
@@ -121,6 +150,7 @@ const rows: Row[] = [
     name: 'a sub-event without nearby events is main_event_not_in_cdp',
     eventName: 'Example Con Europe 2026 - Poster Sessions',
     holdReason: 'no_match',
+    nearby: [],
     expected: suggestion({ reason: 'main_event_not_in_cdp' }),
   },
   {
@@ -148,6 +178,7 @@ const rows: Row[] = [
     name: 'an alias name is project_alias',
     eventName: 'PyTorch Day Example 2026',
     holdReason: 'no_match',
+    nearby: [],
     expected: suggestion({ kind: 'project_alias', projectSlug: 'ptproject' }),
   },
   {
@@ -172,9 +203,16 @@ const rows: Row[] = [
     expected: suggestion({ reason: 'ambiguous' }),
   },
   {
-    name: 'missing nearby events give no_cvent_event',
+    name: 'a row never scanned for nearby events is not_checked, even with an alias name',
+    eventName: 'PyTorch Day Example 2026',
+    holdReason: 'no_match',
+    expected: suggestion({ reason: 'not_checked' }),
+  },
+  {
+    name: 'an empty nearby list without an alias gives no_cvent_event',
     eventName: 'Zephyr Community Meetup Lisbon 2026',
     holdReason: 'no_match',
+    nearby: [],
     expected: suggestion({ reason: 'no_cvent_event' }),
   },
   {
@@ -191,7 +229,6 @@ describe('suggestSessionizeMapping', () => {
     expect(
       suggestSessionizeMapping({
         eventName,
-        eventStart: '2026-06-09',
         holdReason,
         candidates,
         nearby,
@@ -199,12 +236,11 @@ describe('suggestSessionizeMapping', () => {
     ).toStrictEqual(expected)
   })
 
-  it('breaks ties between equally similar events by eventId', () => {
-    const first = event('a-event', 'Acme Cloud Summit Dublin')
-    const second = event('b-event', 'Acme Cloud Summit Dublin')
+  it('breaks ties between equally similar events by eventId code-unit order', () => {
+    const first = event('B-event', 'Acme Cloud Summit Dublin')
+    const second = event('a-event', 'Acme Cloud Summit Dublin')
     const input = {
       eventName: 'Acme Cloud Forum Lisbon',
-      eventStart: '2026-06-09',
       holdReason: 'no_match' as const,
       candidates: [],
     }
