@@ -166,9 +166,11 @@ export function suggestSessionizeMapping(input: SessionizeSuggestionInput): Sess
 
   const mainEventName = findMainEventName(eventName)
   if (mainEventName !== null) {
-    const mainEvent = scoreEvents(mainEventName, nearby)[0]
+    const [mainEvent, runnerUp] = scoreEvents(mainEventName, nearby)
     if (mainEvent && mainEvent.score >= SIMILAR_NAME_THRESHOLD) {
-      return suggestionOf({ kind: 'sub_event', cventEvent: mainEvent.event })
+      return runnerUp?.score === mainEvent.score
+        ? suggestionOf({ reason: 'ambiguous', hintCventEvent: mainEvent.event })
+        : suggestionOf({ kind: 'sub_event', cventEvent: mainEvent.event })
     }
   }
 

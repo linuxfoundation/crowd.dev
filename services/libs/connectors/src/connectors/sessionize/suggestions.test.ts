@@ -192,6 +192,13 @@ const rows: Row[] = [
     expected: suggestion({ reason: 'main_event_not_in_cdp' }),
   },
   {
+    name: 'a sub-event with two equally named main events is ambiguous with the smaller id as hint',
+    eventName: 'Maintainer Summit: Example Con Europe 2026',
+    holdReason: 'no_match',
+    nearby: [stored, mainEvent],
+    expected: suggestion({ reason: 'ambiguous', hintCventEvent: mainEvent }),
+  },
+  {
     name: 'a sub-event whose main event exists only in another source is main_event_not_in_cdp',
     eventName: 'Maintainer Summit: Example Con Europe 2026',
     holdReason: 'no_match',
