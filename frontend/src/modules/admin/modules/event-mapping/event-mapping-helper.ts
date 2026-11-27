@@ -10,7 +10,9 @@ import {
   matchEvidence,
 } from '@/modules/admin/modules/event-mapping/config/match-labels';
 import type {
+  EventMappingConfirmation,
   EventMappingConfirmItem,
+  EventMappingList,
   EventMappingPlatform,
   EventMappingProject,
   EventMappingRow,
@@ -126,25 +128,77 @@ export const keepSelectable = (
       .map(({ eventKey }) => eventKey),
   );
 
-export const confirmItem = (
+export const confirmation = (
   row: EventMappingRow,
   picked: PickedProjects,
-): EventMappingConfirmItem | null => {
+): EventMappingConfirmation | null => {
   const project = displayedProject(row, picked);
   return isPending(row) && project
-    ? { platform: row.platform, eventKey: row.eventKey, segmentId: project.segmentId }
+    ? { platform: row.platform, eventKey: row.eventKey, project }
     : null;
 };
 
-export const confirmItems = (
+export const confirmations = (
   rows: EventMappingRow[],
   selected: ReadonlySet<string>,
   picked: PickedProjects,
-): EventMappingConfirmItem[] =>
+): EventMappingConfirmation[] =>
   rows
     .filter((row) => selected.has(row.eventKey))
-    .map((row) => confirmItem(row, picked))
-    .filter((item): item is EventMappingConfirmItem => item !== null);
+    .map((row) => confirmation(row, picked))
+    .filter((item): item is EventMappingConfirmation => item !== null);
+
+export const toConfirmItems = (decisions: EventMappingConfirmation[]): EventMappingConfirmItem[] =>
+  decisions.map(({ platform, eventKey, project }) => ({
+    platform,
+    eventKey,
+    segmentId: project.segmentId,
+  }));
+
+const withRowChanges = (
+  list: EventMappingList,
+  changeOf: (row: EventMappingRow) => Partial<EventMappingRow> | null,
+): EventMappingList => {
+  const rows = list.rows.map((row) => {
+    const change = changeOf(row);
+    return change ? { ...row, ...change } : row;
+  });
+  return { rows, counts: statusCounts(rows, 'all') };
+};
+
+export const applyConfirmed = (
+  list: EventMappingList,
+  decisions: EventMappingConfirmation[],
+  decidedAt: string,
+): EventMappingList => {
+  const projects = new Map(decisions.map(({ eventKey, project }) => [eventKey, project]));
+  return withRowChanges(list, (row) => {
+    const project = projects.get(row.eventKey);
+    return project ? { state: 'confirmed', project, decidedAt, canUndo: true } : null;
+  });
+};
+
+export const applyIgnored = (
+  list: EventMappingList,
+  eventKey: string,
+  decidedAt: string,
+): EventMappingList =>
+  withRowChanges(list, (row) =>
+    row.eventKey === eventKey
+      ? { state: 'ignored', project: null, decidedAt, canUndo: true }
+      : null,
+  );
+
+const restoredState = ({ suggestedProject }: EventMappingRow): EventMappingState =>
+  suggestedProject ? 'suggested' : 'unresolved';
+
+export const applyRestored = (list: EventMappingList, eventKey: string): EventMappingList =>
+  withRowChanges(list, (row) => {
+    if (row.eventKey !== eventKey) {
+      return null;
+    }
+    return { state: restoredState(row), project: null, decidedAt: null, canUndo: false };
+  });
 
 export const formatEventDates = (start: string, end: string): string => {
   const from = dateHelper(start);

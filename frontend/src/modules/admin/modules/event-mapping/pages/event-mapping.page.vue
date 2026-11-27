@@ -2,7 +2,7 @@
   <div>
     <div class="flex flex-wrap items-end justify-between gap-6 pb-5 pt-6">
       <div class="min-w-0 flex-1">
-        <h2 class="mb-1.5 font-primary text-large font-bold text-gray-900">
+        <h2 class="mb-1.5 font-primary text-[18px] font-bold text-gray-900">
           Event mapping
         </h2>
         <p class="max-w-2xl text-medium text-gray-600">
@@ -123,7 +123,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { isAxiosError } from 'axios';
-import { useMutation } from '@tanstack/vue-query';
+import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import LfButton from '@/ui-kit/button/Button.vue';
 import LfPill from '@/ui-kit/pill/Pill.vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
@@ -133,20 +133,25 @@ import LfTabs from '@/ui-kit/tabs/Tabs.vue';
 import LfTab from '@/ui-kit/tabs/Tab.vue';
 import { ToastStore } from '@/shared/message/notification';
 import { useInvalidate } from '@/shared/queries/invalidate';
+import { queryKeys } from '@/shared/queries/keys';
 import LfEventMappingRow from '@/modules/admin/modules/event-mapping/components/event-mapping-row.vue';
 import { eventMappingPlatforms } from '@/modules/admin/modules/event-mapping/config/platforms';
 import type {
   EventMappingPlatformFilter,
 } from '@/modules/admin/modules/event-mapping/event-mapping-helper';
 import {
-  confirmItem,
-  confirmItems,
+  applyConfirmed,
+  applyIgnored,
+  applyRestored,
+  confirmation,
+  confirmations,
   keepPendingPicks,
   keepSelectable,
   pickProject,
   reviewedCount,
   rowsInTab,
   statusCounts,
+  toConfirmItems,
 } from '@/modules/admin/modules/event-mapping/event-mapping-helper';
 import { useEventMappingListQuery } from '@/modules/admin/modules/event-mapping/queries/useEventMappingListQuery';
 import {
@@ -155,7 +160,8 @@ import {
   restoreEventMapping,
 } from '@/modules/admin/modules/event-mapping/services/event-mapping.api.service';
 import type {
-  EventMappingConfirmItem,
+  EventMappingConfirmation,
+  EventMappingList,
   EventMappingPlatform,
   EventMappingProject,
   EventMappingReference,
@@ -182,7 +188,10 @@ const platformOptions: { value: EventMappingPlatformFilter; label: string; dotCl
   })),
 ];
 
+const REFRESH_DELAY_MS = 5000;
+
 const invalidate = useInvalidate();
+const queryClient = useQueryClient();
 const { data, isPending, error } = useEventMappingListQuery(ref(true));
 
 const platform = ref<EventMappingPlatformFilter>('all');
@@ -236,20 +245,45 @@ const serverMessage = (err: unknown): string => {
   return 'Something went wrong';
 };
 
-const mutationHandlers = {
-  onSuccess: () => invalidate.eventMapping(),
-  onError: (err: unknown) => {
-    ToastStore.error(serverMessage(err));
-    return invalidate.eventMapping();
-  },
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+
+const scheduleRefresh = () => {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => invalidate.eventMapping(), REFRESH_DELAY_MS);
 };
 
+const applyDecision = async (update: (list: EventMappingList) => EventMappingList) => {
+  await queryClient.cancelQueries({ queryKey: queryKeys.eventMapping.all });
+  queryClient.setQueryData<EventMappingList>(
+    queryKeys.eventMapping.all,
+    (list) => (list ? update(list) : list),
+  );
+  scheduleRefresh();
+};
+
+const onDecisionError = (err: unknown) => {
+  ToastStore.error(serverMessage(err));
+  clearTimeout(refreshTimer);
+  return invalidate.eventMapping();
+};
+
+const now = () => new Date().toISOString();
+
 const confirmMutation = useMutation({
-  mutationFn: (items: EventMappingConfirmItem[]) => confirmEventMappings(items),
-  ...mutationHandlers,
+  mutationFn: (decisions: EventMappingConfirmation[]) => confirmEventMappings(toConfirmItems(decisions)),
+  onSuccess: (_, decisions) => applyDecision((list) => applyConfirmed(list, decisions, now())),
+  onError: onDecisionError,
 });
-const ignoreMutation = useMutation({ mutationFn: ignoreEventMapping, ...mutationHandlers });
-const restoreMutation = useMutation({ mutationFn: restoreEventMapping, ...mutationHandlers });
+const ignoreMutation = useMutation({
+  mutationFn: ignoreEventMapping,
+  onSuccess: (_, { eventKey }) => applyDecision((list) => applyIgnored(list, eventKey, now())),
+  onError: onDecisionError,
+});
+const restoreMutation = useMutation({
+  mutationFn: restoreEventMapping,
+  onSuccess: (_, { eventKey }) => applyDecision((list) => applyRestored(list, eventKey)),
+  onError: onDecisionError,
+});
 
 const isMutating = computed(
   () => confirmMutation.isPending.value
@@ -258,14 +292,14 @@ const isMutating = computed(
 );
 
 const confirmRow = (row: EventMappingRow) => {
-  const item = confirmItem(row, picks.value);
-  if (item) {
-    confirmMutation.mutate([item]);
+  const decision = confirmation(row, picks.value);
+  if (decision) {
+    confirmMutation.mutate([decision]);
   }
 };
 
 const confirmSelected = () => {
-  confirmMutation.mutate(confirmItems(visibleRows.value, selected.value, picks.value));
+  confirmMutation.mutate(confirmations(visibleRows.value, selected.value, picks.value));
 };
 
 watch([platform, status], () => {

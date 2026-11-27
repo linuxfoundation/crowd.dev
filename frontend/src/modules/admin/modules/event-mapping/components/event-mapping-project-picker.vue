@@ -3,6 +3,7 @@
     :visibility="props.open"
     placement="bottom-start"
     is-dropdown
+    :class="{ 'event-mapping-project-picker--full-width': props.fullWidth }"
     @update:visibility="emit('update:open', $event)"
   >
     <template #trigger>
@@ -74,6 +75,7 @@ defineOptions({
 const props = defineProps<{
   open: boolean;
   currentSegmentId?: string;
+  fullWidth?: boolean;
 }>();
 
 const emit = defineEmits<{(e: 'update:open', value: boolean): void;
@@ -145,3 +147,10 @@ watch(error, (err) => {
   }
 });
 </script>
+
+<style scoped>
+.event-mapping-project-picker--full-width,
+.event-mapping-project-picker--full-width :deep(.c-popover__trigger) {
+  @apply w-full;
+}
+</style>

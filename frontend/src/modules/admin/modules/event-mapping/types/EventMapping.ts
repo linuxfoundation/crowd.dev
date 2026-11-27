@@ -54,3 +54,7 @@ export interface EventMappingReference {
 export interface EventMappingConfirmItem extends EventMappingReference {
   segmentId: string;
 }
+
+export interface EventMappingConfirmation extends EventMappingReference {
+  project: EventMappingProject;
+}

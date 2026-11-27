@@ -56,6 +56,7 @@
         v-if="pending"
         :open="props.pickerOpen"
         :current-segment-id="project?.segmentId"
+        :full-width="!project"
         @update:open="emit('update:pickerOpen', $event)"
         @pick="emit('pick', $event)"
       >
@@ -73,7 +74,7 @@
           <lf-button
             v-else
             type="secondary"
-            class="w-56 !justify-between !font-normal !text-gray-600"
+            class="w-full !justify-between !font-normal !text-gray-600"
             :disabled="props.busy"
           >
             Select project

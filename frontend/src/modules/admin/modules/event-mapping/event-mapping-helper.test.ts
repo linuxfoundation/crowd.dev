@@ -7,7 +7,10 @@ import type {
   EventMappingRow,
 } from '@/modules/admin/modules/event-mapping/types/EventMapping';
 import {
-  confirmItems,
+  applyConfirmed,
+  applyIgnored,
+  applyRestored,
+  confirmations,
   displayedProject,
   formatEventDates,
   groupProjects,
@@ -20,6 +23,7 @@ import {
   rowsInTab,
   showsHint,
   statusCounts,
+  toConfirmItems,
 } from '@/modules/admin/modules/event-mapping/event-mapping-helper';
 
 const project = (segmentId: string, name: string): EventMappingProject => ({
@@ -136,7 +140,7 @@ describe('selection and bulk confirm', () => {
 
   it('sends every selected row with its picked or suggested segment', () => {
     const picked = pickProject(noPicks, unresolved('c'), OTHER);
-    expect(confirmItems(rows, new Set(['a', 'c']), picked)).toEqual([
+    expect(toConfirmItems(confirmations(rows, new Set(['a', 'c']), picked))).toEqual([
       { platform: 'sessionize', eventKey: 'a', segmentId: SUGGESTED.segmentId },
       { platform: 'sessionize', eventKey: 'c', segmentId: OTHER.segmentId },
     ]);
@@ -177,5 +181,72 @@ describe('groupProjects', () => {
         ],
       },
     ]);
+  });
+});
+
+describe('applying decisions to the cached list', () => {
+  const NOW = '2026-11-27T12:00:00.000Z';
+  const list = () => {
+    const rows = [
+      row('a'),
+      unresolved('b'),
+      row('c', { state: 'confirmed', project: SUGGESTED, decidedAt: NOW, canUndo: true }),
+      unresolved('d', { state: 'ignored', decidedAt: NOW, canUndo: true }),
+    ];
+    return { rows, counts: statusCounts(rows, 'all') };
+  };
+  const stateOf = (value: ReturnType<typeof list>, eventKey: string) =>
+    value.rows.find((r) => r.eventKey === eventKey);
+
+  it('confirms one row with its project and moves it between counts', () => {
+    const next = applyConfirmed(
+      list(),
+      [{ platform: 'sessionize', eventKey: 'a', project: OTHER }],
+      NOW,
+    );
+    expect(stateOf(next, 'a')).toMatchObject({
+      state: 'confirmed',
+      project: OTHER,
+      decidedAt: NOW,
+      canUndo: true,
+    });
+    expect(next.counts).toEqual({ suggested: 0, unresolved: 1, confirmed: 2, ignored: 1 });
+  });
+
+  it('confirms every row of a bulk confirm', () => {
+    const next = applyConfirmed(
+      list(),
+      [
+        { platform: 'sessionize', eventKey: 'a', project: SUGGESTED },
+        { platform: 'sessionize', eventKey: 'b', project: OTHER },
+      ],
+      NOW,
+    );
+    expect(stateOf(next, 'b')).toMatchObject({ state: 'confirmed', project: OTHER });
+    expect(next.counts).toEqual({ suggested: 0, unresolved: 0, confirmed: 3, ignored: 1 });
+  });
+
+  it('ignores a row', () => {
+    const next = applyIgnored(list(), 'b', NOW);
+    expect(stateOf(next, 'b')).toMatchObject({
+      state: 'ignored',
+      project: null,
+      decidedAt: NOW,
+      canUndo: true,
+    });
+    expect(next.counts).toEqual({ suggested: 1, unresolved: 0, confirmed: 1, ignored: 2 });
+  });
+
+  it('restores a row to suggested when it has a suggestion, else to unresolved', () => {
+    const undone = applyRestored(list(), 'c');
+    expect(stateOf(undone, 'c')).toMatchObject({
+      state: 'suggested',
+      project: null,
+      decidedAt: null,
+      canUndo: false,
+    });
+    const restored = applyRestored(undone, 'd');
+    expect(stateOf(restored, 'd')).toMatchObject({ state: 'unresolved', decidedAt: null });
+    expect(restored.counts).toEqual({ suggested: 2, unresolved: 2, confirmed: 0, ignored: 0 });
   });
 });
