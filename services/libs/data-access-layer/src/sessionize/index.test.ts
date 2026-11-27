@@ -16,6 +16,7 @@ import {
   listOnboardableSessionizeEvents,
   listSessionizeEventMappings,
   listSessionizeEventsForReview,
+  lockSessionizeEventMappings,
   markSessionizeEventOnboarded,
   restoreSessionizeEvent,
   upsertSessionizeEventDecision,
@@ -717,5 +718,50 @@ describe('confirmSessionizeEventMappings', () => {
         reviewedAt: null,
       })
     }
+  })
+})
+
+async function waitForAdvisoryLockWaiter(qx: QueryExecutor): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const { waiting } = await qx.selectOne(
+      `
+      SELECT count(*)::int AS waiting
+      FROM pg_locks
+      WHERE locktype = 'advisory'
+        AND NOT granted
+        AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+      `,
+    )
+    if (waiting > 0) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  throw new Error('No session waited for a Sessionize event lock')
+}
+
+describe('lockSessionizeEventMappings', () => {
+  test('holds a concurrent decision on a locked event until the transaction ends', async ({
+    qx,
+  }) => {
+    await upsertSessionizeEventDecision(qx, held('3201'))
+    let decided = false
+    let decision: Promise<unknown> = Promise.resolve()
+
+    await qx.tx(async (tx) => {
+      await lockSessionizeEventMappings(tx, ['3202', '3201'])
+      decision = upsertSessionizeEventDecision(qx, {
+        ...held('3201'),
+        evidence: { candidates: 3 },
+      }).then(() => {
+        decided = true
+      })
+      await waitForAdvisoryLockWaiter(tx)
+      expect(decided).toBe(false)
+      expect((await readMapping(tx, '3201')).evidence).toEqual({ candidates: 2 })
+    })
+
+    await decision
+    expect((await readMapping(qx, '3201')).evidence).toEqual({ candidates: 3 })
   })
 })

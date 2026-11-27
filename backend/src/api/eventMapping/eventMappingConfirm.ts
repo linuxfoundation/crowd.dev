@@ -7,6 +7,7 @@ import { listActiveSubprojectsForMapping } from '@crowd/data-access-layer/src/se
 import {
   confirmSessionizeEventMappings,
   listSessionizeEventsForReview,
+  lockSessionizeEventMappings,
 } from '@crowd/data-access-layer/src/sessionize'
 
 import Permissions from '../../security/permissions'
@@ -40,6 +41,10 @@ export default async (req, res) => {
   const reviewedBy: string = req.currentUser.id
 
   await SequelizeRepository.getQueryExecutor(req).tx(async (tx) => {
+    await lockSessionizeEventMappings(
+      tx,
+      items.map(({ eventKey }) => eventKey),
+    )
     const events = new Map(
       (await listSessionizeEventsForReview(tx)).map((event) => [event.eventKey, event]),
     )

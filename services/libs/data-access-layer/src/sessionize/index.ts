@@ -413,6 +413,18 @@ export function compareSessionizeEventKeys(a: string, b: string): number {
   return a > b ? 1 : 0
 }
 
+export async function lockSessionizeEventMappings(
+  tx: QueryExecutor,
+  eventKeys: string[],
+): Promise<void> {
+  for (const eventKey of [...eventKeys].sort(compareSessionizeEventKeys)) {
+    await tx.select(
+      `SELECT pg_advisory_xact_lock(hashtextextended('sessionizeEventMapping:' || $(eventKey), 0))`,
+      { eventKey },
+    )
+  }
+}
+
 export async function confirmSessionizeEventMappings(
   qx: QueryExecutor,
   inputs: ISessionizeEventConfirmation[],

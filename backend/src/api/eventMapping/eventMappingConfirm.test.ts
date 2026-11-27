@@ -13,6 +13,7 @@ import {
 const mocks = vi.hoisted(() => ({
   validateHas: vi.fn(),
   tx: vi.fn(),
+  lockSessionizeEventMappings: vi.fn(),
   listSessionizeEventsForReview: vi.fn(),
   confirmSessionizeEventMappings: vi.fn(),
   listActiveSubprojectsForMapping: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('@/database/repositories/sequelizeRepository', () => ({
 }))
 
 vi.mock('@crowd/data-access-layer/src/sessionize', () => ({
+  lockSessionizeEventMappings: mocks.lockSessionizeEventMappings,
   listSessionizeEventsForReview: mocks.listSessionizeEventsForReview,
   confirmSessionizeEventMappings: mocks.confirmSessionizeEventMappings,
 }))
@@ -61,6 +63,7 @@ describe('eventMappingConfirm', () => {
       heldEvent('event-2'),
     ])
     mocks.listActiveSubprojectsForMapping.mockResolvedValue(SUBPROJECTS)
+    mocks.lockSessionizeEventMappings.mockResolvedValue(undefined)
     mocks.confirmSessionizeEventMappings.mockResolvedValue(undefined)
   })
 
@@ -100,6 +103,17 @@ describe('eventMappingConfirm', () => {
       },
     ])
     expect(success).toHaveBeenCalled()
+  })
+
+  it('locks the requested events before reading them', async () => {
+    await call({ items: [item('event-2'), item('event-1')] })
+
+    expect(mocks.lockSessionizeEventMappings).toHaveBeenCalledWith(TX, ['event-2', 'event-1'])
+    const [lockOrder] = mocks.lockSessionizeEventMappings.mock.invocationCallOrder
+    const [listOrder] = mocks.listSessionizeEventsForReview.mock.invocationCallOrder
+    const [subprojectsOrder] = mocks.listActiveSubprojectsForMapping.mock.invocationCallOrder
+    expect(lockOrder).toBeLessThan(listOrder)
+    expect(lockOrder).toBeLessThan(subprojectsOrder)
   })
 
   it('lets a conflict from the database fail the whole request', async () => {
