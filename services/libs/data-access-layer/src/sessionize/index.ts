@@ -406,7 +406,7 @@ export async function confirmSessionizeEventMapping(
   )
 }
 
-function compareCodeUnits(a: string, b: string): number {
+export function compareSessionizeEventKeys(a: string, b: string): number {
   if (a < b) {
     return -1
   }
@@ -421,7 +421,7 @@ export async function confirmSessionizeEventMappings(
   if (new Set(eventKeys).size !== eventKeys.length) {
     throw new Error('Each Sessionize event may be confirmed only once per batch!')
   }
-  const inLockOrder = [...inputs].sort((a, b) => compareCodeUnits(a.eventKey, b.eventKey))
+  const inLockOrder = [...inputs].sort((a, b) => compareSessionizeEventKeys(a.eventKey, b.eventKey))
   await qx.tx(async (tx) => {
     for (const input of inLockOrder) {
       await confirmSessionizeEventMapping(tx, input)

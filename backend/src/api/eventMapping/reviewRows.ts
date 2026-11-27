@@ -255,18 +255,19 @@ export type SuggestedCatalogueEvent = Pick<
   'cventEventId' | 'catalogueSource'
 >
 
-export function suggestedCatalogueEvent(
-  event: ISessionizeEventForReview | undefined,
+export function catalogueEventSuggester(
   subprojects: SubprojectForMapping[],
-  segmentId: string,
-): SuggestedCatalogueEvent {
-  if (event === undefined) {
-    return { cventEventId: null, catalogueSource: null }
+): (event: ISessionizeEventForReview | undefined, segmentId: string) => SuggestedCatalogueEvent {
+  const index = indexSubprojects(subprojects)
+  return (event, segmentId) => {
+    if (event === undefined) {
+      return { cventEventId: null, catalogueSource: null }
+    }
+    const { suggestion, suggested } = resolveSuggestion(event, index)
+    const { cventEvent } = suggestion
+    if (suggested?.id !== segmentId || cventEvent === null || cventEvent.source === null) {
+      return { cventEventId: null, catalogueSource: null }
+    }
+    return { cventEventId: cventEvent.eventId, catalogueSource: cventEvent.source }
   }
-  const { suggestion, suggested } = resolveSuggestion(event, indexSubprojects(subprojects))
-  const { cventEvent } = suggestion
-  if (suggested?.id !== segmentId || cventEvent === null || cventEvent.source === null) {
-    return { cventEventId: null, catalogueSource: null }
-  }
-  return { cventEventId: cventEvent.eventId, catalogueSource: cventEvent.source }
 }

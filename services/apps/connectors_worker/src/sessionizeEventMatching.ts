@@ -15,6 +15,7 @@ import {
   ISessionizeEventDecisionInput,
   IStoredSessionizeEventMapping,
   SessionizeDecisionOutcome,
+  compareSessionizeEventKeys,
   deactivateUnlistedSessionizeEvents,
   listSessionizeEventMappings,
   upsertSessionizeEventDecision,
@@ -207,7 +208,10 @@ export async function applySessionizeDecisions(
     const stored = new Map<string, IStoredSessionizeEventMapping>(
       (await listSessionizeEventMappings(tx)).map((row) => [row.eventKey, row]),
     )
-    for (const decision of decisions) {
+    const inLockOrder = [...decisions].sort((a, b) =>
+      compareSessionizeEventKeys(a.event.eventKey, b.event.eventKey),
+    )
+    for (const decision of inLockOrder) {
       summary.listed += 1
       if (decision.status === 'matched') summary.matched += 1
       if (decision.holdReason) summary.held[decision.holdReason] += 1

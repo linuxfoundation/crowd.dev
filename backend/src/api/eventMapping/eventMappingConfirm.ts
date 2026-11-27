@@ -12,7 +12,7 @@ import {
 import Permissions from '../../security/permissions'
 import PermissionChecker from '../../services/user/permissionChecker'
 import { eventReferenceSchema } from './eventSchema'
-import { suggestedCatalogueEvent } from './reviewRows'
+import { catalogueEventSuggester } from './reviewRows'
 
 const MAX_ITEMS = 200
 
@@ -45,6 +45,7 @@ export default async (req, res) => {
     )
     const subprojects = await listActiveSubprojectsForMapping(tx)
     const subprojectIds = new Set(subprojects.map(({ id }) => id))
+    const suggestedCatalogueEvent = catalogueEventSuggester(subprojects)
 
     const unknownSegment = items.find(({ segmentId }) => !subprojectIds.has(segmentId))
     if (unknownSegment) {
@@ -56,7 +57,7 @@ export default async (req, res) => {
       items.map(({ eventKey, segmentId }) => ({
         eventKey,
         segmentId,
-        ...suggestedCatalogueEvent(events.get(eventKey), subprojects, segmentId),
+        ...suggestedCatalogueEvent(events.get(eventKey), segmentId),
         reviewedBy,
       })),
     )

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { ISessionizeEventForReview } from '@crowd/data-access-layer/src/sessionize'
 
-import { buildEventMappingRows, suggestedCatalogueEvent } from './reviewRows'
+import { buildEventMappingRows, catalogueEventSuggester } from './reviewRows'
 import type { EventMappingMatch, SubprojectForMapping } from './reviewRows'
 
 const EXAMPLE_CON = {
@@ -308,16 +308,17 @@ describe('buildEventMappingRows', () => {
   })
 })
 
-describe('suggestedCatalogueEvent', () => {
+describe('catalogueEventSuggester', () => {
   const NONE = { cventEventId: null, catalogueSource: null }
+  const suggestedCatalogueEvent = catalogueEventSuggester(SUBPROJECTS)
 
   it('returns the suggested catalogue event only for the suggested segment', () => {
-    expect(suggestedCatalogueEvent(heldEvent(), SUBPROJECTS, 'segment-example')).toEqual({
+    expect(suggestedCatalogueEvent(heldEvent(), 'segment-example')).toEqual({
       cventEventId: 'cvent-100',
       catalogueSource: 'cvent',
     })
-    expect(suggestedCatalogueEvent(heldEvent(), SUBPROJECTS, 'segment-other')).toEqual(NONE)
-    expect(suggestedCatalogueEvent(undefined, SUBPROJECTS, 'segment-example')).toEqual(NONE)
+    expect(suggestedCatalogueEvent(heldEvent(), 'segment-other')).toEqual(NONE)
+    expect(suggestedCatalogueEvent(undefined, 'segment-example')).toEqual(NONE)
   })
 
   it('returns neither id nor source for a suggested event without a source', () => {
@@ -327,7 +328,7 @@ describe('suggestedCatalogueEvent', () => {
     })
 
     expect(rowOf(sourceless).suggestedProject).toEqual(EXAMPLE_PROJECT)
-    expect(suggestedCatalogueEvent(sourceless, SUBPROJECTS, 'segment-example')).toEqual(NONE)
+    expect(suggestedCatalogueEvent(sourceless, 'segment-example')).toEqual(NONE)
   })
 
   it('returns neither for a project alias suggestion, which has no catalogue event', () => {
@@ -337,6 +338,6 @@ describe('suggestedCatalogueEvent', () => {
       evidence: { candidates: [], nearby: [] },
     })
 
-    expect(suggestedCatalogueEvent(alias, SUBPROJECTS, 'segment-torch')).toEqual(NONE)
+    expect(suggestedCatalogueEvent(alias, 'segment-torch')).toEqual(NONE)
   })
 })
