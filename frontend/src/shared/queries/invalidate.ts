@@ -15,12 +15,14 @@ export const useInvalidate = () => {
 
   return {
     members: (filters?: InvalidateFilters) => invalidate(queryKeys.members.all, filters),
-    organizations: (filters?: InvalidateFilters) => invalidate(queryKeys.organizations.all, filters),
+    organizations: (filters?: InvalidateFilters) =>
+      invalidate(queryKeys.organizations.all, filters),
     collections: (filters?: InvalidateFilters) => invalidate(queryKeys.collections.all, filters),
     insightsProjects: (filters?: InvalidateFilters) =>
       invalidate(queryKeys.insightsProjects.all, filters),
     projectGroups: (filters?: InvalidateFilters) =>
       invalidate(queryKeys.projectGroups.all, filters),
+    eventMapping: (filters?: InvalidateFilters) => invalidate(queryKeys.eventMapping.all, filters),
     globalIntegrations: (filters?: InvalidateFilters) =>
       invalidate(queryKeys.overview.integrationsAll, filters),
   };
