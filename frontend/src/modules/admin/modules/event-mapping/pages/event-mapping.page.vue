@@ -11,7 +11,7 @@
           for the unresolved ones. Only confirmed mappings are used when activities are loaded.
         </p>
       </div>
-      <div class="w-70">
+      <div v-if="!loadFailed" class="w-70">
         <div class="mb-1.5 flex justify-between text-xs text-gray-600">
           <span>Reviewed</span>
           <span class="font-semibold text-gray-900">{{ reviewed }} of {{ total }}</span>
@@ -22,10 +22,18 @@
       </div>
     </div>
 
-    <div class="flex flex-col items-start gap-4 pb-4">
+    <div v-if="loadFailed" class="flex flex-col items-center gap-3 pt-14">
+      <p class="text-small text-gray-500">
+        Could not load event mappings.
+      </p>
+      <lf-button type="secondary" @click="refetch()">
+        Retry
+      </lf-button>
+    </div>
+    <div v-else class="flex flex-col items-start gap-4 pb-4">
       <lf-dropdown placement="bottom-start" width="14rem">
         <template #trigger>
-          <lf-button type="secondary" class="!font-normal">
+          <lf-button type="secondary">
             <span
               v-if="selectedPlatform.dotClass"
               class="h-2 w-2 rounded-full"
@@ -61,7 +69,7 @@
     </div>
 
     <div
-      v-if="selected.size > 0"
+      v-if="!loadFailed && selected.size > 0"
       class="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-primary-100 bg-primary-25 px-3.5 py-2.5 text-medium"
     >
       <span class="font-semibold">{{ selected.size }} selected</span>
@@ -82,16 +90,16 @@
         <thead>
           <tr>
             <lf-table-head class="w-8" />
-            <lf-table-head class="w-[23%]">
+            <lf-table-head class="w-1/4">
               Event
             </lf-table-head>
             <lf-table-head class="w-28">
               Platform
             </lf-table-head>
-            <lf-table-head class="w-[20%]">
+            <lf-table-head class="w-1/5">
               Match
             </lf-table-head>
-            <lf-table-head class="w-[20%]">
+            <lf-table-head class="w-1/5">
               Project
             </lf-table-head>
             <lf-table-head class="w-48">
@@ -121,7 +129,7 @@
         </tbody>
       </lf-table>
     </div>
-    <div v-else class="flex flex-col items-center pt-14">
+    <div v-else-if="!loadFailed" class="flex flex-col items-center pt-14">
       <lf-icon name="eyes" :size="64" class="text-gray-300" />
       <h6 class="pt-6 text-center font-semibold text-gray-900">
         Nothing here
@@ -159,6 +167,7 @@ import { eventMappingPlatforms } from '@/modules/admin/modules/event-mapping/con
 import {
   confirmItem,
   confirmItems,
+  keepDecidedNow,
   keepKnownPicks,
   keepSelectable,
   pickProject,
@@ -176,24 +185,26 @@ import type {
   EventMappingConfirmItem,
   EventMappingPlatform,
   EventMappingPlatformFilter,
+  EventMappingPlatformOption,
   EventMappingProject,
   EventMappingReference,
   EventMappingRow,
   EventMappingState,
+  EventMappingStatusTab,
 } from '@/modules/admin/modules/event-mapping/types/EventMapping';
 
 defineOptions({
   name: 'LfEventMappingPage',
 });
 
-const statusTabs: { state: EventMappingState; label: string }[] = [
+const statusTabs: EventMappingStatusTab[] = [
   { state: 'suggested', label: 'Best match' },
   { state: 'unresolved', label: 'Unresolved' },
   { state: 'confirmed', label: 'Confirmed' },
   { state: 'ignored', label: 'Ignored' },
 ];
 
-const platformOptions: { value: EventMappingPlatformFilter; label: string; dotClass?: string }[] = [
+const platformOptions: EventMappingPlatformOption[] = [
   { value: 'all', label: 'All platforms' },
   ...(Object.keys(eventMappingPlatforms) as EventMappingPlatform[]).map((value) => ({
     value,
@@ -202,15 +213,18 @@ const platformOptions: { value: EventMappingPlatformFilter; label: string; dotCl
 ];
 
 const invalidate = useInvalidate();
-const { data, isPending, error } = useEventMappingListQuery(ref(true));
+const {
+  data, isPending, error, refetch,
+} = useEventMappingListQuery(ref(true));
 
 const platform = ref<EventMappingPlatformFilter>('all');
 const status = ref<EventMappingState>('suggested');
 const picks = ref<Map<string, EventMappingProject>>(new Map());
-const decidedNow = ref<Set<string>>(new Set());
+const decidedNow = ref<Map<string, string | null>>(new Map());
 const selected = ref<Set<string>>(new Set());
 const openPicker = ref<string | null>(null);
 
+const loadFailed = computed(() => !!error.value && !data.value);
 const rows = computed<EventMappingRow[]>(() => data.value?.rows ?? []);
 const counts = computed(() => statusCounts(rows.value, platform.value));
 const visibleRows = computed(() => rowsInTab(rows.value, platform.value, status.value));
@@ -247,9 +261,15 @@ const pick = (row: EventMappingRow, project: EventMappingProject) => {
   picks.value = pickProject(picks.value, row, project);
 };
 
-const markDecided = (eventKeys: string[], decided: boolean) => {
-  const next = new Set(decidedNow.value);
-  eventKeys.forEach((eventKey) => (decided ? next.add(eventKey) : next.delete(eventKey)));
+const markDecided = (eventKeys: string[]) => {
+  const next = new Map(decidedNow.value);
+  eventKeys.forEach((eventKey) => next.set(eventKey, null));
+  decidedNow.value = next;
+};
+
+const forgetDecided = (eventKey: string) => {
+  const next = new Map(decidedNow.value);
+  next.delete(eventKey);
   decidedNow.value = next;
 };
 
@@ -267,30 +287,30 @@ const serverMessage = (err: unknown): string => {
 
 const onError = (err: unknown) => {
   ToastStore.error(serverMessage(err));
-  invalidate.eventMapping();
+  return invalidate.eventMapping();
 };
 
 const confirmMutation = useMutation({
   mutationFn: (items: EventMappingConfirmItem[]) => confirmEventMappings(items),
   onSuccess: (_, items) => {
-    markDecided(items.map(({ eventKey }) => eventKey), true);
-    invalidate.eventMapping();
+    markDecided(items.map(({ eventKey }) => eventKey));
+    return invalidate.eventMapping();
   },
   onError,
 });
 const ignoreMutation = useMutation({
   mutationFn: ignoreEventMapping,
   onSuccess: (_, { eventKey }) => {
-    markDecided([eventKey], true);
-    invalidate.eventMapping();
+    markDecided([eventKey]);
+    return invalidate.eventMapping();
   },
   onError,
 });
 const restoreMutation = useMutation({
   mutationFn: restoreEventMapping,
   onSuccess: (_, { eventKey }) => {
-    markDecided([eventKey], false);
-    invalidate.eventMapping();
+    forgetDecided(eventKey);
+    return invalidate.eventMapping();
   },
   onError,
 });
@@ -319,6 +339,7 @@ watch([platform, status], () => {
 
 watch(rows, (current) => {
   picks.value = keepKnownPicks(picks.value, current);
+  decidedNow.value = keepDecidedNow(decidedNow.value, current);
 });
 
 watch([visibleRows, picks], ([current, currentPicks]) => {

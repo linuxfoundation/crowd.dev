@@ -31,10 +31,10 @@ const evidence = (match: EventMappingMatch, cventEvent: EventMappingCventEvent |
 
 describe('matchEvidence', () => {
   it.each([
-    [0, 'Same name as Cvent: ExampleCon Europe 2027 · same start date'],
-    [1, 'Same name as Cvent: ExampleCon Europe 2027 · start 1 day apart'],
-    [3, 'Same name as Cvent: ExampleCon Europe 2027 · start 3 days apart'],
-  ])('names the Cvent event and its start gap of %i days for same_name', (dayGap, text) => {
+    [0, 'Same name as the catalogue event: ExampleCon Europe 2027 · same start date'],
+    [1, 'Same name as the catalogue event: ExampleCon Europe 2027 · start 1 day apart'],
+    [3, 'Same name as the catalogue event: ExampleCon Europe 2027 · start 3 days apart'],
+  ])('names the catalogue event and its start gap of %i days for same_name', (dayGap, text) => {
     expect(evidence('same_name', cvent(dayGap))).toBe(text);
   });
 
@@ -49,7 +49,7 @@ describe('matchEvidence', () => {
       'Sub-event of ExampleCon Europe 2027, mapped to its project',
     );
     expect(evidence('ambiguous', cvent(2))).toBe(
-      "Closest Cvent event is ExampleCon Europe 2027. The names differ, so the rules don't accept it.",
+      'Several Cvent events could match. Closest by date: ExampleCon Europe 2027.',
     );
     expect(evidence('project_not_in_cdp', cvent(0))).toBe(
       'The Cvent event ExampleCon Europe 2027 belongs to a project that is not in CDP.',

@@ -3,41 +3,45 @@
     :visibility="props.open"
     placement="bottom-start"
     is-dropdown
-    :class="{ 'event-mapping-project-picker--full-width': props.fullWidth }"
     @update:visibility="emit('update:open', $event)"
   >
     <template #trigger>
       <slot name="trigger" />
     </template>
-    <div class="w-56 overflow-hidden rounded-lg border border-gray-300 bg-white shadow-lg">
-      <div class="border-b border-gray-100 p-2">
-        <lf-search
-          v-model="search"
-          lazy
-          placeholder="Search projects…"
-          class="!h-9"
-        />
-      </div>
-      <div class="max-h-65 overflow-y-auto py-1" @scroll="onScroll">
+    <div class="flex w-56 flex-col gap-1 rounded-xl border border-gray-100 bg-white p-2 shadow-md">
+      <lf-search
+        v-model="search"
+        lazy
+        placeholder="Search projects…"
+        class="!h-9"
+      />
+      <div class="max-h-65 overflow-y-auto" @scroll="onScroll">
         <div v-if="isPending" class="flex justify-center py-4">
           <lf-spinner size="1.5rem" />
         </div>
+        <div v-else-if="isError && projects.length === 0" class="flex flex-col items-start gap-2 p-2">
+          <p class="text-xs text-gray-500">
+            Could not load projects.
+          </p>
+          <lf-button type="secondary" size="small" @click="refetch()">
+            Retry
+          </lf-button>
+        </div>
         <template v-else>
           <div v-for="group of groups" :key="group.groupName">
-            <p class="px-3 pb-1 pt-2 text-2xs font-bold uppercase tracking-wider text-gray-500">
+            <p class="px-2 pb-1 pt-2 text-2xs font-bold uppercase tracking-wider text-gray-500">
               {{ group.groupName }}
             </p>
             <lf-dropdown-item
               v-for="project of group.projects"
               :key="project.segmentId"
               :selected="project.segmentId === props.currentSegmentId"
-              class="!rounded-none !px-3"
               @click="pick(project)"
             >
               {{ project.name }}
             </lf-dropdown-item>
           </div>
-          <p v-if="groups.length === 0" class="p-3 text-xs text-gray-500">
+          <p v-if="groups.length === 0" class="p-2 text-xs text-gray-500">
             No project matches.
           </p>
           <div v-if="isFetchingNextPage" class="flex justify-center py-2">
@@ -45,7 +49,8 @@
           </div>
         </template>
       </div>
-      <p class="border-t border-gray-100 bg-gray-50 px-3 py-2 text-2xs text-gray-500">
+      <lf-dropdown-separator />
+      <p class="px-2 py-1 text-2xs text-gray-500">
         Only projects are listed. Project groups can't be picked.
       </p>
     </div>
@@ -58,6 +63,8 @@ import LfPopover from '@/ui-kit/popover/Popover.vue';
 import LfSearch from '@/ui-kit/search/Search.vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
+import LfDropdownSeparator from '@/ui-kit/dropdown/DropdownSeparator.vue';
+import LfButton from '@/ui-kit/button/Button.vue';
 import { ToastStore } from '@/shared/message/notification';
 import { groupProjects } from '@/modules/admin/modules/event-mapping/event-mapping-helper';
 import { useEventMappingProjectsQuery } from '@/modules/admin/modules/event-mapping/queries/useEventMappingProjectsQuery';
@@ -70,7 +77,6 @@ defineOptions({
 const props = defineProps<{
   open: boolean;
   currentSegmentId?: string;
-  fullWidth?: boolean;
 }>();
 
 const emit = defineEmits<{(e: 'update:open', value: boolean): void;
@@ -87,7 +93,9 @@ const {
   isFetchingNextPage,
   fetchNextPage,
   hasNextPage,
+  isError,
   error,
+  refetch,
   reset,
 } = useEventMappingProjectsQuery(search, computed(() => props.open));
 
@@ -120,15 +128,8 @@ watch(
 );
 
 watch(error, (err) => {
-  if (err) {
+  if (err && props.open) {
     ToastStore.error('Something went wrong while fetching projects');
   }
 });
 </script>
-
-<style scoped>
-.event-mapping-project-picker--full-width,
-.event-mapping-project-picker--full-width :deep(.c-popover__trigger) {
-  @apply w-full;
-}
-</style>

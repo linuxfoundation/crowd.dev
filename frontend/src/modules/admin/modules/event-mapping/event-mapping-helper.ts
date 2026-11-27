@@ -9,6 +9,7 @@ import {
   matchEvidence,
 } from '@/modules/admin/modules/event-mapping/config/match-labels';
 import type {
+  DecidedNow,
   EventMappingConfirmItem,
   EventMappingPlatformFilter,
   EventMappingProject,
@@ -149,11 +150,27 @@ export const formatEventDates = (start: string, end: string): string => {
   return `${from.format('MMM D, YYYY')} – ${to.format('MMM D, YYYY')}`;
 };
 
-export const decisionNote = (row: EventMappingRow, decidedNow: ReadonlySet<string>): string => {
+export const decisionNote = (row: EventMappingRow, decidedNow: DecidedNow): string => {
   if (decidedNow.has(row.eventKey)) {
     return 'Just now';
   }
   return row.decidedAt ? dateHelper(row.decidedAt).format('MMM D, YYYY') : '';
+};
+
+export const keepDecidedNow = (
+  decidedNow: DecidedNow,
+  rows: EventMappingRow[],
+): Map<string, string | null> => {
+  const rowsByKey = new Map(rows.map((row) => [row.eventKey, row]));
+  const kept = new Map<string, string | null>();
+  decidedNow.forEach((recordedAt, eventKey) => {
+    const row = rowsByKey.get(eventKey);
+    if (!row || isPending(row) || (recordedAt !== null && row.decidedAt !== recordedAt)) {
+      return;
+    }
+    kept.set(eventKey, row.decidedAt);
+  });
+  return kept;
 };
 
 export const groupProjects = (projects: EventMappingProject[]): ProjectGroupOption[] =>

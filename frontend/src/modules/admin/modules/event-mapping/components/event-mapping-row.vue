@@ -56,7 +56,6 @@
         v-if="pending"
         :open="props.pickerOpen"
         :current-segment-id="project?.segmentId"
-        :full-width="!project"
         @update:open="emit('update:pickerOpen', $event)"
         @pick="emit('pick', $event)"
       >
@@ -65,7 +64,7 @@
             v-if="project"
             type="primary-link"
             size="small"
-            class="mt-1.5 !gap-1 !px-0"
+            class="mt-1.5"
             :disabled="props.busy"
           >
             Change project
@@ -74,7 +73,6 @@
           <lf-button
             v-else
             type="secondary"
-            class="w-full !justify-between !font-normal"
             :disabled="props.busy"
           >
             Select project
@@ -120,7 +118,6 @@
           v-if="props.row.state === 'ignored' || props.row.canUndo"
           type="primary-link"
           size="tiny"
-          class="!px-0"
           :disabled="props.busy"
           @click="emit('restore')"
         >
@@ -154,6 +151,7 @@ import {
   showsHint,
 } from '@/modules/admin/modules/event-mapping/event-mapping-helper';
 import type {
+  DecidedNow,
   EventMappingProject,
   EventMappingRow,
   PickedProjects,
@@ -166,7 +164,7 @@ defineOptions({
 const props = defineProps<{
   row: EventMappingRow;
   picks: PickedProjects;
-  decidedNow: ReadonlySet<string>;
+  decidedNow: DecidedNow;
   selected: boolean;
   pickerOpen: boolean;
   busy: boolean;

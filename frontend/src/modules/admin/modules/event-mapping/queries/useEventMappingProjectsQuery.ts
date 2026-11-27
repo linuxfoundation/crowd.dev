@@ -14,14 +14,15 @@ export const useEventMappingProjectsQuery = (search: Ref<string>, enabled: Ref<b
 
   const query = useInfiniteQuery({
     queryKey: computed(() => queryKeys.eventMappingProjects.search(search.value)),
-    queryFn: ({ pageParam }): Promise<EventMappingProjectsPage> =>
-      listEventMappingProjects({ search: search.value, limit: PAGE_SIZE, offset: pageParam }),
+    queryFn: ({ queryKey: [, keySearch], pageParam }): Promise<EventMappingProjectsPage> =>
+      listEventMappingProjects({ search: keySearch, limit: PAGE_SIZE, offset: pageParam }),
     getNextPageParam: (lastPage, pages) => {
       const loaded = pages.reduce((sum, page) => sum + page.rows.length, 0);
       return loaded < lastPage.total ? loaded : undefined;
     },
     initialPageParam: 0,
     enabled,
+    refetchOnWindowFocus: false,
   });
 
   const projects = computed(() => query.data.value?.pages.flatMap(({ rows }) => rows) ?? []);

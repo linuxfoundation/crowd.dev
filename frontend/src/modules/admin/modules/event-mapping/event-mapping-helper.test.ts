@@ -9,6 +9,7 @@ import type {
 import {
   confirmItems,
   decisionNote,
+  keepDecidedNow,
   displayedProject,
   formatEventDates,
   groupProjects,
@@ -171,16 +172,27 @@ describe('groupProjects', () => {
   });
 });
 
-describe('decisionNote', () => {
-  const decided = row('a', {
-    state: 'confirmed',
-    project: SUGGESTED,
-    decidedAt: '2026-11-12T10:00:00Z',
-  });
+describe('decisions made on this page', () => {
+  const decidedAt = '2026-11-12T10:00:00Z';
+  const decided = row('a', { state: 'confirmed', project: SUGGESTED, decidedAt });
 
   it('says "Just now" for a decision made on this page, else shows the decision date', () => {
-    expect(decisionNote(decided, new Set(['a']))).toBe('Just now');
-    expect(decisionNote(decided, new Set())).toBe('Nov 12, 2026');
-    expect(decisionNote(row('b'), new Set())).toBe('');
+    expect(decisionNote(decided, new Map([['a', decidedAt]]))).toBe('Just now');
+    expect(decisionNote(decided, new Map())).toBe('Nov 12, 2026');
+    expect(decisionNote(row('b'), new Map())).toBe('');
+  });
+
+  it('records the decision date the refetch returns for a new decision', () => {
+    expect(keepDecidedNow(new Map([['a', null]]), [decided])).toEqual(new Map([['a', decidedAt]]));
+  });
+
+  it('forgets a decision once the row is pending again, re-decided elsewhere, or gone', () => {
+    const recorded = new Map([['a', decidedAt]]);
+    expect(keepDecidedNow(recorded, [row('a')]).size).toBe(0);
+    expect(keepDecidedNow(recorded, [{ ...decided, decidedAt: '2026-11-13T10:00:00Z' }]).size).toBe(
+      0,
+    );
+    expect(keepDecidedNow(recorded, []).size).toBe(0);
+    expect(keepDecidedNow(recorded, [decided])).toEqual(recorded);
   });
 });

@@ -32,7 +32,7 @@ const startGap = (dayGap: number): string => {
 };
 
 const evidenceWithoutCventEvent: Record<EventMappingMatch, string> = {
-  same_name: 'Same name as a Cvent event',
+  same_name: 'Same name as a catalogue event',
   similar_name: 'Similar to a Cvent event',
   name_contained: 'Name contained in a Cvent event',
   sub_event: 'Sub-event mapped to its project',
@@ -54,7 +54,7 @@ export const matchEvidence = ({
   const { name, dayGap } = cventEvent;
   switch (match) {
     case 'same_name':
-      return `Same name as Cvent: ${name} · ${startGap(dayGap)}`;
+      return `Same name as the catalogue event: ${name} · ${startGap(dayGap)}`;
     case 'similar_name':
       return `Similar to Cvent: ${name} · ${startGap(dayGap)}, clear lead`;
     case 'name_contained':
@@ -62,7 +62,7 @@ export const matchEvidence = ({
     case 'sub_event':
       return `Sub-event of ${name}, mapped to its project`;
     case 'ambiguous':
-      return `Closest Cvent event is ${name}. The names differ, so the rules don't accept it.`;
+      return `Several Cvent events could match. Closest by date: ${name}.`;
     case 'project_not_in_cdp':
       return `The Cvent event ${name} belongs to a project that is not in CDP.`;
     default:

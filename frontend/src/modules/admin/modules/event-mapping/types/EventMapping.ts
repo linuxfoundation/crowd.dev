@@ -63,6 +63,8 @@ export type EventMappingPlatformFilter = 'all' | EventMappingPlatform;
 
 export type PickedProjects = ReadonlyMap<string, EventMappingProject>;
 
+export type DecidedNow = ReadonlyMap<string, string | null>;
+
 export interface EventMappingProjectsPage {
   rows: EventMappingProject[];
   total: number;
@@ -81,4 +83,14 @@ export interface MatchBadge {
 export interface EventMappingPlatformConfig {
   label: string;
   dotClass: string;
+}
+
+export interface EventMappingStatusTab {
+  state: EventMappingState;
+  label: string;
+}
+
+export interface EventMappingPlatformOption extends Pick<EventMappingPlatformConfig, 'label'> {
+  value: EventMappingPlatformFilter;
+  dotClass?: EventMappingPlatformConfig['dotClass'];
 }
