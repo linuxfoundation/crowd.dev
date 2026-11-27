@@ -7,9 +7,11 @@ import type {
   SessionizeHoldReason,
   SubprojectLookup,
 } from '@crowd/connectors/src/connectors/sessionize/matching'
+import { decommissionSyncUnitsForChannelIds } from '@crowd/data-access-layer/src/connectors'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { listActiveSubprojectSegmentSources } from '@crowd/data-access-layer/src/segments'
 import {
+  IDeactivatedSessionizeEvent,
   ISessionizeEventDecisionInput,
   IStoredSessionizeEventMapping,
   SessionizeDecisionOutcome,
@@ -20,6 +22,7 @@ import {
 import type { Logger } from '@crowd/logging'
 
 import type { CatalogueSource } from './credlyTemplateResolve'
+import type { SessionizeOnboardingSummary } from './onboardSessionizeEvent'
 
 const CVENT_CATALOGUE_QUERY = `
   SELECT EVENT_ID AS "eventId", EVENT_NAME AS "eventName",
@@ -122,12 +125,17 @@ export async function computeSessionizeDecisions(input: {
   return events.map((event) => matchSessionizeEvent(event, catalogue, subprojectFor))
 }
 
-export interface SessionizeMatchingSummary {
+export interface SessionizeDecisionSummary {
   listed: number
   matched: number
   held: Record<SessionizeHoldReason, number>
   outcomes: Record<SessionizeDecisionOutcome, number>
   deactivated: number
+  unitsDecommissioned: number
+}
+
+export interface SessionizeMatchingSummary extends SessionizeDecisionSummary {
+  onboarding: SessionizeOnboardingSummary
 }
 
 function toDecisionInput(decision: SessionizeEventDecision): ISessionizeEventDecisionInput {
@@ -159,21 +167,41 @@ function reviewTarget(
   }
 }
 
-function emptySummary(): SessionizeMatchingSummary {
+function emptySummary(): SessionizeDecisionSummary {
   return {
     listed: 0,
     matched: 0,
     held: { no_match: 0, ambiguous: 0, not_cvent: 0, no_segment: 0 },
     outcomes: { inserted: 0, updated: 0, unchanged: 0, protected: 0 },
     deactivated: 0,
+    unitsDecommissioned: 0,
   }
+}
+
+async function decommissionDeactivatedEventUnits(
+  tx: QueryExecutor,
+  deactivated: IDeactivatedSessionizeEvent[],
+): Promise<number> {
+  const eventKeysByIntegration = new Map<string, string[]>()
+  for (const { eventKey, integrationId } of deactivated) {
+    if (integrationId === null) continue
+    eventKeysByIntegration.set(integrationId, [
+      ...(eventKeysByIntegration.get(integrationId) ?? []),
+      eventKey,
+    ])
+  }
+  let decommissioned = 0
+  for (const [integrationId, eventKeys] of eventKeysByIntegration) {
+    decommissioned += await decommissionSyncUnitsForChannelIds(tx, integrationId, eventKeys)
+  }
+  return decommissioned
 }
 
 export async function applySessionizeDecisions(
   qx: QueryExecutor,
   decisions: SessionizeEventDecision[],
   log: Logger,
-): Promise<SessionizeMatchingSummary> {
+): Promise<SessionizeDecisionSummary> {
   return qx.tx(async (tx) => {
     const summary = emptySummary()
     const stored = new Map<string, IStoredSessionizeEventMapping>(
@@ -205,6 +233,7 @@ export async function applySessionizeDecisions(
       decisions.map((decision) => decision.event.eventKey),
     )
     summary.deactivated = deactivated.length
+    summary.unitsDecommissioned = await decommissionDeactivatedEventUnits(tx, deactivated)
     return summary
   })
 }
