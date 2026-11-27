@@ -121,6 +121,11 @@ function assertFinalLoadComplete(
       { cause: rowCountDrop.detail },
     )
   }
+  if (all.rows.length === 0 && accepted.rows.length > 0) {
+    throw new ProviderContractError(
+      `sessionize event ${eventKey} has ended with ${accepted.rows.length} accepted export rows but an empty all sessions export`,
+    )
+  }
   const acceptedInAll = all.rows.filter(({ status }) => status === 'Accepted').length
   if (acceptedInAll > 0 && accepted.rows.length === 0) {
     throw new ProviderContractError(

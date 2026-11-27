@@ -58,8 +58,8 @@ per Sessionize event and downloads the organizer's Excel exports.
 - Ended event (two days after its end date): one full load of all submissions plus a spoke-at
   activity per accepted speaker, then the unit stops (`finished`). It is not loaded again.
   It is not finished on an export that looks broken: an all-sessions export with less than half
-  the rows of the last good run, or accepted sessions with an empty accepted export, fail the run
-  with `provider.contract`.
+  the rows of the last good run, accepted sessions with an empty accepted export, or an empty
+  all-sessions export beside an accepted export with rows, fail the run with `provider.contract`.
 - A speaker without one valid email address gives no activity; the run counts these rows in its
   skipped log (`withoutEmail`).
 - A row of the events team account (`EVENTS_TEAM_EMAILS` in the mapper) gives no activity: these
@@ -71,7 +71,8 @@ per Sessionize event and downloads the organizer's Excel exports.
   `withoutSlot`.
 - Full loads pass `backfill: true`. A run that runs out of budget commits nothing and repeats.
 - A 403 on an export means the account is not on the event's content team: the unit fails with
-  `provider.access_denied` and is dead-lettered.
+  `provider.access_denied` and is dead-lettered. A 403 that carries `retry-after` or
+  `x-ratelimit-remaining: 0` is a rate limit instead: the unit waits and runs again.
 
 ## Decisions
 

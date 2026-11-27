@@ -454,6 +454,12 @@ describe('runEventExport', () => {
       { all: allSheet(), accepted: acceptedSheet([]) },
       [`get ${ALL_PATH}`, `get ${ACCEPTED_PATH}`],
     ],
+    [
+      'the all sessions file of an ended event is empty while the accepted file has rows',
+      ENDED,
+      { all: allSheet([]), accepted: acceptedSheet() },
+      [`get ${ALL_PATH}`, `get ${ACCEPTED_PATH}`],
+    ],
   ])(
     'emits nothing and commits nothing when %s breaks the contract',
     async (_, now, files, requests, watermark: Record<string, unknown> | null = null) => {
