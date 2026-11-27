@@ -66,6 +66,10 @@ function buildSourceQuery(): string {
       ancestor.slug AS mapped_project_slug,
       CASE WHEN r.base_project_id IS NOT NULL THEN h.hierarchy_level END AS hierarchy_level,
       ancestor.project_model AS mapped_project_model,
+      ancestor.description AS mapped_project_description,
+      ancestor.project_logo AS mapped_project_logo,
+      ancestor.project_status AS mapped_project_status,
+      ancestor.project_admin_category AS mapped_project_admin_category,
       s.segment_id
     FROM leaves p
     JOIN hierarchy h ON h.base_project_id = p.project_id
