@@ -62,6 +62,11 @@ per Sessionize event and downloads the organizer's Excel exports.
   with `provider.contract`.
 - A speaker without one valid email address gives no activity; the run counts these rows in its
   skipped log (`withoutEmail`).
+- A row of the events team account (`EVENTS_TEAM_EMAILS` in the mapper) gives no activity: these
+  rows are test submissions and schedule items. The run counts them as `eventsTeam`.
+- The company website is free text, so its domain is sent as an organization identity that is not
+  verified. The data sink then links the speaker only to an organization it finds by the company
+  name, and creates none.
 - An accepted session with no scheduled slot gives no spoke-at activity; the run counts it as
   `withoutSlot`.
 - Full loads pass `backfill: true`. A run that runs out of budget commits nothing and repeats.

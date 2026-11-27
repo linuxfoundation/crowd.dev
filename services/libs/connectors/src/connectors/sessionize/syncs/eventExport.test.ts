@@ -11,6 +11,7 @@ import type { SyncContext, SyncOutcome } from '../../../types'
 import type { SessionizeDeps } from '../deps'
 import type { ExportCell } from '../exportFile'
 import type { SessionizeEventContext } from '../mapper'
+import { EVENTS_TEAM_EMAILS } from '../mapper'
 import { SESSIONIZE_BASE_URL } from '../session'
 import {
   EMIT_CHUNK_SIZE,
@@ -45,6 +46,8 @@ const SPEAKER_ONE = '1f0c5a52-3c55-4d7e-9a61-6f1a3c0d2b01'
 const SPEAKER_TWO = '1f0c5a52-3c55-4d7e-9a61-6f1a3c0d2b02'
 const SPEAKER_THREE = '1f0c5a52-3c55-4d7e-9a61-6f1a3c0d2b03'
 const SPEAKER_FOUR = '1f0c5a52-3c55-4d7e-9a61-6f1a3c0d2b04'
+const SPEAKER_FIVE = '1f0c5a52-3c55-4d7e-9a61-6f1a3c0d2b05'
+const [EVENTS_TEAM_EMAIL] = [...EVENTS_TEAM_EMAILS]
 const PERSONAL_VALUES = [
   'Adaeze',
   'Okonkwo',
@@ -385,6 +388,7 @@ describe('runEventExport', () => {
             'cyrena@example.org',
           ],
           [5005, null, SPEAKER_FOUR, 'Dov', 'Marsh', null],
+          [5006, 'Example Badge Pick-Up', SPEAKER_FIVE, 'Example', 'Events', EVENTS_TEAM_EMAIL],
         ]),
       },
     })
@@ -401,6 +405,7 @@ describe('runEventExport', () => {
       testSubmissions: 0,
       noSpeaker: 0,
       withoutEmail: 1,
+      eventsTeam: 1,
       withoutSlot: 1,
       notAccepted: 0,
     })
@@ -521,6 +526,7 @@ describe('runEventExport', () => {
       testSubmissions: 0,
       noSpeaker: 1,
       withoutEmail: 1,
+      eventsTeam: 0,
       withoutSubmissionDate: 1,
     })
     const logged = JSON.stringify(

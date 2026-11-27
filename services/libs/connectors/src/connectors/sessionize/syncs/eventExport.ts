@@ -23,6 +23,7 @@ import type {
 import {
   hasScheduledSlot,
   hasSpeakerEmail,
+  isEventsTeamSpeaker,
   spokeAtSessionActivity,
   submittedSessionActivity,
 } from '../mapper'
@@ -145,13 +146,20 @@ function logSkipped(
 function mapRows(
   rows: SessionizeExportRow[],
   toActivity: (row: SessionizeExportRow) => SessionizeActivity | null,
-): { activities: SessionizeActivity[]; withoutEmail: number; unmapped: number } {
-  const withEmail = rows.filter(hasSpeakerEmail)
-  const activities = withEmail.map(toActivity).filter((activity) => activity !== null)
+): {
+  activities: SessionizeActivity[]
+  withoutEmail: number
+  eventsTeam: number
+  unmapped: number
+} {
+  const eventsTeam = rows.filter(isEventsTeamSpeaker).length
+  const speakers = rows.filter((row) => hasSpeakerEmail(row) && !isEventsTeamSpeaker(row))
+  const activities = speakers.map(toActivity).filter((activity) => activity !== null)
   return {
     activities,
-    withoutEmail: rows.length - withEmail.length,
-    unmapped: withEmail.length - activities.length,
+    withoutEmail: rows.length - eventsTeam - speakers.length,
+    eventsTeam,
+    unmapped: speakers.length - activities.length,
   }
 }
 
@@ -172,6 +180,7 @@ function eventActivities(
   logSkipped(ctx, event.eventKey, 'all', {
     ...all.skipped,
     withoutEmail: submitted.withoutEmail,
+    eventsTeam: submitted.eventsTeam,
     withoutSubmissionDate: submitted.unmapped,
   })
   const sent = submittedSince(submitted.activities, since)
@@ -180,11 +189,12 @@ function eventActivities(
   }
   const spoke = mapRows(accepted.rows, (row) => spokeAtSessionActivity(row, event))
   const withoutSlot = accepted.rows.filter(
-    (row) => hasSpeakerEmail(row) && !hasScheduledSlot(row),
+    (row) => hasSpeakerEmail(row) && !isEventsTeamSpeaker(row) && !hasScheduledSlot(row),
   ).length
   logSkipped(ctx, event.eventKey, 'accepted', {
     ...accepted.skipped,
     withoutEmail: spoke.withoutEmail,
+    eventsTeam: spoke.eventsTeam,
     withoutSlot,
     notAccepted: spoke.unmapped - withoutSlot,
   })
