@@ -247,6 +247,7 @@ export async function listOnboardableSessionizeEvents(
 export async function markSessionizeEventOnboarded(
   qx: QueryExecutor,
   eventKey: string,
+  segmentId: string,
   integrationId: string,
 ): Promise<void> {
   const found = await qx.result(
@@ -259,10 +260,15 @@ export async function markSessionizeEventOnboarded(
           "integrationId" = $(integrationId),
           "lockedAt" = COALESCE("lockedAt", now())
       WHERE "eventKey" = $(eventKey)
+        AND status = 'matched'
+        AND "segmentId" = $(segmentId)
+        AND "deactivatedAt" IS NULL
     `,
-    { eventKey, integrationId },
+    { eventKey, segmentId, integrationId },
   )
   if (found === 0) {
-    throw new Error(`Sessionize event ${eventKey} has no mapping row to mark onboarded!`)
+    throw new Error(
+      `Sessionize event ${eventKey} is no longer a live match of segment ${segmentId}, refusing to mark it onboarded!`,
+    )
   }
 }

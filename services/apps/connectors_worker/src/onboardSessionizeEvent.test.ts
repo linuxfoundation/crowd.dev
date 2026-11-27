@@ -183,10 +183,10 @@ describe('onboardMatchedSessionizeEvents', () => {
       ['4104', 2 * ONBOARDING_SPACING_SECONDS],
     ])
     expect(mocks.markSessionizeEventOnboarded.mock.calls).toEqual([
-      [txQx, '4101', 'int-seg-a'],
-      [txQx, '4102', 'int-seg-a'],
-      [txQx, '4103', 'int-seg-b'],
-      [txQx, '4104', 'int-seg-b'],
+      [txQx, '4101', 'seg-a', 'int-seg-a'],
+      [txQx, '4102', 'seg-a', 'int-seg-a'],
+      [txQx, '4103', 'seg-b', 'int-seg-b'],
+      [txQx, '4104', 'seg-b', 'int-seg-b'],
     ])
     expect(tx).toHaveBeenCalledTimes(8)
   })

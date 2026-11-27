@@ -152,7 +152,7 @@ export async function onboardMatchedSessionizeEvents(
       }
       if (onboarded.outcome === 'created') summary.unitsCreated += 1
       if (onboarded.outcome === 'reactivated') summary.unitsRevived += 1
-      await markSessionizeEventOnboarded(txQx, event.eventKey, integrationId)
+      await markSessionizeEventOnboarded(txQx, event.eventKey, event.segmentId, integrationId)
     })
   }
   return summary
