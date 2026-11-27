@@ -362,15 +362,17 @@ async function applyReviewUpdate(
   })
 }
 
+export interface ISessionizeEventConfirmation {
+  eventKey: string
+  segmentId: string
+  cventEventId: string | null
+  catalogueSource: string | null
+  reviewedBy: string
+}
+
 export async function confirmSessionizeEventMapping(
   qx: QueryExecutor,
-  input: {
-    eventKey: string
-    segmentId: string
-    cventEventId: string | null
-    catalogueSource: string | null
-    reviewedBy: string
-  },
+  input: ISessionizeEventConfirmation,
 ): Promise<void> {
   if ((input.cventEventId === null) !== (input.catalogueSource === null)) {
     throw new Error(
@@ -402,6 +404,18 @@ export async function confirmSessionizeEventMapping(
     `,
     { ...input, active: SegmentStatus.ACTIVE },
   )
+}
+
+export async function confirmSessionizeEventMappings(
+  qx: QueryExecutor,
+  inputs: ISessionizeEventConfirmation[],
+): Promise<void> {
+  const inLockOrder = [...inputs].sort((a, b) => (a.eventKey < b.eventKey ? -1 : 1))
+  await qx.tx(async (tx) => {
+    for (const input of inLockOrder) {
+      await confirmSessionizeEventMapping(tx, input)
+    }
+  })
 }
 
 export async function ignoreSessionizeEvent(

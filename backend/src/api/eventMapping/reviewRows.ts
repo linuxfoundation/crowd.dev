@@ -10,6 +10,7 @@ import type {
   SessionizeSuggestionKind,
   SessionizeUnresolvedReason,
 } from '@crowd/connectors/src/connectors/sessionize/suggestions'
+import type { ISubprojectForMapping } from '@crowd/data-access-layer/src/segments'
 import type { ISessionizeEventForReview } from '@crowd/data-access-layer/src/sessionize'
 
 export type EventMappingState = 'suggested' | 'unresolved' | 'confirmed' | 'ignored'
@@ -40,13 +41,7 @@ export interface EventMappingRow {
   canUndo: boolean
 }
 
-export interface SubprojectForMapping {
-  id: string
-  name: string
-  slug: string
-  sourceId: string | null
-  groupName: string
-}
+export type SubprojectForMapping = ISubprojectForMapping
 
 interface SubprojectIndex {
   bySourceId: Map<string, SubprojectForMapping[]>
