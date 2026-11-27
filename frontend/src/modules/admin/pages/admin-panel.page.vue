@@ -50,6 +50,14 @@
             <lf-tab v-model="activeTab" name="users">
               Users
             </lf-tab>
+            <lf-tab v-model="activeTab" name="event-mapping">
+              <span class="flex items-center gap-2">
+                Event mapping
+                <lf-pill v-if="eventMappingPending !== null" type="primary">
+                  {{ eventMappingPending }}
+                </lf-pill>
+              </span>
+            </lf-tab>
           </template>
         </template>
         <template v-else>
@@ -76,6 +84,7 @@
           <app-api-keys-page v-else-if="activeTab === 'api-keys'" />
           <app-lf-audit-logs-page v-else-if="activeTab === 'audit-logs'" />
           <lf-admin-users v-else-if="activeTab === 'users'" />
+          <lf-event-mapping-page v-else-if="activeTab === 'event-mapping' && isAdminUser" />
           <lf-collections-page v-else-if="activeTab === 'collections'" />
           <lf-insights-projects-page v-else-if="activeTab === 'projects'" />
           <lf-categories-page v-else-if="activeTab === 'categories'" />
@@ -107,6 +116,10 @@ import LfInsightsProjectsPage from '@/modules/admin/modules/insights-projects/pa
 import config from '@/config';
 import LfCategoriesPage from '@/modules/admin/modules/categories/pages/categories.page.vue';
 import { lfIntegrationStatusesTabs } from '@/modules/admin/modules/integration/config/status';
+import LfPill from '@/ui-kit/pill/Pill.vue';
+import LfEventMappingPage from '@/modules/admin/modules/event-mapping/pages/event-mapping.page.vue';
+import { useEventMappingListQuery } from '@/modules/admin/modules/event-mapping/queries/useEventMappingListQuery';
+import { pendingCount } from '@/modules/admin/modules/event-mapping/event-mapping-helper';
 
 const route = useRoute();
 const router = useRouter();
@@ -125,6 +138,9 @@ const changeView = (view: string) => {
 };
 
 const isAdminUser = computed(() => roles.value.includes(LfRole.admin));
+
+const { data: eventMappingList } = useEventMappingListQuery(isAdminUser);
+const eventMappingPending = computed(() => (eventMappingList.value ? pendingCount(eventMappingList.value.counts) : null));
 
 const userId = computed(() => authStore.user?.id);
 const teamUserIds = computed(() => config.permissions.teamUserIds);
@@ -152,7 +168,9 @@ onMounted(() => {
   const initialActiveTab = route.hash.substring(1) as string;
 
   if (
-    (initialActiveTab === 'api-keys' || initialActiveTab === 'audit-logs')
+    (initialActiveTab === 'api-keys'
+      || initialActiveTab === 'audit-logs'
+      || initialActiveTab === 'event-mapping')
     && !isAdminUser.value
   ) {
     activeTab.value = 'project-groups';

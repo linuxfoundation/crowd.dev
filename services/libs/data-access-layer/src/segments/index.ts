@@ -317,6 +317,53 @@ export async function listActiveSubprojectsForMapping(
   )
 }
 
+export interface ISubprojectOption {
+  id: string
+  name: string
+  groupName: string
+}
+
+export interface ISubprojectOptionsPage {
+  rows: ISubprojectOption[]
+  total: number
+}
+
+function containsPattern(text: string): string {
+  return `%${text.replace(/[\\%_]/g, (character) => `\\${character}`)}%`
+}
+
+export async function searchActiveSubprojectsForMapping(
+  qx: QueryExecutor,
+  { search, limit, offset }: { search: string; limit: number; offset: number },
+): Promise<ISubprojectOptionsPage> {
+  const rows: (ISubprojectOption & { total: string })[] = await qx.select(
+    `
+      SELECT s.id, s.name, pg.name AS "groupName", COUNT(*) OVER () AS total
+      FROM segments s
+      JOIN segments pg
+        ON pg.slug = s."grandparentSlug"
+       AND pg."tenantId" = s."tenantId"
+       AND pg."parentSlug" IS NULL
+       AND pg."grandparentSlug" IS NULL
+      WHERE s."grandparentSlug" IS NOT NULL
+        AND s.status = $(status)
+        AND ($(pattern) IS NULL OR s.name ILIKE $(pattern) OR pg.name ILIKE $(pattern))
+      ORDER BY pg.name, s.name, s.id
+      LIMIT $(limit) OFFSET $(offset)
+    `,
+    {
+      status: SegmentStatus.ACTIVE,
+      pattern: search ? containsPattern(search) : null,
+      limit,
+      offset,
+    },
+  )
+  return {
+    rows: rows.map(({ id, name, groupName }) => ({ id, name, groupName })),
+    total: rows.length > 0 ? Number(rows[0].total) : 0,
+  }
+}
+
 export async function getSegmentSubprojects(
   qx: QueryExecutor,
   segmentIds: string[],
