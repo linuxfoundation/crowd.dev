@@ -125,6 +125,13 @@ function sameNameEvent(
   return null
 }
 
+function nearestCandidate(candidates: SessionizeMatchCandidate[]): SessionizeMatchCandidate | null {
+  const cventCandidates = candidates.filter(({ source }) => source === CVENT_SOURCE)
+  const pool = cventCandidates.length > 0 ? cventCandidates : candidates
+  const [nearest] = [...pool].sort((a, b) => a.dayGap - b.dayGap || compareEventIds(a, b))
+  return nearest === undefined ? null : nearest
+}
+
 function findMainEventName(eventName: string): string | null {
   if (eventName.length > MAX_COMPARED_NAME_LENGTH) {
     return null
@@ -140,6 +147,10 @@ function findMainEventName(eventName: string): string | null {
 
 export function suggestSessionizeMapping(input: SessionizeSuggestionInput): SessionizeSuggestion {
   const { eventName, holdReason, candidates } = input
+
+  if (holdReason === 'ambiguous') {
+    return suggestionOf({ reason: 'ambiguous', hintCventEvent: nearestCandidate(candidates) })
+  }
 
   const sameName = sameNameEvent(holdReason, candidates)
   if (sameName !== null) {
@@ -184,7 +195,7 @@ export function suggestSessionizeMapping(input: SessionizeSuggestionInput): Sess
   }
 
   const hint = scored.length > 0 && scored[0].score >= HINT_THRESHOLD ? scored[0].event : null
-  if (holdReason === 'ambiguous' || hint !== null) {
+  if (hint !== null) {
     return suggestionOf({ reason: 'ambiguous', hintCventEvent: hint })
   }
   return suggestionOf({ reason: 'no_cvent_event' })

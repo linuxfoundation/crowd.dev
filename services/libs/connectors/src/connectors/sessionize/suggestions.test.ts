@@ -105,6 +105,31 @@ const rows: Row[] = [
     expected: suggestion({ reason: 'ambiguous', hintCventEvent: mainEvent }),
   },
   {
+    name: 'an ambiguous hold hints the nearest cvent candidate even when only it is nearby',
+    eventName: 'Example Con Europe 2026',
+    holdReason: 'ambiguous',
+    candidates: [
+      { ...nonCventTwin, dayGap: 0 },
+      { ...mainEvent, eventId: 'a-far', dayGap: 10 },
+      stored,
+    ],
+    nearby: [stored],
+    expected: suggestion({ reason: 'ambiguous', hintCventEvent: stored }),
+  },
+  {
+    name: 'an ambiguous hold never scanned for nearby events hints the nearest candidate of any source',
+    eventName: 'PyTorch Day Example 2026',
+    holdReason: 'ambiguous',
+    candidates: [
+      { ...fromOtherSource('a-other', stored), dayGap: 5 },
+      { ...fromOtherSource('b-other', stored), dayGap: 2 },
+    ],
+    expected: suggestion({
+      reason: 'ambiguous',
+      hintCventEvent: { ...fromOtherSource('b-other', stored), dayGap: 2 },
+    }),
+  },
+  {
     name: 'a clear similar name is similar_name',
     eventName: 'Sample Dev Summit Berlin 2026',
     holdReason: 'no_match',
