@@ -11,7 +11,9 @@ import {
 import type { SessionizeExportRow } from './exportRows'
 import type { SessionizeEventContext } from './mapper'
 import {
+  EVENTS_TEAM_EMAILS,
   hasSpeakerEmail,
+  isEventsTeamSpeaker,
   linkedinHandle,
   sessionizeActivitySchema,
   spokeAtSessionActivity,
@@ -101,7 +103,7 @@ describe('submittedSessionActivity', () => {
                 platform: PlatformType.SESSIONIZE,
                 type: OrganizationIdentityType.PRIMARY_DOMAIN,
                 value: 'widgetco.example.com',
-                verified: true,
+                verified: false,
               },
             ],
           },
@@ -126,6 +128,13 @@ describe('submittedSessionActivity', () => {
     ['an email cell that is not one address', 'avery.quill@widgetco.example; bob@example.org'],
   ])('maps a speaker with %s to nothing, in both activities', (_, email) => {
     expect(hasSpeakerEmail(row({ email }))).toBe(false)
+    expect(submittedSessionActivity(row({ email }), EVENT)).toBeNull()
+    expect(spokeAtSessionActivity(row({ email }), EVENT)).toBeNull()
+  })
+
+  it.each([...EVENTS_TEAM_EMAILS])('maps the events team account %s to nothing', (email) => {
+    expect(isEventsTeamSpeaker(row({ email }))).toBe(true)
+    expect(isEventsTeamSpeaker(ROW)).toBe(false)
     expect(submittedSessionActivity(row({ email }), EVENT)).toBeNull()
     expect(spokeAtSessionActivity(row({ email }), EVENT)).toBeNull()
   })
@@ -280,7 +289,7 @@ describe('organizations', () => {
             platform: PlatformType.SESSIONIZE,
             type: OrganizationIdentityType.PRIMARY_DOMAIN,
             value: 'widgetco.example.com',
-            verified: true,
+            verified: false,
           },
         ],
       },

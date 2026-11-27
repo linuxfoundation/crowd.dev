@@ -51,7 +51,7 @@ const organizationSchema = z.object({
         platform: z.literal(PlatformType.SESSIONIZE),
         type: z.literal(OrganizationIdentityType.PRIMARY_DOMAIN),
         value: z.string().min(1),
-        verified: z.literal(true),
+        verified: z.literal(false),
       }),
     )
     .min(1),
@@ -80,6 +80,7 @@ export type SessionizeActivity = z.infer<typeof sessionizeActivitySchema>
 
 type SessionizeMember = SessionizeActivity['member']
 
+export const EVENTS_TEAM_EMAILS = new Set(['cfp@linuxfoundation.org'])
 const LINKEDIN_HOST = 'linkedin.com'
 const NOT_A_LINKEDIN_HANDLE = /[\s\p{Cc}/]/u
 const SHARED_HOSTS = [
@@ -151,7 +152,7 @@ export function submittedSessionActivity(
   event: SessionizeEventContext,
 ): SessionizeActivity | null {
   const email = speakerEmail(row)
-  if (row.dateSubmitted === null || email === null) return null
+  if (row.dateSubmitted === null || email === null || isEventsTeamSpeaker(row)) return null
   return sessionActivity(
     row,
     email,
@@ -167,6 +168,7 @@ export function spokeAtSessionActivity(
   event: SessionizeEventContext,
 ): SessionizeActivity | null {
   const email = speakerEmail(row)
+  if (isEventsTeamSpeaker(row)) return null
   if (row.status !== 'Accepted' || email === null || !hasScheduledSlot(row)) return null
   return sessionActivity(
     row,
@@ -193,6 +195,10 @@ export function hasScheduledSlot(
 
 export function hasSpeakerEmail(row: SessionizeExportRow): boolean {
   return speakerEmail(row) !== null
+}
+
+export function isEventsTeamSpeaker(row: SessionizeExportRow): boolean {
+  return row.email !== null && EVENTS_TEAM_EMAILS.has(row.email)
 }
 
 function speakerEmail(row: SessionizeExportRow): string | null {
@@ -357,7 +363,7 @@ function speakerOrganizations(row: SessionizeExportRow): SessionizeMember['organ
           platform: PlatformType.SESSIONIZE,
           type: OrganizationIdentityType.PRIMARY_DOMAIN,
           value: hostname,
-          verified: true,
+          verified: false,
         },
       ],
     },
