@@ -108,4 +108,26 @@ describe('applyParentMetadata', () => {
       },
     ])
   })
+
+  test('writes a new status and maturity on the segment', async ({ qx }) => {
+    const { group } = await createCncf(qx)
+
+    await applyParentMetadata(qx, {
+      segments: [
+        {
+          segmentId: group.id,
+          segmentType: 'projectGroup',
+          segmentName: 'CNCF',
+          pccProjectId: 'pcc-cncf',
+          status: { from: SegmentStatus.ACTIVE, to: SegmentStatus.ARCHIVED },
+          maturity: { from: null, to: 'Graduated' },
+        },
+      ],
+      insightsProjects: [],
+    })
+
+    expect(await loadParentSegments(qx, ['pcc-cncf'])).toMatchObject([
+      { status: SegmentStatus.ARCHIVED, maturity: 'Graduated', description: null },
+    ])
+  })
 })
