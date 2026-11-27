@@ -19,6 +19,9 @@
       "path": "../services/libs/common_services"
     },
     {
+      "path": "../services/libs/connectors"
+    },
+    {
       "path": "../services/libs/data-access-layer"
     },
     {
