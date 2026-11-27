@@ -2,7 +2,7 @@ import { normalizeEventName } from './matching'
 
 const YEAR_TOKEN = /^(19|20)\d\d$/
 const MIN_CONTAINED_TOKENS = 3
-export const MAX_COMPARED_NAME_LENGTH = 300
+export const MAX_COMPARED_NAME_LENGTH = 199
 
 interface Block {
   firstStart: number
