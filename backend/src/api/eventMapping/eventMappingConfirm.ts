@@ -1,6 +1,5 @@
 import { z } from 'zod'
 
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { validateOrThrow } from '@/utils/validation'
 import { BadRequestError } from '@crowd/common'
 import { listActiveSubprojectsForMapping } from '@crowd/data-access-layer/src/segments'
@@ -12,6 +11,7 @@ import {
 
 import Permissions from '../../security/permissions'
 import PermissionChecker from '../../services/user/permissionChecker'
+import { getEventMappingQx } from './eventMappingQx'
 import { eventReferenceSchema } from './eventSchema'
 import { catalogueEventSuggester } from './reviewRows'
 
@@ -40,7 +40,8 @@ export default async (req, res) => {
   const { items } = validateOrThrow(bodySchema, req.body)
   const reviewedBy: string = req.currentUser.id
 
-  await SequelizeRepository.getQueryExecutor(req).tx(async (tx) => {
+  const qx = await getEventMappingQx()
+  await qx.tx(async (tx) => {
     await lockSessionizeEventMappings(
       tx,
       items.map(({ eventKey }) => eventKey),

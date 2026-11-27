@@ -17,8 +17,8 @@ vi.mock('../../services/user/permissionChecker', () => ({
   },
 }))
 
-vi.mock('@/database/repositories/sequelizeRepository', () => ({
-  default: { getQueryExecutor: () => ({ executor: 'ignore' }) },
+vi.mock('./eventMappingQx', () => ({
+  getEventMappingQx: async () => ({ executor: 'ignore' }),
 }))
 
 vi.mock('@crowd/data-access-layer/src/sessionize', () => ({

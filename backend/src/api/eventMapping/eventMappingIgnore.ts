@@ -1,9 +1,9 @@
-import SequelizeRepository from '@/database/repositories/sequelizeRepository'
 import { validateOrThrow } from '@/utils/validation'
 import { ignoreSessionizeEvent } from '@crowd/data-access-layer/src/sessionize'
 
 import Permissions from '../../security/permissions'
 import PermissionChecker from '../../services/user/permissionChecker'
+import { getEventMappingQx } from './eventMappingQx'
 import { eventReferenceSchema } from './eventSchema'
 
 export default async (req, res) => {
@@ -11,7 +11,7 @@ export default async (req, res) => {
 
   const { eventKey } = validateOrThrow(eventReferenceSchema, req.body)
 
-  await ignoreSessionizeEvent(SequelizeRepository.getQueryExecutor(req), {
+  await ignoreSessionizeEvent(await getEventMappingQx(), {
     eventKey,
     reviewedBy: req.currentUser.id,
   })
