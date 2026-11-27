@@ -12,6 +12,7 @@ sources:
   - services/libs/data-access-layer/src/connectors/
   - services/libs/data-access-layer/src/octolens/
   - services/libs/data-access-layer/src/credly/
+  - services/libs/data-access-layer/src/sessionize/
 ---
 
 # Connector framework (integrations v2)
@@ -24,17 +25,17 @@ to a segment.
 
 ## Where things are
 
-| What                                        | Where                                                                                                           |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Manifests (GitHub, Octolens, Credly)        | `services/libs/connectors/src/connectors/<platform>/`                                                           |
-| Framework types, emit, registry             | `services/libs/connectors/src/` (`types.ts`, `emit.ts`, `registry.ts`)                                          |
-| HTTP client, error classes, token pool      | `services/libs/connectors/src/http/`, `src/pool/`                                                               |
-| Credentials                                 | `services/libs/connectors/src/credentials.ts`                                                                   |
-| Registration, dispatcher, sync runs         | `services/apps/connectors_worker/src/` (`main.ts`, `workflows/`, `activities/`)                                 |
-| GitHub onboarding, lifecycle, renames       | `services/apps/connectors_worker/src/` (`onboardGithubRepo.ts`, `githubLifecycle.ts`, `githubRenames.ts`)       |
-| Sessionize event matching (daily 05:30 UTC) | `services/apps/connectors_worker/src/sessionizeEventMatching.ts`, table `integration."sessionizeEventMappings"` |
-| Sync unit, shadow and completeness DAL      | `services/libs/data-access-layer/src/connectors/`                                                               |
-| Platform-specific DAL                       | `services/libs/data-access-layer/src/octolens/`, `src/credly/`                                                  |
+| What                                             | Where                                                                                                           |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Manifests (GitHub, Octolens, Credly, Sessionize) | `services/libs/connectors/src/connectors/<platform>/`                                                           |
+| Framework types, emit, registry                  | `services/libs/connectors/src/` (`types.ts`, `emit.ts`, `registry.ts`)                                          |
+| HTTP client, error classes, token pool           | `services/libs/connectors/src/http/`, `src/pool/`                                                               |
+| Credentials                                      | `services/libs/connectors/src/credentials.ts`                                                                   |
+| Registration, dispatcher, sync runs              | `services/apps/connectors_worker/src/` (`main.ts`, `workflows/`, `activities/`)                                 |
+| GitHub onboarding, lifecycle, renames            | `services/apps/connectors_worker/src/` (`onboardGithubRepo.ts`, `githubLifecycle.ts`, `githubRenames.ts`)       |
+| Sessionize event matching (daily 05:30 UTC)      | `services/apps/connectors_worker/src/sessionizeEventMatching.ts`, table `integration."sessionizeEventMappings"` |
+| Sync unit, shadow and completeness DAL           | `services/libs/data-access-layer/src/connectors/`                                                               |
+| Platform-specific DAL                            | `services/libs/data-access-layer/src/octolens/`, `src/credly/`, `src/sessionize/`                               |
 
 ## Tables
 
@@ -45,6 +46,33 @@ to a segment.
 | `integration.sync_shadow_records`                        | Records from units with `emitEnabled = false`                                   |
 | `integration."octolensKeywordMappings"`                  | Octolens keyword → subproject routing (fan-out exception)                       |
 | `integration."credlyTemplateMappings"`, `"credlyBadges"` | Credly resolver decisions (mapped/held, drives onboarding only) and badge state |
+
+## Sessionize event export
+
+The `eventExport` sync (`services/libs/connectors/src/connectors/sessionize/syncs/`) has one unit
+per Sessionize event and downloads the organizer's Excel exports.
+
+- Ongoing event: the first run sends every submitted session. Later runs, once a day, send only
+  submissions dated from 24 hours before the start of the last completed run. Export times are
+  the event's local time without a zone, hence the margin.
+- Ended event (two days after its end date): one full load of all submissions plus a spoke-at
+  activity per accepted speaker, then the unit stops (`finished`). It is not loaded again.
+  It is not finished on an export that looks broken: an all-sessions export with less than half
+  the rows of the last good run, accepted sessions with an empty accepted export, or an empty
+  all-sessions export beside an accepted export with rows, fail the run with `provider.contract`.
+- A speaker without one valid email address gives no activity; the run counts these rows in its
+  skipped log (`withoutEmail`).
+- A row of the events team account (`EVENTS_TEAM_EMAILS` in the mapper) gives no activity: these
+  rows are test submissions and schedule items. The run counts them as `eventsTeam`.
+- The company website is free text, so its domain is sent as an organization identity that is not
+  verified. The data sink then links the speaker only to an organization it finds by the company
+  name, and creates none.
+- An accepted session with no scheduled slot gives no spoke-at activity; the run counts it as
+  `withoutSlot`.
+- Full loads pass `backfill: true`. A run that runs out of budget commits nothing and repeats.
+- A 403 on an export means the account is not on the event's content team: the unit fails with
+  `provider.access_denied` and is dead-lettered. A 403 that carries `retry-after` or
+  `x-ratelimit-remaining: 0` is a rate limit instead: the unit waits and runs again.
 
 ## Decisions
 

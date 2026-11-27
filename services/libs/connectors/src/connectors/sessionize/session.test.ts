@@ -5,6 +5,7 @@ import { createHttpClient } from '../../http/client'
 import type { IPooledToken } from '../../http/client'
 import {
   ConnectorCodeError,
+  ProviderAccessDeniedError,
   ProviderAuthError,
   ProviderUnavailableError,
   RateLimitError,
@@ -220,6 +221,37 @@ describe('interpretSessionizeResponse', () => {
     expect(error instanceof ProviderAuthError).toBe(rejected)
   })
 
+  const exportUrl = 'https://sessionize.com/app/organizer/export/excel/1/Flattened_sessions'
+  it.each<[string, string | undefined, Record<string, string>, boolean]>([
+    ['a plain 403 on an export', exportUrl, {}, true],
+    [
+      'a 403 on a relative export path',
+      '/app/organizer/export/excel/1/Flattened_sessions',
+      {},
+      true,
+    ],
+    ['a 403 with retry-after on an export', exportUrl, { 'retry-after': '60' }, false],
+    [
+      'a 403 with no rate limit left on an export',
+      exportUrl,
+      { 'x-ratelimit-remaining': '0' },
+      false,
+    ],
+    ['a 403 on another organizer page', 'https://sessionize.com/app/organizer/events', {}, false],
+    ['a 403 with no url', undefined, {}, false],
+  ])('treats %s as refused access to the event: %s', (_, url, headers, refused) => {
+    const error = interpretSessionizeResponse({ status: 403, headers, data: 'Forbidden', url })
+
+    expect(error).toEqual(
+      refused
+        ? new ProviderAccessDeniedError(
+            "sessionize refused access, the account is not on the event's content team",
+            { status: 403 },
+          )
+        : null,
+    )
+  })
+
   it('leaves non-redirect responses to the default classification', () => {
     expect(interpretSessionizeResponse({ status: 200, headers: {}, data: '' })).toBeNull()
   })
@@ -290,6 +322,33 @@ describe('session renewal through the http client', () => {
       '__Host-Sessionize.Auth=auth-cookie',
     )
     expect(renewed.maxRedirects).toBe(0)
+  })
+
+  it('keeps the session and does not sign in again when sessionize refuses an export', async () => {
+    const acquireToken = vi.fn(async () => ({
+      id: SESSIONIZE_POOL_ENTRY_ID,
+      value: 'live-session-cookie',
+    }))
+    const invalidateToken = vi.fn()
+    const interpretResponse = vi.fn(interpretSessionizeResponse)
+    const http = createHttpClient({
+      acquireToken,
+      parkToken: vi.fn(),
+      invalidateToken,
+      applyToken: applySessionizeCookie,
+      interpretResponse,
+      log: logMocks as never,
+    })
+    mockedRequest.mockResolvedValueOnce(reply(403, 'Forbidden'))
+    const url = 'https://sessionize.com/app/organizer/export/excel/1/Flattened_sessions'
+
+    const err = await http.request({ url }).catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(ProviderAccessDeniedError)
+    expect(interpretResponse).toHaveBeenCalledWith(expect.objectContaining({ status: 403, url }))
+    expect(mockedRequest).toHaveBeenCalledTimes(1)
+    expect(acquireToken).toHaveBeenCalledTimes(1)
+    expect(invalidateToken).not.toHaveBeenCalled()
   })
 
   it('keeps the session cookie out of the error when sessionize does not answer', async () => {

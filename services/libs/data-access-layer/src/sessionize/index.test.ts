@@ -8,6 +8,7 @@ import { listActiveSubprojectSegmentSources } from '../segments'
 import {
   ISessionizeEventDecisionInput,
   deactivateUnlistedSessionizeEvents,
+  getSessionizeEvent,
   listSessionizeEventMappings,
   upsertSessionizeEventDecision,
 } from './index'
@@ -226,6 +227,23 @@ describe('sessionize event decisions', () => {
 
     await expect(deactivateUnlistedSessionizeEvents(qx, [])).rejects.toThrow()
     expect((await readMapping(qx, '1007')).deactivatedAt).toBeNull()
+  })
+})
+
+describe('getSessionizeEvent', () => {
+  test('reads the event by key whatever its status, and null for an unknown key', async ({
+    qx,
+  }) => {
+    await upsertSessionizeEventDecision(qx, held('1008'))
+    await deactivateUnlistedSessionizeEvents(qx, ['other'])
+
+    expect(await getSessionizeEvent(qx, '1008')).toEqual({
+      eventKey: '1008',
+      eventName: 'Open Source Summit 1008',
+      eventStart: '2027-04-28',
+      eventEnd: '2027-04-29',
+    })
+    expect(await getSessionizeEvent(qx, 'unknown-event')).toBeNull()
   })
 })
 

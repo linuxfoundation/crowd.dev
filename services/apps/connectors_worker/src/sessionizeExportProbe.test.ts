@@ -417,6 +417,7 @@ describe('nextProbeRunState', () => {
       ['provider.contract', 'provider.contract', 'TypeError', 'TypeError'],
       [false, false, false, false],
     ],
+    [Array(6).fill('provider.access_denied'), Array(6).fill(false)],
   ])('after %j stops at %j', (outcomes, stops) => {
     expect(stopsAfter(outcomes)).toEqual(stops)
   })

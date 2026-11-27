@@ -8,6 +8,9 @@ import { SESSIONIZE_BASE_URL } from './session'
 export const SESSIONIZE_ALL_SESSIONS_PATH = (eventKey: string) =>
   `/app/organizer/export/excel/${eventKey}/Flattened_sessions`
 
+export const SESSIONIZE_ACCEPTED_SESSIONS_PATH = (eventKey: string) =>
+  `/app/organizer/export/excel/${eventKey}/Flattened_accepted_sessions`
+
 export type ExportCell = string | number | Date | null
 
 export interface ExportSheet {

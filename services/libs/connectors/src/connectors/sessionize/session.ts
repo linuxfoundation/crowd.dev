@@ -7,6 +7,7 @@ import type { HttpResponse, IPooledToken } from '../../http/client'
 import {
   ConnectorCodeError,
   ConnectorError,
+  ProviderAccessDeniedError,
   ProviderAuthError,
   ProviderUnavailableError,
   RateLimitError,
@@ -24,6 +25,7 @@ export const SESSIONIZE_SIGN_IN_MAX_ATTEMPTS = 3
 const LOGIN_PATH = '/login'
 const SIGN_IN_PATH = '/login/classic'
 const SIGN_IN_RETURN_PATH = '/app/organizer/events'
+const EXPORT_PATH_PREFIX = '/app/organizer/export/'
 const REQUEST_TIMEOUT_MS = 30_000
 const RETRY_BACKOFF_BASE_MS = 2_000
 const TRANSIENT_ERROR_CLASSES = new Set(['provider.unavailable', 'provider.rate_limit'])
@@ -103,6 +105,12 @@ export function applySessionizeCookie(
 }
 
 export function interpretSessionizeResponse(response: HttpResponse): ConnectorError | null {
+  if (isRefusedExport(response)) {
+    return new ProviderAccessDeniedError(
+      "sessionize refused access, the account is not on the event's content team",
+      { status: response.status },
+    )
+  }
   if (isLoginRedirect(response.status, response.headers.location)) {
     return new ProviderAuthError('sessionize session rejected, redirected to the login page', {
       status: response.status,
@@ -241,6 +249,22 @@ function servesSignInForm(data: unknown): boolean {
     return SIGN_IN_FORM_PATTERN.test(data.toString('utf8'))
   }
   return false
+}
+
+function isRefusedExport(response: HttpResponse): boolean {
+  return (
+    response.status === 403 && isExportUrl(response.url) && !isRateLimitRefusal(response.headers)
+  )
+}
+
+function isExportUrl(url: string | undefined): boolean {
+  return (
+    url !== undefined && new URL(url, SESSIONIZE_BASE_URL).pathname.startsWith(EXPORT_PATH_PREFIX)
+  )
+}
+
+function isRateLimitRefusal(headers: Record<string, string>): boolean {
+  return headers['retry-after'] !== undefined || headers['x-ratelimit-remaining'] === '0'
 }
 
 function isLoginRedirect(status: number, location: string | undefined): boolean {

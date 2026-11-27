@@ -23,6 +23,11 @@ export interface IStoredSessionizeEventMapping extends ISessionizeEventDecisionI
   deactivatedAt: string | null
 }
 
+export type ISessionizeEvent = Pick<
+  ISessionizeEventDecisionInput,
+  'eventKey' | 'eventName' | 'eventStart' | 'eventEnd'
+>
+
 export type SessionizeDecisionOutcome = 'inserted' | 'updated' | 'unchanged' | 'protected'
 
 interface IStoredDecisionDiff {
@@ -45,6 +50,21 @@ export async function listSessionizeEventMappings(
       FROM integration."sessionizeEventMappings"
       ORDER BY "eventKey"
     `,
+  )
+}
+
+export async function getSessionizeEvent(
+  qx: QueryExecutor,
+  eventKey: string,
+): Promise<ISessionizeEvent | null> {
+  return qx.selectOneOrNone(
+    `
+      SELECT "eventKey", "eventName", "eventStart"::text AS "eventStart",
+             "eventEnd"::text AS "eventEnd"
+      FROM integration."sessionizeEventMappings"
+      WHERE "eventKey" = $(eventKey)
+    `,
+    { eventKey },
   )
 }
 
