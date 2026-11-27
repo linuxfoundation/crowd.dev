@@ -94,3 +94,5 @@ export interface EventMappingPlatformOption extends Pick<EventMappingPlatformCon
   value: EventMappingPlatformFilter;
   dotClass?: EventMappingPlatformConfig['dotClass'];
 }
+
+export type EventMappingListState = 'loading' | 'ready' | 'load-failed' | 'refresh-failed';

@@ -11,6 +11,7 @@ import {
 import type {
   DecidedNow,
   EventMappingConfirmItem,
+  EventMappingListState,
   EventMappingPlatformFilter,
   EventMappingProject,
   EventMappingRow,
@@ -182,3 +183,16 @@ export const groupProjects = (projects: EventMappingProject[]): ProjectGroupOpti
     }
     return [...groups, { groupName: project.groupName, projects: [project] }];
   }, []);
+
+export const listState = ({
+  hasData,
+  hasError,
+}: {
+  hasData: boolean;
+  hasError: boolean;
+}): EventMappingListState => {
+  if (hasError) {
+    return hasData ? 'refresh-failed' : 'load-failed';
+  }
+  return hasData ? 'ready' : 'loading';
+};

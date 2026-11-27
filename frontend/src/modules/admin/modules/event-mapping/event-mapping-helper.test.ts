@@ -15,6 +15,7 @@ import {
   groupProjects,
   keepKnownPicks,
   keepSelectable,
+  listState,
   pendingCount,
   pickProject,
   rowBadge,
@@ -194,5 +195,14 @@ describe('decisions made on this page', () => {
     );
     expect(keepDecidedNow(recorded, []).size).toBe(0);
     expect(keepDecidedNow(recorded, [decided])).toEqual(recorded);
+  });
+});
+
+describe('listState', () => {
+  it('tells a failed first load from a failed refresh of a list already shown', () => {
+    expect(listState({ hasData: false, hasError: true })).toBe('load-failed');
+    expect(listState({ hasData: true, hasError: true })).toBe('refresh-failed');
+    expect(listState({ hasData: true, hasError: false })).toBe('ready');
+    expect(listState({ hasData: false, hasError: false })).toBe('loading');
   });
 });

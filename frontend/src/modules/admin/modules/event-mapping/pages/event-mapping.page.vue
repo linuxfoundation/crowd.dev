@@ -68,6 +68,15 @@
       </lf-tabs>
     </div>
 
+    <div v-if="refreshFailed" class="mb-3 flex items-center gap-3">
+      <p class="text-small text-gray-500">
+        Could not refresh the list.
+      </p>
+      <lf-button type="secondary" @click="refetch()">
+        Retry
+      </lf-button>
+    </div>
+
     <div
       v-if="!loadFailed && selected.size > 0"
       class="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-primary-100 bg-primary-25 px-3.5 py-2.5 text-medium"
@@ -77,7 +86,7 @@
       <lf-button type="secondary-ghost" @click="clearSelection()">
         Clear
       </lf-button>
-      <lf-button :disabled="isMutating" @click="confirmSelected()">
+      <lf-button :disabled="actionsLocked" @click="confirmSelected()">
         Confirm selected
       </lf-button>
     </div>
@@ -118,7 +127,7 @@
             :decided-now="decidedNow"
             :selected="selected.has(row.eventKey)"
             :picker-open="openPicker === row.eventKey"
-            :busy="isMutating"
+            :busy="actionsLocked"
             @update:selected="setSelected(row.eventKey, $event)"
             @update:picker-open="setPickerOpen(row.eventKey, $event)"
             @pick="pick(row, $event)"
@@ -170,6 +179,7 @@ import {
   keepDecidedNow,
   keepKnownPicks,
   keepSelectable,
+  listState,
   pickProject,
   reviewedCount,
   rowsInTab,
@@ -224,7 +234,9 @@ const decidedNow = ref<Map<string, string | null>>(new Map());
 const selected = ref<Set<string>>(new Set());
 const openPicker = ref<string | null>(null);
 
-const loadFailed = computed(() => !!error.value && !data.value);
+const state = computed(() => listState({ hasData: !!data.value, hasError: !!error.value }));
+const loadFailed = computed(() => state.value === 'load-failed');
+const refreshFailed = computed(() => state.value === 'refresh-failed');
 const rows = computed<EventMappingRow[]>(() => data.value?.rows ?? []);
 const counts = computed(() => statusCounts(rows.value, platform.value));
 const visibleRows = computed(() => rowsInTab(rows.value, platform.value, status.value));
@@ -320,6 +332,8 @@ const isMutating = computed(
     || ignoreMutation.isPending.value
     || restoreMutation.isPending.value,
 );
+
+const actionsLocked = computed(() => isMutating.value || refreshFailed.value);
 
 const confirmRow = (row: EventMappingRow) => {
   const item = confirmItem(row, picks.value);

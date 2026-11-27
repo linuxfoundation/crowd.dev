@@ -5,8 +5,11 @@
         v-if="selectable"
         class="!m-0"
         :model-value="props.selected"
+        :disabled="props.busy"
         @update:model-value="emit('update:selected', $event === true)"
-      />
+      >
+        <span class="sr-only">Select {{ props.row.eventName }}</span>
+      </lf-checkbox>
     </lf-table-cell>
     <lf-table-cell class="align-top">
       <p class="text-medium font-semibold leading-snug text-gray-900">

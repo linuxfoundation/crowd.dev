@@ -47,6 +47,14 @@
           <div v-if="isFetchingNextPage" class="flex justify-center py-2">
             <lf-spinner size="1rem" />
           </div>
+          <div v-if="isFetchNextPageError" class="flex flex-col items-start gap-2 p-2">
+            <p class="text-xs text-gray-500">
+              Could not load more projects.
+            </p>
+            <lf-button type="secondary" size="small" @click="fetchNextPage()">
+              Retry
+            </lf-button>
+          </div>
         </template>
       </div>
       <lf-dropdown-separator />
@@ -91,6 +99,7 @@ const {
   projects,
   isPending,
   isFetchingNextPage,
+  isFetchNextPageError,
   fetchNextPage,
   hasNextPage,
   isError,
