@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { registrableDomain } from './domain'
+import { isOnPrivateSuffix, privateSuffix, registrableDomain } from './domain'
 
 describe('registrableDomain', () => {
   it('strips subdomains from hosts and URLs', () => {
@@ -25,5 +25,15 @@ describe('registrableDomain', () => {
     expect(registrableDomain('http://127.0.0.1:8080')).toBeNull()
     expect(registrableDomain('localhost')).toBeNull()
     expect(registrableDomain('')).toBeNull()
+  })
+})
+
+describe('isOnPrivateSuffix', () => {
+  it('tells hosts on a private public suffix from ordinary domains', () => {
+    expect(isOnPrivateSuffix('avery-quill.github.io')).toBe(true)
+    expect(isOnPrivateSuffix('widgetco.uk.com')).toBe(true)
+    expect(privateSuffix('widgetco.uk.com')).toBe('uk.com')
+    expect(isOnPrivateSuffix('widgetco.example.com')).toBe(false)
+    expect(privateSuffix('docs.example.co.uk')).toBeNull()
   })
 })

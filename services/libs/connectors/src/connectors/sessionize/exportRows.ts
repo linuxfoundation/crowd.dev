@@ -436,9 +436,13 @@ function fillRateWarnings(current: ExportProfile, last: ExportProfile): ExportWa
     }))
 }
 
-function columnWarnings(current: ExportProfile, last: ExportProfile): ExportWarning[] {
+function columnWarnings(current: ParsedExport, last: ExportProfile): ExportWarning[] {
   return last.columns
-    .filter((column) => !current.columns.includes(column))
+    .filter(
+      (column) =>
+        !current.profile.columns.includes(column) &&
+        !current.duplicateOptionalColumns.includes(column),
+    )
     .map((column) => ({ kind: 'missing_optional_column', detail: { column } }))
 }
 
@@ -454,10 +458,7 @@ export function compareWithLastGoodRun(
     return warnings
   }
   if (current.profile.rowCount > 0) {
-    warnings.push(
-      ...columnWarnings(current.profile, last),
-      ...fillRateWarnings(current.profile, last),
-    )
+    warnings.push(...columnWarnings(current, last), ...fillRateWarnings(current.profile, last))
   }
   if (current.profile.rowCount < last.rowCount / 2) {
     warnings.push({
