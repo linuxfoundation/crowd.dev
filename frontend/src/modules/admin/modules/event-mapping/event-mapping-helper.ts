@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 import { dateHelper } from '@/shared/date-helper/date-helper';
-import type { MatchBadge } from '@/modules/admin/modules/event-mapping/config/match-labels';
 import {
   manualPickBadge,
   manualPickEvidence,
@@ -10,29 +9,16 @@ import {
   matchEvidence,
 } from '@/modules/admin/modules/event-mapping/config/match-labels';
 import type {
-  EventMappingConfirmation,
   EventMappingConfirmItem,
-  EventMappingList,
-  EventMappingPlatform,
+  EventMappingPlatformFilter,
   EventMappingProject,
   EventMappingRow,
   EventMappingState,
+  MatchBadge,
+  PickedProjects,
+  ProjectGroupOption,
+  StatusCounts,
 } from '@/modules/admin/modules/event-mapping/types/EventMapping';
-
-export type EventMappingPlatformFilter = 'all' | EventMappingPlatform;
-export type PickedProjects = ReadonlyMap<string, EventMappingProject>;
-export type StatusCounts = Record<EventMappingState, number>;
-
-export interface ProjectGroupOption {
-  groupName: string;
-  projects: EventMappingProject[];
-}
-
-export interface PickerSubproject {
-  id: string;
-  name: string;
-  grandparentName: string;
-}
 
 export const isPending = ({ state }: EventMappingRow): boolean =>
   state === 'suggested' || state === 'unresolved';
@@ -68,17 +54,17 @@ export const displayedProject = (
   row: EventMappingRow,
   picked: PickedProjects,
 ): EventMappingProject | null => {
-  if (isPending(row)) {
-    return picked.get(row.eventKey) ?? row.suggestedProject;
+  if (row.state === 'confirmed') {
+    return row.project;
   }
-  return row.project ?? row.suggestedProject;
+  return picked.get(row.eventKey) ?? row.suggestedProject;
 };
 
 const isManualPick = (row: EventMappingRow, picked: PickedProjects): boolean => {
-  if (isPending(row)) {
-    return picked.has(row.eventKey);
+  if (row.state === 'confirmed') {
+    return row.project?.segmentId !== row.suggestedProject?.segmentId;
   }
-  return row.state === 'confirmed' && row.project?.segmentId !== row.suggestedProject?.segmentId;
+  return picked.has(row.eventKey);
 };
 
 export const rowBadge = (row: EventMappingRow, picked: PickedProjects): MatchBadge =>
@@ -109,12 +95,12 @@ export const pickProject = (
   return next;
 };
 
-export const keepPendingPicks = (
+export const keepKnownPicks = (
   picked: PickedProjects,
   rows: EventMappingRow[],
 ): Map<string, EventMappingProject> => {
-  const pendingKeys = new Set(rows.filter(isPending).map(({ eventKey }) => eventKey));
-  return new Map([...picked].filter(([eventKey]) => pendingKeys.has(eventKey)));
+  const knownKeys = new Set(rows.map(({ eventKey }) => eventKey));
+  return new Map([...picked].filter(([eventKey]) => knownKeys.has(eventKey)));
 };
 
 export const keepSelectable = (
@@ -128,77 +114,25 @@ export const keepSelectable = (
       .map(({ eventKey }) => eventKey),
   );
 
-export const confirmation = (
+export const confirmItem = (
   row: EventMappingRow,
   picked: PickedProjects,
-): EventMappingConfirmation | null => {
+): EventMappingConfirmItem | null => {
   const project = displayedProject(row, picked);
   return isPending(row) && project
-    ? { platform: row.platform, eventKey: row.eventKey, project }
+    ? { platform: row.platform, eventKey: row.eventKey, segmentId: project.segmentId }
     : null;
 };
 
-export const confirmations = (
+export const confirmItems = (
   rows: EventMappingRow[],
   selected: ReadonlySet<string>,
   picked: PickedProjects,
-): EventMappingConfirmation[] =>
+): EventMappingConfirmItem[] =>
   rows
     .filter((row) => selected.has(row.eventKey))
-    .map((row) => confirmation(row, picked))
-    .filter((item): item is EventMappingConfirmation => item !== null);
-
-export const toConfirmItems = (decisions: EventMappingConfirmation[]): EventMappingConfirmItem[] =>
-  decisions.map(({ platform, eventKey, project }) => ({
-    platform,
-    eventKey,
-    segmentId: project.segmentId,
-  }));
-
-const withRowChanges = (
-  list: EventMappingList,
-  changeOf: (row: EventMappingRow) => Partial<EventMappingRow> | null,
-): EventMappingList => {
-  const rows = list.rows.map((row) => {
-    const change = changeOf(row);
-    return change ? { ...row, ...change } : row;
-  });
-  return { rows, counts: statusCounts(rows, 'all') };
-};
-
-export const applyConfirmed = (
-  list: EventMappingList,
-  decisions: EventMappingConfirmation[],
-  decidedAt: string,
-): EventMappingList => {
-  const projects = new Map(decisions.map(({ eventKey, project }) => [eventKey, project]));
-  return withRowChanges(list, (row) => {
-    const project = projects.get(row.eventKey);
-    return project ? { state: 'confirmed', project, decidedAt, canUndo: true } : null;
-  });
-};
-
-export const applyIgnored = (
-  list: EventMappingList,
-  eventKey: string,
-  decidedAt: string,
-): EventMappingList =>
-  withRowChanges(list, (row) =>
-    row.eventKey === eventKey
-      ? { state: 'ignored', project: null, decidedAt, canUndo: true }
-      : null,
-  );
-
-const restoredState = ({ suggestedProject }: EventMappingRow): EventMappingState =>
-  suggestedProject ? 'suggested' : 'unresolved';
-
-export const applyRestored = (list: EventMappingList, eventKey: string): EventMappingList =>
-  withRowChanges(list, (row) => {
-    if (row.eventKey !== eventKey) {
-      return null;
-    }
-    return { state: restoredState(row), project: null, decidedAt: null, canUndo: false };
-  });
+    .map((row) => confirmItem(row, picked))
+    .filter((item): item is EventMappingConfirmItem => item !== null);
 
 export const formatEventDates = (start: string, end: string): string => {
   const from = dateHelper(start);
@@ -215,16 +149,19 @@ export const formatEventDates = (start: string, end: string): string => {
   return `${from.format('MMM D, YYYY')} – ${to.format('MMM D, YYYY')}`;
 };
 
-export const formatDecisionDate = (decidedAt: string): string =>
-  dateHelper(decidedAt).format('MMM D, YYYY');
-
-export const groupProjects = (subprojects: PickerSubproject[]): ProjectGroupOption[] => {
-  const groups = new Map<string, EventMappingProject[]>();
-  subprojects.forEach(({ id, name, grandparentName }) => {
-    const project = { segmentId: id, name, groupName: grandparentName };
-    groups.set(grandparentName, [...(groups.get(grandparentName) ?? []), project]);
-  });
-  return [...groups.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([groupName, projects]) => ({ groupName, projects }));
+export const decisionNote = (row: EventMappingRow, decidedNow: ReadonlySet<string>): string => {
+  if (decidedNow.has(row.eventKey)) {
+    return 'Just now';
+  }
+  return row.decidedAt ? dateHelper(row.decidedAt).format('MMM D, YYYY') : '';
 };
+
+export const groupProjects = (projects: EventMappingProject[]): ProjectGroupOption[] =>
+  projects.reduce<ProjectGroupOption[]>((groups, project) => {
+    const last = groups[groups.length - 1];
+    if (last?.groupName === project.groupName) {
+      last.projects.push(project);
+      return groups;
+    }
+    return [...groups, { groupName: project.groupName, projects: [project] }];
+  }, []);

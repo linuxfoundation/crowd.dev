@@ -53,7 +53,7 @@
             <lf-tab v-model="activeTab" name="event-mapping">
               <span class="flex items-center gap-2">
                 Event mapping
-                <lf-pill v-if="eventMappingPending !== null" class="!bg-primary-500 !text-white">
+                <lf-pill v-if="eventMappingPending !== null" type="primary">
                   {{ eventMappingPending }}
                 </lf-pill>
               </span>
@@ -84,7 +84,7 @@
           <app-api-keys-page v-else-if="activeTab === 'api-keys'" />
           <app-lf-audit-logs-page v-else-if="activeTab === 'audit-logs'" />
           <lf-admin-users v-else-if="activeTab === 'users'" />
-          <lf-event-mapping-page v-else-if="activeTab === 'event-mapping'" />
+          <lf-event-mapping-page v-else-if="activeTab === 'event-mapping' && isAdminUser" />
           <lf-collections-page v-else-if="activeTab === 'collections'" />
           <lf-insights-projects-page v-else-if="activeTab === 'projects'" />
           <lf-categories-page v-else-if="activeTab === 'categories'" />

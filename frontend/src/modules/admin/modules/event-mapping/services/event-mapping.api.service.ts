@@ -5,11 +5,23 @@ import authAxios from '@/shared/axios/auth-axios';
 import type {
   EventMappingConfirmItem,
   EventMappingList,
+  EventMappingProjectsPage,
   EventMappingReference,
 } from '@/modules/admin/modules/event-mapping/types/EventMapping';
 
 export const listEventMappings = async (): Promise<EventMappingList> => {
   const response = await authAxios.get<EventMappingList>('/event-mapping');
+  return response.data;
+};
+
+export const listEventMappingProjects = async (params: {
+  search: string;
+  limit: number;
+  offset: number;
+}): Promise<EventMappingProjectsPage> => {
+  const response = await authAxios.get<EventMappingProjectsPage>('/event-mapping/projects', {
+    params,
+  });
   return response.data;
 };
 

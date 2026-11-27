@@ -7,14 +7,12 @@ import type {
   EventMappingRow,
 } from '@/modules/admin/modules/event-mapping/types/EventMapping';
 import {
-  applyConfirmed,
-  applyIgnored,
-  applyRestored,
-  confirmations,
+  confirmItems,
+  decisionNote,
   displayedProject,
   formatEventDates,
   groupProjects,
-  keepPendingPicks,
+  keepKnownPicks,
   keepSelectable,
   pendingCount,
   pickProject,
@@ -23,7 +21,6 @@ import {
   rowsInTab,
   showsHint,
   statusCounts,
-  toConfirmItems,
 } from '@/modules/admin/modules/event-mapping/event-mapping-helper';
 
 const project = (segmentId: string, name: string): EventMappingProject => ({
@@ -110,13 +107,18 @@ describe('picked projects', () => {
     expect(rowEvidence(hinted, picked)).toBe('Rules found no match: Ambiguous');
   });
 
-  it('forgets picks of rows that are no longer pending', () => {
-    const picked = pickProject(pickProject(noPicks, row('a'), OTHER), unresolved('b'), OTHER);
-    const kept = keepPendingPicks(picked, [
-      row('a', { state: 'confirmed', project: OTHER }),
-      unresolved('b'),
-    ]);
-    expect([...kept.keys()]).toEqual(['b']);
+  it('keeps a pick across confirm, undo and ignore, and forgets it once the row is gone', () => {
+    const picked = pickProject(noPicks, row('a'), OTHER);
+    const confirmed = row('a', { state: 'confirmed', project: OTHER });
+    const undone = row('a');
+    const ignored = row('a', { state: 'ignored' });
+
+    expect(keepKnownPicks(picked, [confirmed]).get('a')).toEqual(OTHER);
+    expect(displayedProject(undone, keepKnownPicks(picked, [undone]))).toEqual(OTHER);
+    expect(rowBadge(undone, picked).label).toBe('Picked manually');
+    expect(displayedProject(ignored, picked)).toEqual(OTHER);
+    expect(rowBadge(ignored, picked).label).toBe('Picked manually');
+    expect(keepKnownPicks(picked, [row('b')]).size).toBe(0);
   });
 
   it('marks a confirmed row whose project differs from the suggestion as picked manually', () => {
@@ -140,7 +142,7 @@ describe('selection and bulk confirm', () => {
 
   it('sends every selected row with its picked or suggested segment', () => {
     const picked = pickProject(noPicks, unresolved('c'), OTHER);
-    expect(toConfirmItems(confirmations(rows, new Set(['a', 'c']), picked))).toEqual([
+    expect(confirmItems(rows, new Set(['a', 'c']), picked)).toEqual([
       { platform: 'sessionize', eventKey: 'a', segmentId: SUGGESTED.segmentId },
       { platform: 'sessionize', eventKey: 'c', segmentId: OTHER.segmentId },
     ]);
@@ -159,94 +161,26 @@ describe('formatEventDates', () => {
 });
 
 describe('groupProjects', () => {
-  it('groups projects under their project group, groups sorted by name', () => {
-    expect(
-      groupProjects([
-        { id: '1', name: 'Kubernetes', grandparentName: 'CNCF' },
-        { id: '2', name: 'Open Source Summit', grandparentName: 'The Linux Foundation' },
-        { id: '3', name: 'Prometheus', grandparentName: 'CNCF' },
-      ]),
-    ).toEqual([
-      {
-        groupName: 'CNCF',
-        projects: [
-          { segmentId: '1', name: 'Kubernetes', groupName: 'CNCF' },
-          { segmentId: '3', name: 'Prometheus', groupName: 'CNCF' },
-        ],
-      },
-      {
-        groupName: 'The Linux Foundation',
-        projects: [
-          { segmentId: '2', name: 'Open Source Summit', groupName: 'The Linux Foundation' },
-        ],
-      },
+  it('groups server-ordered projects into contiguous groups without re-sorting', () => {
+    const cncf = (segmentId: string, name: string) => ({ segmentId, name, groupName: 'CNCF' });
+    const lf = { segmentId: '3', name: 'Open Source Summit', groupName: 'The Linux Foundation' };
+    expect(groupProjects([cncf('1', 'Kubernetes'), cncf('2', 'Argo'), lf])).toEqual([
+      { groupName: 'CNCF', projects: [cncf('1', 'Kubernetes'), cncf('2', 'Argo')] },
+      { groupName: 'The Linux Foundation', projects: [lf] },
     ]);
   });
 });
 
-describe('applying decisions to the cached list', () => {
-  const NOW = '2026-11-27T12:00:00.000Z';
-  const list = () => {
-    const rows = [
-      row('a'),
-      unresolved('b'),
-      row('c', { state: 'confirmed', project: SUGGESTED, decidedAt: NOW, canUndo: true }),
-      unresolved('d', { state: 'ignored', decidedAt: NOW, canUndo: true }),
-    ];
-    return { rows, counts: statusCounts(rows, 'all') };
-  };
-  const stateOf = (value: ReturnType<typeof list>, eventKey: string) =>
-    value.rows.find((r) => r.eventKey === eventKey);
-
-  it('confirms one row with its project and moves it between counts', () => {
-    const next = applyConfirmed(
-      list(),
-      [{ platform: 'sessionize', eventKey: 'a', project: OTHER }],
-      NOW,
-    );
-    expect(stateOf(next, 'a')).toMatchObject({
-      state: 'confirmed',
-      project: OTHER,
-      decidedAt: NOW,
-      canUndo: true,
-    });
-    expect(next.counts).toEqual({ suggested: 0, unresolved: 1, confirmed: 2, ignored: 1 });
+describe('decisionNote', () => {
+  const decided = row('a', {
+    state: 'confirmed',
+    project: SUGGESTED,
+    decidedAt: '2026-11-12T10:00:00Z',
   });
 
-  it('confirms every row of a bulk confirm', () => {
-    const next = applyConfirmed(
-      list(),
-      [
-        { platform: 'sessionize', eventKey: 'a', project: SUGGESTED },
-        { platform: 'sessionize', eventKey: 'b', project: OTHER },
-      ],
-      NOW,
-    );
-    expect(stateOf(next, 'b')).toMatchObject({ state: 'confirmed', project: OTHER });
-    expect(next.counts).toEqual({ suggested: 0, unresolved: 0, confirmed: 3, ignored: 1 });
-  });
-
-  it('ignores a row', () => {
-    const next = applyIgnored(list(), 'b', NOW);
-    expect(stateOf(next, 'b')).toMatchObject({
-      state: 'ignored',
-      project: null,
-      decidedAt: NOW,
-      canUndo: true,
-    });
-    expect(next.counts).toEqual({ suggested: 1, unresolved: 0, confirmed: 1, ignored: 2 });
-  });
-
-  it('restores a row to suggested when it has a suggestion, else to unresolved', () => {
-    const undone = applyRestored(list(), 'c');
-    expect(stateOf(undone, 'c')).toMatchObject({
-      state: 'suggested',
-      project: null,
-      decidedAt: null,
-      canUndo: false,
-    });
-    const restored = applyRestored(undone, 'd');
-    expect(stateOf(restored, 'd')).toMatchObject({ state: 'unresolved', decidedAt: null });
-    expect(restored.counts).toEqual({ suggested: 2, unresolved: 2, confirmed: 0, ignored: 0 });
+  it('says "Just now" for a decision made on this page, else shows the decision date', () => {
+    expect(decisionNote(decided, new Set(['a']))).toBe('Just now');
+    expect(decisionNote(decided, new Set())).toBe('Nov 12, 2026');
+    expect(decisionNote(row('b'), new Set())).toBe('');
   });
 });

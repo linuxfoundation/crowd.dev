@@ -1,6 +1,8 @@
 // Copyright (c) 2026 The Linux Foundation and each contributor.
 // SPDX-License-Identifier: MIT
 
+import type { PillType } from '@/ui-kit/pill/types/PillType';
+
 export type EventMappingPlatform = 'sessionize';
 
 export type EventMappingState = 'suggested' | 'unresolved' | 'confirmed' | 'ignored';
@@ -41,9 +43,11 @@ export interface EventMappingRow {
   canUndo: boolean;
 }
 
+export type StatusCounts = Record<EventMappingState, number>;
+
 export interface EventMappingList {
   rows: EventMappingRow[];
-  counts: Record<EventMappingState, number>;
+  counts: StatusCounts;
 }
 
 export interface EventMappingReference {
@@ -55,6 +59,26 @@ export interface EventMappingConfirmItem extends EventMappingReference {
   segmentId: string;
 }
 
-export interface EventMappingConfirmation extends EventMappingReference {
-  project: EventMappingProject;
+export type EventMappingPlatformFilter = 'all' | EventMappingPlatform;
+
+export type PickedProjects = ReadonlyMap<string, EventMappingProject>;
+
+export interface EventMappingProjectsPage {
+  rows: EventMappingProject[];
+  total: number;
+}
+
+export interface ProjectGroupOption {
+  groupName: string;
+  projects: EventMappingProject[];
+}
+
+export interface MatchBadge {
+  label: string;
+  pillType: PillType;
+}
+
+export interface EventMappingPlatformConfig {
+  label: string;
+  dotClass: string;
 }

@@ -86,12 +86,13 @@ describe('matchBadge', () => {
     expect(matchBadge(match).label).toBe(label);
   });
 
-  it('colours best matches amber, sub-events blue and unresolved reasons orange', () => {
-    expect(matchBadge('similar_name').colorClass).toBe(matchBadge('project_alias').colorClass);
-    expect(matchBadge('sub_event').colorClass).not.toBe(matchBadge('similar_name').colorClass);
-    expect(matchBadge('ambiguous').colorClass).toBe(matchBadge('not_checked').colorClass);
-    expect(matchBadge('ambiguous').colorClass).not.toBe(matchBadge('similar_name').colorClass);
-    expect(manualPickBadge.colorClass).not.toBe(matchBadge('ambiguous').colorClass);
+  it('uses the primary pill for best matches and the warning pill for unresolved reasons', () => {
+    expect(matchBadge('similar_name').pillType).toBe('primary');
+    expect(matchBadge('sub_event').pillType).toBe('primary');
+    expect(matchBadge('project_alias').pillType).toBe('primary');
+    expect(matchBadge('ambiguous').pillType).toBe('warning');
+    expect(matchBadge('not_checked').pillType).toBe('warning');
+    expect(manualPickBadge.pillType).toBe('secondary');
   });
 });
 

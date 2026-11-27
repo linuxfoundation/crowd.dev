@@ -2,9 +2,9 @@
   <div>
     <div class="flex flex-wrap items-end justify-between gap-6 pb-5 pt-6">
       <div class="min-w-0 flex-1">
-        <h2 class="mb-1.5 font-primary text-[18px] font-bold text-gray-900">
+        <h6 class="mb-1.5 font-semibold text-gray-900">
           Event mapping
-        </h2>
+        </h6>
         <p class="max-w-2xl text-medium text-gray-600">
           Link each Sessionize event to the CDP project it belongs to. Direct matches are applied
           automatically and don't show here. Confirm or change each best match, and pick a project
@@ -22,40 +22,47 @@
       </div>
     </div>
 
-    <div class="pb-4">
-      <lf-tabs
-        v-model="platform"
-        :fragment="false"
-        class="rounded-lg border border-gray-200 p-1 !gap-1"
-      >
-        <lf-tab v-for="option of platformOptions" :key="option.value" :name="option.value">
-          <span v-if="option.dotClass" class="mr-2 h-2 w-2 rounded-full" :class="option.dotClass" />
-          {{ option.label }}
+    <div class="flex flex-col items-start gap-4 pb-4">
+      <lf-dropdown placement="bottom-start" width="14rem">
+        <template #trigger>
+          <lf-button type="secondary" class="!font-normal">
+            <span
+              v-if="selectedPlatform.dotClass"
+              class="h-2 w-2 rounded-full"
+              :class="selectedPlatform.dotClass"
+            />
+            {{ selectedPlatform.label }}
+            <lf-icon name="chevron-down" :size="16" />
+          </lf-button>
+        </template>
+        <lf-dropdown-item
+          v-for="option of platformOptions"
+          :key="option.value"
+          :selected="platform === option.value"
+          @click="platform = option.value"
+        >
+          <div class="flex items-center gap-2">
+            <span v-if="option.dotClass" class="h-2 w-2 rounded-full" :class="option.dotClass" />
+            {{ option.label }}
+          </div>
+        </lf-dropdown-item>
+      </lf-dropdown>
+
+      <lf-tabs v-model="status" :fragment="false">
+        <lf-tab v-for="tab of statusTabs" :key="tab.state" :name="tab.state">
+          <div class="flex items-center gap-1.5">
+            <span>{{ tab.label }}</span>
+            <lf-pill :type="tab.state === status ? 'primary' : 'secondary'">
+              {{ counts[tab.state] }}
+            </lf-pill>
+          </div>
         </lf-tab>
       </lf-tabs>
     </div>
 
-    <el-tabs v-model="status" class="event-mapping-status-tabs">
-      <el-tab-pane v-for="tab of statusTabs" :key="tab.state" :name="tab.state">
-        <template #label>
-          <span class="flex items-center gap-2">
-            {{ tab.label }}
-            <lf-pill
-              type="secondary"
-              :class="tab.state === status
-                ? '!bg-primary-500 !text-white'
-                : '!bg-gray-100 !text-gray-700'"
-            >
-              {{ counts[tab.state] }}
-            </lf-pill>
-          </span>
-        </template>
-      </el-tab-pane>
-    </el-tabs>
-
     <div
       v-if="selected.size > 0"
-      class="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-primary-100 bg-primary-25 px-3.5 py-2.5 text-medium"
+      class="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-primary-100 bg-primary-25 px-3.5 py-2.5 text-medium"
     >
       <span class="font-semibold">{{ selected.size }} selected</span>
       <span class="flex-1" />
@@ -70,24 +77,28 @@
     <div v-if="isPending" class="flex justify-center pt-8">
       <lf-spinner />
     </div>
-    <template v-else>
-      <lf-table class="mt-1">
+    <div v-else-if="visibleRows.length > 0" class="overflow-x-auto">
+      <lf-table class="min-w-[1040px]">
         <thead>
           <tr>
             <lf-table-head class="w-8" />
-            <lf-table-head>Event</lf-table-head>
+            <lf-table-head class="w-[23%]">
+              Event
+            </lf-table-head>
             <lf-table-head class="w-28">
               Platform
             </lf-table-head>
-            <lf-table-head class="w-1/5">
+            <lf-table-head class="w-[20%]">
               Match
             </lf-table-head>
-            <lf-table-head class="w-1/5">
+            <lf-table-head class="w-[20%]">
               Project
             </lf-table-head>
-            <th class="w-48 !text-right">
-              Actions
-            </th>
+            <lf-table-head class="w-48">
+              <div class="flex w-full justify-end">
+                Actions
+              </div>
+            </lf-table-head>
           </tr>
         </thead>
         <tbody>
@@ -96,6 +107,7 @@
             :key="row.eventKey"
             :row="row"
             :picks="picks"
+            :decided-now="decidedNow"
             :selected="selected.has(row.eventKey)"
             :picker-open="openPicker === row.eventKey"
             :busy="isMutating"
@@ -108,10 +120,16 @@
           />
         </tbody>
       </lf-table>
-      <p v-if="visibleRows.length === 0" class="px-2 py-12 text-center text-medium text-gray-500">
-        Nothing here. Try another status.
+    </div>
+    <div v-else class="flex flex-col items-center pt-14">
+      <lf-icon name="eyes" :size="64" class="text-gray-300" />
+      <h6 class="pt-6 text-center font-semibold text-gray-900">
+        Nothing here
+      </h6>
+      <p class="pt-3 text-center text-small text-gray-500">
+        Try another platform or status.
       </p>
-    </template>
+    </div>
 
     <p class="mt-5 text-tiny text-gray-500">
       Best match: a similar name within 3 days of a Cvent event with a clear lead, one name contained
@@ -123,8 +141,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { isAxiosError } from 'axios';
-import { useMutation, useQueryClient } from '@tanstack/vue-query';
+import { useMutation } from '@tanstack/vue-query';
 import LfButton from '@/ui-kit/button/Button.vue';
+import LfDropdown from '@/ui-kit/dropdown/Dropdown.vue';
+import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
+import LfIcon from '@/ui-kit/icon/Icon.vue';
 import LfPill from '@/ui-kit/pill/Pill.vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfTable from '@/ui-kit/table/Table.vue';
@@ -133,25 +154,17 @@ import LfTabs from '@/ui-kit/tabs/Tabs.vue';
 import LfTab from '@/ui-kit/tabs/Tab.vue';
 import { ToastStore } from '@/shared/message/notification';
 import { useInvalidate } from '@/shared/queries/invalidate';
-import { queryKeys } from '@/shared/queries/keys';
 import LfEventMappingRow from '@/modules/admin/modules/event-mapping/components/event-mapping-row.vue';
 import { eventMappingPlatforms } from '@/modules/admin/modules/event-mapping/config/platforms';
-import type {
-  EventMappingPlatformFilter,
-} from '@/modules/admin/modules/event-mapping/event-mapping-helper';
 import {
-  applyConfirmed,
-  applyIgnored,
-  applyRestored,
-  confirmation,
-  confirmations,
-  keepPendingPicks,
+  confirmItem,
+  confirmItems,
+  keepKnownPicks,
   keepSelectable,
   pickProject,
   reviewedCount,
   rowsInTab,
   statusCounts,
-  toConfirmItems,
 } from '@/modules/admin/modules/event-mapping/event-mapping-helper';
 import { useEventMappingListQuery } from '@/modules/admin/modules/event-mapping/queries/useEventMappingListQuery';
 import {
@@ -160,9 +173,9 @@ import {
   restoreEventMapping,
 } from '@/modules/admin/modules/event-mapping/services/event-mapping.api.service';
 import type {
-  EventMappingConfirmation,
-  EventMappingList,
+  EventMappingConfirmItem,
   EventMappingPlatform,
+  EventMappingPlatformFilter,
   EventMappingProject,
   EventMappingReference,
   EventMappingRow,
@@ -188,15 +201,13 @@ const platformOptions: { value: EventMappingPlatformFilter; label: string; dotCl
   })),
 ];
 
-const REFRESH_DELAY_MS = 5000;
-
 const invalidate = useInvalidate();
-const queryClient = useQueryClient();
 const { data, isPending, error } = useEventMappingListQuery(ref(true));
 
 const platform = ref<EventMappingPlatformFilter>('all');
 const status = ref<EventMappingState>('suggested');
 const picks = ref<Map<string, EventMappingProject>>(new Map());
+const decidedNow = ref<Set<string>>(new Set());
 const selected = ref<Set<string>>(new Set());
 const openPicker = ref<string | null>(null);
 
@@ -206,6 +217,9 @@ const visibleRows = computed(() => rowsInTab(rows.value, platform.value, status.
 const reviewed = computed(() => reviewedCount(counts.value));
 const total = computed(() => Object.values(counts.value).reduce((sum, count) => sum + count, 0));
 const progress = computed(() => (total.value ? Math.round((reviewed.value / total.value) * 100) : 0));
+const selectedPlatform = computed(
+  () => platformOptions.find(({ value }) => value === platform.value) ?? platformOptions[0],
+);
 
 const clearSelection = () => {
   selected.value = new Set();
@@ -233,6 +247,12 @@ const pick = (row: EventMappingRow, project: EventMappingProject) => {
   picks.value = pickProject(picks.value, row, project);
 };
 
+const markDecided = (eventKeys: string[], decided: boolean) => {
+  const next = new Set(decidedNow.value);
+  eventKeys.forEach((eventKey) => (decided ? next.add(eventKey) : next.delete(eventKey)));
+  decidedNow.value = next;
+};
+
 const reference = ({ platform: rowPlatform, eventKey }: EventMappingRow): EventMappingReference => ({
   platform: rowPlatform,
   eventKey,
@@ -245,44 +265,34 @@ const serverMessage = (err: unknown): string => {
   return 'Something went wrong';
 };
 
-let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-
-const scheduleRefresh = () => {
-  clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(() => invalidate.eventMapping(), REFRESH_DELAY_MS);
-};
-
-const applyDecision = async (update: (list: EventMappingList) => EventMappingList) => {
-  await queryClient.cancelQueries({ queryKey: queryKeys.eventMapping.all });
-  queryClient.setQueryData<EventMappingList>(
-    queryKeys.eventMapping.all,
-    (list) => (list ? update(list) : list),
-  );
-  scheduleRefresh();
-};
-
-const onDecisionError = (err: unknown) => {
+const onError = (err: unknown) => {
   ToastStore.error(serverMessage(err));
-  clearTimeout(refreshTimer);
-  return invalidate.eventMapping();
+  invalidate.eventMapping();
 };
-
-const now = () => new Date().toISOString();
 
 const confirmMutation = useMutation({
-  mutationFn: (decisions: EventMappingConfirmation[]) => confirmEventMappings(toConfirmItems(decisions)),
-  onSuccess: (_, decisions) => applyDecision((list) => applyConfirmed(list, decisions, now())),
-  onError: onDecisionError,
+  mutationFn: (items: EventMappingConfirmItem[]) => confirmEventMappings(items),
+  onSuccess: (_, items) => {
+    markDecided(items.map(({ eventKey }) => eventKey), true);
+    invalidate.eventMapping();
+  },
+  onError,
 });
 const ignoreMutation = useMutation({
   mutationFn: ignoreEventMapping,
-  onSuccess: (_, { eventKey }) => applyDecision((list) => applyIgnored(list, eventKey, now())),
-  onError: onDecisionError,
+  onSuccess: (_, { eventKey }) => {
+    markDecided([eventKey], true);
+    invalidate.eventMapping();
+  },
+  onError,
 });
 const restoreMutation = useMutation({
   mutationFn: restoreEventMapping,
-  onSuccess: (_, { eventKey }) => applyDecision((list) => applyRestored(list, eventKey)),
-  onError: onDecisionError,
+  onSuccess: (_, { eventKey }) => {
+    markDecided([eventKey], false);
+    invalidate.eventMapping();
+  },
+  onError,
 });
 
 const isMutating = computed(
@@ -292,14 +302,14 @@ const isMutating = computed(
 );
 
 const confirmRow = (row: EventMappingRow) => {
-  const decision = confirmation(row, picks.value);
-  if (decision) {
-    confirmMutation.mutate([decision]);
+  const item = confirmItem(row, picks.value);
+  if (item) {
+    confirmMutation.mutate([item]);
   }
 };
 
 const confirmSelected = () => {
-  confirmMutation.mutate(confirmations(visibleRows.value, selected.value, picks.value));
+  confirmMutation.mutate(confirmItems(visibleRows.value, selected.value, picks.value));
 };
 
 watch([platform, status], () => {
@@ -308,7 +318,7 @@ watch([platform, status], () => {
 });
 
 watch(rows, (current) => {
-  picks.value = keepPendingPicks(picks.value, current);
+  picks.value = keepKnownPicks(picks.value, current);
 });
 
 watch([visibleRows, picks], ([current, currentPicks]) => {
@@ -321,17 +331,3 @@ watch(error, (err) => {
   }
 });
 </script>
-
-<style scoped>
-.event-mapping-status-tabs :deep(.el-tabs__nav-wrap::after) {
-  @apply h-px bg-gray-200;
-}
-
-.event-mapping-status-tabs :deep(.el-tabs__item) {
-  @apply px-0 mr-6 text-gray-600;
-}
-
-.event-mapping-status-tabs :deep(.el-tabs__item.is-active) {
-  @apply font-semibold text-gray-900 !important;
-}
-</style>

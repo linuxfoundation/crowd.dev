@@ -4,32 +4,23 @@
 import type {
   EventMappingMatch,
   EventMappingRow,
+  MatchBadge,
 } from '@/modules/admin/modules/event-mapping/types/EventMapping';
 
-export interface MatchBadge {
-  label: string;
-  colorClass: string;
-}
-
-const AMBER = '!bg-yellow-100 !text-yellow-800';
-const BLUE = '!bg-primary-50 !text-primary-700';
-const ORANGE = '!bg-orange-100 !text-orange-800';
-const GREY = '!bg-gray-100 !text-gray-700';
-
 const MATCH_BADGES: Record<EventMappingMatch, MatchBadge> = {
-  same_name: { label: 'Best match', colorClass: AMBER },
-  similar_name: { label: 'Best match', colorClass: AMBER },
-  name_contained: { label: 'Best match', colorClass: AMBER },
-  project_alias: { label: 'Best match', colorClass: AMBER },
-  sub_event: { label: 'Best match · sub-event', colorClass: BLUE },
-  ambiguous: { label: 'Ambiguous', colorClass: ORANGE },
-  no_cvent_event: { label: 'No Cvent event in CDP', colorClass: ORANGE },
-  not_checked: { label: 'Not checked yet', colorClass: ORANGE },
-  main_event_not_in_cdp: { label: 'Main event not in CDP', colorClass: ORANGE },
-  project_not_in_cdp: { label: 'Project not in CDP', colorClass: ORANGE },
+  same_name: { label: 'Best match', pillType: 'primary' },
+  similar_name: { label: 'Best match', pillType: 'primary' },
+  name_contained: { label: 'Best match', pillType: 'primary' },
+  project_alias: { label: 'Best match', pillType: 'primary' },
+  sub_event: { label: 'Best match · sub-event', pillType: 'primary' },
+  ambiguous: { label: 'Ambiguous', pillType: 'warning' },
+  no_cvent_event: { label: 'No Cvent event in CDP', pillType: 'warning' },
+  not_checked: { label: 'Not checked yet', pillType: 'warning' },
+  main_event_not_in_cdp: { label: 'Main event not in CDP', pillType: 'warning' },
+  project_not_in_cdp: { label: 'Project not in CDP', pillType: 'warning' },
 };
 
-export const manualPickBadge: MatchBadge = { label: 'Picked manually', colorClass: GREY };
+export const manualPickBadge: MatchBadge = { label: 'Picked manually', pillType: 'secondary' };
 
 export const matchBadge = (match: EventMappingMatch): MatchBadge => MATCH_BADGES[match];
 

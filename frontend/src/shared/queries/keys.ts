@@ -59,10 +59,13 @@ export const queryKeys = {
   },
   subProjects: {
     search: (search: string) => [TanstackKey.ADMIN_SUB_PROJECTS, search] as const,
-    activeSearch: (search: string) => [TanstackKey.ADMIN_SUB_PROJECTS, 'active', search] as const,
   },
   eventMapping: {
     all: [TanstackKey.ADMIN_EVENT_MAPPING] as const,
+  },
+  eventMappingProjects: {
+    all: [TanstackKey.ADMIN_EVENT_MAPPING_PROJECTS] as const,
+    search: (search: string) => [TanstackKey.ADMIN_EVENT_MAPPING_PROJECTS, search] as const,
   },
   projectGroups: {
     all: [TanstackKey.ADMIN_PROJECT_GROUPS] as const,

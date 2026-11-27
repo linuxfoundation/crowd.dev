@@ -54,18 +54,13 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { QueryFunction } from '@tanstack/vue-query';
-import { useInfiniteQuery } from '@tanstack/vue-query';
 import LfPopover from '@/ui-kit/popover/Popover.vue';
 import LfSearch from '@/ui-kit/search/Search.vue';
 import LfSpinner from '@/ui-kit/spinner/Spinner.vue';
 import LfDropdownItem from '@/ui-kit/dropdown/DropdownItem.vue';
-import { INSIGHTS_PROJECTS_SERVICE } from '@/modules/admin/modules/insights-projects/services/insights-projects.service';
-import { queryKeys } from '@/shared/queries/keys';
-import type { Pagination } from '@/shared/types/Pagination';
-import type { Project } from '@/modules/lf/segments/types/Segments';
 import { ToastStore } from '@/shared/message/notification';
 import { groupProjects } from '@/modules/admin/modules/event-mapping/event-mapping-helper';
+import { useEventMappingProjectsQuery } from '@/modules/admin/modules/event-mapping/queries/useEventMappingProjectsQuery';
 import type { EventMappingProject } from '@/modules/admin/modules/event-mapping/types/EventMapping';
 
 defineOptions({
@@ -82,39 +77,21 @@ const emit = defineEmits<{(e: 'update:open', value: boolean): void;
   (e: 'pick', value: EventMappingProject): void;
 }>();
 
-const PAGE_SIZE = 50;
 const SCROLL_THRESHOLD = 20;
 
 const search = ref<string>('');
 
-const queryFn = INSIGHTS_PROJECTS_SERVICE.querySubProjects(() => ({
-  limit: PAGE_SIZE,
-  offset: 0,
-  filter: {
-    status: 'active',
-    ...(search.value ? { name: search.value } : {}),
-  },
-})) as QueryFunction<Pagination<Project>, readonly unknown[], unknown>;
-
 const {
-  data,
+  projects,
   isPending,
   isFetchingNextPage,
   fetchNextPage,
   hasNextPage,
   error,
-} = useInfiniteQuery<Pagination<Project>, Error>({
-  queryKey: computed(() => queryKeys.subProjects.activeSearch(search.value)),
-  queryFn,
-  getNextPageParam: (lastPage) => {
-    const nextPage = lastPage.offset + lastPage.limit;
-    return nextPage < lastPage.count ? nextPage : undefined;
-  },
-  initialPageParam: 0,
-  enabled: computed(() => props.open),
-});
+  reset,
+} = useEventMappingProjectsQuery(search, computed(() => props.open));
 
-const groups = computed(() => groupProjects(data.value?.pages.flatMap((page) => page.rows) ?? []));
+const groups = computed(() => groupProjects(projects.value));
 
 const onScroll = (event: Event) => {
   const target = event.target as HTMLElement;
@@ -137,6 +114,7 @@ watch(
   (open) => {
     if (!open) {
       search.value = '';
+      reset();
     }
   },
 );
