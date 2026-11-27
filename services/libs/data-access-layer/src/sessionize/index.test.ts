@@ -4,7 +4,11 @@ import { ConflictError, DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 import type { QueryExecutor } from '@crowd/database'
 import { withQx } from '@crowd/test-kit/db'
 
-import { listActiveSubprojectSegmentSources, listActiveSubprojectsForMapping } from '../segments'
+import {
+  listActiveSubprojectSegmentSources,
+  listActiveSubprojectsForMapping,
+  searchActiveSubprojectsForMapping,
+} from '../segments'
 import {
   ISessionizeEventDecisionInput,
   confirmSessionizeEventMapping,
@@ -763,5 +767,118 @@ describe('lockSessionizeEventMappings', () => {
 
     await decision
     expect((await readMapping(qx, '3201')).evidence).toEqual({ candidates: 3 })
+  })
+})
+
+describe('searchActiveSubprojectsForMapping', () => {
+  async function createGroupWithSubprojects(
+    qx: QueryExecutor,
+    groupName: string,
+    subprojectNames: string[],
+  ): Promise<string[]> {
+    const groupSlug = `group-${generateUUIDv1()}`
+    await createSegment(qx, { slug: groupSlug, name: groupName, grandparentSlug: null })
+    const ids: string[] = []
+    for (const name of subprojectNames) {
+      ids.push(await createSegment(qx, { name, parentSlug: groupSlug, grandparentSlug: groupSlug }))
+    }
+    return ids
+  }
+
+  const uniqueToken = () => `zq${generateUUIDv1().replace(/-/g, '').slice(0, 12)}`
+
+  test('orders by project group then project name and pages with a total', async ({ qx }) => {
+    const token = uniqueToken()
+    const [betaKube, betaArgo] = await createGroupWithSubprojects(qx, `${token} Beta Group`, [
+      'Kube Made Up',
+      'Argo Made Up',
+    ])
+    const [alphaZeta] = await createGroupWithSubprojects(qx, `${token} Alpha Group`, [
+      'Zeta Made Up',
+    ])
+
+    const all = await searchActiveSubprojectsForMapping(qx, { search: token, limit: 10, offset: 0 })
+    expect(all).toEqual({
+      rows: [
+        { id: alphaZeta, name: 'Zeta Made Up', groupName: `${token} Alpha Group` },
+        { id: betaArgo, name: 'Argo Made Up', groupName: `${token} Beta Group` },
+        { id: betaKube, name: 'Kube Made Up', groupName: `${token} Beta Group` },
+      ],
+      total: 3,
+    })
+
+    const page = await searchActiveSubprojectsForMapping(qx, { search: token, limit: 1, offset: 1 })
+    expect(page).toEqual({ rows: [all.rows[1]], total: 3 })
+  })
+
+  test('searches the project name and the project group name', async ({ qx }) => {
+    const token = uniqueToken()
+    const [byName] = await createGroupWithSubprojects(qx, 'Made Up Foundation', [`${token} Summit`])
+    const [byGroup] = await createGroupWithSubprojects(qx, `${token} Foundation`, ['Made Up Con'])
+
+    const found = await searchActiveSubprojectsForMapping(qx, {
+      search: token,
+      limit: 10,
+      offset: 0,
+    })
+
+    expect(found.rows.map(({ id }) => id).sort()).toEqual([byName, byGroup].sort())
+  })
+
+  test('treats % and _ in the search text as plain characters', async ({ qx }) => {
+    const token = uniqueToken()
+    const [percent, , underscore] = await createGroupWithSubprojects(qx, 'Made Up Foundation', [
+      `${token} 100% Day`,
+      `${token} 1000 Day`,
+      `${token} a_b Day`,
+      `${token} axb Day`,
+    ])
+
+    const byPercent = await searchActiveSubprojectsForMapping(qx, {
+      search: `${token} 100%`,
+      limit: 10,
+      offset: 0,
+    })
+    const byUnderscore = await searchActiveSubprojectsForMapping(qx, {
+      search: `${token} a_b`,
+      limit: 10,
+      offset: 0,
+    })
+
+    expect(byPercent.rows.map(({ id }) => id)).toEqual([percent])
+    expect(byUnderscore.rows.map(({ id }) => id)).toEqual([underscore])
+  })
+
+  test('leaves out archived subprojects, projects and project groups', async ({ qx }) => {
+    const token = uniqueToken()
+    const groupSlug = `group-${generateUUIDv1()}`
+    await createSegment(qx, { slug: groupSlug, name: `${token} Group`, grandparentSlug: null })
+    await createSegment(qx, {
+      name: `${token} Project`,
+      parentSlug: groupSlug,
+      grandparentSlug: null,
+    })
+    await createSegment(qx, {
+      name: `${token} Archived`,
+      parentSlug: groupSlug,
+      grandparentSlug: groupSlug,
+      status: 'archived',
+    })
+    const active = await createSegment(qx, {
+      name: `${token} Active`,
+      parentSlug: groupSlug,
+      grandparentSlug: groupSlug,
+    })
+
+    const found = await searchActiveSubprojectsForMapping(qx, {
+      search: token,
+      limit: 10,
+      offset: 0,
+    })
+
+    expect(found).toEqual({
+      rows: [{ id: active, name: `${token} Active`, groupName: `${token} Group` }],
+      total: 1,
+    })
   })
 })
