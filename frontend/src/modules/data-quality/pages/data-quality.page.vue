@@ -5,7 +5,7 @@
       <div class="sticky -top-5 bg-white z-10 pt-5 -mt-5 pb-6">
         <div class="flex justify-between items-center">
           <div>
-            <app-lf-page-header text-class="text-tiny text-secondary-400 mb-1" />
+            <app-lf-page-header v-if="selectedProjectGroup" text-class="text-tiny text-secondary-400 mb-1" />
             <h4 class="font-semibold">
               Data Quality Copilot
             </h4>
@@ -36,14 +36,18 @@
 import AppPageWrapper from '@/shared/layout/page-wrapper.vue';
 import AppLfPageHeader from '@/modules/lf/layout/components/lf-page-header.vue';
 import { ref } from 'vue';
+import { storeToRefs } from 'pinia';
 import LfTabs from '@/ui-kit/tabs/Tabs.vue';
 import LfTab from '@/ui-kit/tabs/Tab.vue';
 import LfDataQualityMember from '@/modules/data-quality/components/data-quality-member.vue';
 import LfDataQualityOrganization from '@/modules/data-quality/components/data-quality-organization.vue';
+import { useLfSegmentsStore } from '@/modules/lf/segments/store';
 
 defineOptions({
   name: 'DataQualityPage',
 });
+
+const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
 const tab = ref('member');
 </script>

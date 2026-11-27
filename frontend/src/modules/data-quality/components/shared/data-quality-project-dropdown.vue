@@ -48,10 +48,10 @@ defineOptions({
 });
 
 const props = defineProps<{
-  modelValue: string;
+  modelValue?: string;
 }>();
 
-const emit = defineEmits<{(e: 'update:modelValue', value: string): void}>();
+const emit = defineEmits<{(e: 'update:modelValue', value?: string): void}>();
 
 const { selectedProjectGroup } = storeToRefs(useLfSegmentsStore());
 
@@ -59,7 +59,7 @@ const search = ref('');
 
 const project = computed({
   get: () => props.modelValue,
-  set: (value: string) => emit('update:modelValue', value),
+  set: (value?: string) => emit('update:modelValue', value),
 });
 
 const options = computed(
@@ -73,8 +73,7 @@ const options = computed(
 );
 
 const changeOption = (group?: string) => {
-  // shortcut: cast hides an undefined id; the route requires a project group. revisit: if that guard goes
-  project.value = group as string;
+  project.value = group;
   search.value = '';
 };
 

@@ -71,7 +71,7 @@ defineOptions({
 
 const props = defineProps<{
   type: DataIssueType,
-  projectGroup: string,
+  projectGroup?: string,
 }>();
 
 const loading = ref(true);
@@ -92,7 +92,7 @@ const loadDataIssues = () => {
     type: props.type,
     limit: limit.value,
     offset: offset.value,
-  }, [props.projectGroup])
+  }, props.projectGroup ? [props.projectGroup] : [])
     .then((res) => {
       if (offset.value > 0) {
         members.value = [...members.value, ...res];
