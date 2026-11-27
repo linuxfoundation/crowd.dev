@@ -14,7 +14,7 @@ import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/s
 import { MetadataStore, S3Service, SnowflakeExportJob, buildPlatformFilter } from '@crowd/snowflake'
 
 import { parsePccRow } from '../parser'
-import type { CdpHierarchyTarget, ParsedPccProject } from '../parser'
+import type { CdpHierarchyTarget, ParsedPccProject, PccParentMetadata } from '../parser'
 import {
   addToCreationSummary,
   creationSummaryCounts,
@@ -37,6 +37,16 @@ import {
   toProjectToCreate,
 } from './missingProjectCreation'
 import type { CreationSettings } from './missingProjectCreation'
+import {
+  addParents,
+  applyParentMetadata,
+  effectiveParentMetadataMode,
+  loadInsightsProjectsOfSegments,
+  loadParentSegments,
+  planParentMetadata,
+  readParentMetadataMode,
+} from './parentMetadata'
+import type { ParentMetadataMode } from './parentMetadata'
 import {
   PROJECT_NOT_IN_PCC,
   addPccProjectIdsOfRow,
@@ -78,6 +88,7 @@ export class PccProjectConsumer {
     readonly dryRun: boolean = false,
     private readonly creation: CreationSettings = { mode: 'off', maxProjectsPerRun: 0 },
     private readonly backendApi: BackendApiConfig | null = null,
+    private readonly parentMetadataMode: ParentMetadataMode = 'off',
   ) {
     this.currentPollingIntervalMs = pollingIntervalMs
   }
@@ -147,6 +158,7 @@ export class PccProjectConsumer {
     let possibleExistingCount = 0
     const creationSummary = emptyCreationSummary()
     const projectsToCreate: ProjectToCreate[] = []
+    const parentsByPccProjectId = new Map<string, PccParentMetadata>()
     const syncedPccProjectIds: string[] = []
 
     try {
@@ -238,6 +250,7 @@ export class PccProjectConsumer {
           }
 
           const { project } = parsed
+          addParents(parentsByPccProjectId, project.parents)
           const result = await this.processRow(tx, project, cdpSubprojects, cdpSegments)
 
           switch (result.action) {
@@ -313,6 +326,7 @@ export class PccProjectConsumer {
         // set by claimOldestPendingJob), so release it so a real run can pick
         // it up later. Otherwise dry-run jobs are permanently stuck.
         await this.releaseClaimBestEffort(job.id)
+        await this.syncParentMetadata(job, parentsByPccProjectId)
         await this.createMissingProjects(job, projectsToCreate)
       } else {
         await this.metadataStore.markCompleted(job.id, {
@@ -324,6 +338,7 @@ export class PccProjectConsumer {
           processingDurationMs: durationMs,
         })
         const createdPccProjectIds = await this.createMissingProjects(job, projectsToCreate)
+        await this.syncParentMetadata(job, parentsByPccProjectId)
         await this.resolveCreationFailuresOfProjectsInCdp(job, [
           ...syncedPccProjectIds,
           ...createdPccProjectIds,
@@ -351,6 +366,50 @@ export class PccProjectConsumer {
           log.error({ jobId: job.id, updateErr }, 'Failed to mark job as failed')
         }
       }
+    }
+  }
+
+  // Runs after the job is closed and never throws: a failed update must not fail the sync.
+  private async syncParentMetadata(
+    job: SnowflakeExportJob,
+    parentsByPccProjectId: Map<string, PccParentMetadata>,
+  ): Promise<void> {
+    const mode = effectiveParentMetadataMode(this.parentMetadataMode, this.dryRun)
+    if (mode === 'off') return
+
+    try {
+      const qx = pgpQx(this.db)
+      const segments = await loadParentSegments(qx, [...parentsByPccProjectId.keys()])
+      const insightsProjects = await loadInsightsProjectsOfSegments(
+        qx,
+        segments.map((segment) => segment.id),
+      )
+      const plan = planParentMetadata(parentsByPccProjectId, segments, insightsProjects)
+
+      if (mode === 'dry-run') {
+        for (const update of plan.segments) {
+          log.info(update, '[dry-run] Would update PCC parent segment')
+        }
+        for (const update of plan.insightsProjects) {
+          log.info(update, '[dry-run] Would update Insights project of PCC parent')
+        }
+      } else {
+        await applyParentMetadata(qx, plan)
+      }
+
+      log.info(
+        {
+          jobId: job.id,
+          mode,
+          parentsInPcc: parentsByPccProjectId.size,
+          segmentsOfParents: segments.length,
+          segmentsChanged: plan.segments.length,
+          insightsProjectsChanged: plan.insightsProjects.length,
+        },
+        'PCC parent metadata sync completed',
+      )
+    } catch (err) {
+      log.error({ jobId: job.id, err }, 'PCC parent metadata sync failed')
     }
   }
 
@@ -946,6 +1005,9 @@ export async function createPccProjectConsumer(dryRun = false): Promise<PccProje
   }
   log.info({ creation }, 'PCC project creation settings')
 
+  const parentMetadataMode = readParentMetadataMode()
+  log.info({ parentMetadataMode }, 'PCC parent metadata sync settings')
+
   return new PccProjectConsumer(
     metadataStore,
     s3Service,
@@ -954,5 +1016,6 @@ export async function createPccProjectConsumer(dryRun = false): Promise<PccProje
     dryRun,
     creation,
     backendApi,
+    parentMetadataMode,
   )
 }
