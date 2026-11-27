@@ -189,9 +189,12 @@ describe('sessionize event decisions', () => {
     expect(millis(row.updatedAt)).toBeGreaterThan(millis(BACKDATED))
   })
 
-  test.for(['reviewedAt', 'lockedAt'] as const)(
-    'a row with %s keeps its target and reports the differing decision',
-    async (column, { qx }) => {
+  test.for([
+    ['reviewedAt', 'unchanged'],
+    ['lockedAt', 'protected'],
+  ] as const)(
+    'a row with %s keeps its target and reports a held decision as %s',
+    async ([column, heldOutcome], { qx }) => {
       const segmentId = await createSegment(qx)
       await upsertSessionizeEventDecision(qx, matched('1004', segmentId))
       await markMapping(qx, '1004', column)
@@ -202,6 +205,12 @@ describe('sessionize event decisions', () => {
 
       expect(
         await upsertSessionizeEventDecision(qx, { ...held('1004'), eventName: 'Renamed Summit' }),
+      ).toBe(heldOutcome)
+      expect(
+        await upsertSessionizeEventDecision(qx, {
+          ...matched('1004', await createSegment(qx)),
+          eventName: 'Renamed Summit',
+        }),
       ).toBe('protected')
       expect(
         await upsertSessionizeEventDecision(qx, {
@@ -398,10 +407,17 @@ describe('sessionize event review', () => {
       segmentId,
     })
     expect(await readReview(qx, '3001')).toMatchObject({ rule: 'review', reviewedBy: REVIEWER })
+    expect(await upsertSessionizeEventDecision(qx, held('3001'))).toBe('unchanged')
+    expect(await upsertSessionizeEventDecision(qx, matched('3001', segmentId))).toBe('unchanged')
     expect(await upsertSessionizeEventDecision(qx, matched('3001', await createSegment(qx)))).toBe(
       'protected',
     )
-    expect((await readMapping(qx, '3001')).segmentId).toBe(segmentId)
+    expect(await readMapping(qx, '3001')).toMatchObject({
+      status: 'matched',
+      holdReason: 'ambiguous',
+      cventEventId: 'cvent-3001',
+      segmentId,
+    })
   })
 
   test('confirm refuses a segment that is not an active subproject', async ({ qx }) => {
@@ -452,6 +468,7 @@ describe('sessionize event review', () => {
       segmentId: null,
     })
     expect(await readReview(qx, '3007')).toMatchObject({ rule: null, reviewedBy: REVIEWER })
+    expect(await upsertSessionizeEventDecision(qx, held('3007'))).toBe('unchanged')
     expect(await upsertSessionizeEventDecision(qx, matched('3007', await createSegment(qx)))).toBe(
       'protected',
     )

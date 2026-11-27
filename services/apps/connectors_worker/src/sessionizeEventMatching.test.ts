@@ -224,7 +224,7 @@ describe('applySessionizeDecisions', () => {
     const decisions = [
       matchedDecision('new', 'seg-1'),
       heldDecision('same', 'ambiguous'),
-      heldDecision('reviewed', 'no_segment'),
+      matchedDecision('reviewed', 'seg-2'),
       heldDecision('fresh', 'no_match'),
     ]
 
@@ -232,8 +232,8 @@ describe('applySessionizeDecisions', () => {
 
     expect(summary).toEqual({
       listed: 4,
-      matched: 1,
-      held: { no_match: 1, ambiguous: 1, not_cvent: 0, no_segment: 1 },
+      matched: 2,
+      held: { no_match: 1, ambiguous: 1, not_cvent: 0, no_segment: 0 },
       outcomes: { inserted: 2, updated: 0, unchanged: 1, protected: 1 },
       deactivated: 1,
       unitsDecommissioned: 0,
@@ -244,11 +244,11 @@ describe('applySessionizeDecisions', () => {
       event: 'sessionize_decision_needs_review',
       eventKey: 'reviewed',
       wanted: {
-        status: 'held',
-        holdReason: 'no_segment',
-        segmentId: null,
-        cventEventId: null,
-        catalogueSource: null,
+        status: 'matched',
+        holdReason: null,
+        segmentId: 'seg-2',
+        cventEventId: 'cvent-reviewed',
+        catalogueSource: 'cvent',
       },
       stored: {
         status: 'matched',

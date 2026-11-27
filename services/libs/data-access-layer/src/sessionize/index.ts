@@ -36,6 +36,8 @@ export type SessionizeDecisionOutcome = 'inserted' | 'updated' | 'unchanged' | '
 
 interface IStoredDecisionDiff {
   isProtected: boolean
+  isReviewed: boolean
+  matchesAnotherSegment: boolean
   listingChanged: boolean
   targetChanged: boolean
   decisionChanged: boolean
@@ -108,6 +110,9 @@ export async function upsertSessionizeEventDecision(
     const stored: IStoredDecisionDiff | null = await tx.selectOneOrNone(
       `
         SELECT ("reviewedAt" IS NOT NULL OR "lockedAt" IS NOT NULL) AS "isProtected",
+               "reviewedAt" IS NOT NULL AS "isReviewed",
+               ($(status) = 'matched'
+                 AND "segmentId" IS DISTINCT FROM $(segmentId)::uuid) AS "matchesAnotherSegment",
                ("eventName" IS DISTINCT FROM $(eventName)
                  OR "eventStart" IS DISTINCT FROM $(eventStart)::date
                  OR "eventEnd" IS DISTINCT FROM $(eventEnd)::date
@@ -148,7 +153,8 @@ export async function upsertSessionizeEventDecision(
 
     if (stored.isProtected) {
       await refreshListing(tx, values, stored.listingChanged)
-      return stored.targetChanged ? 'protected' : 'unchanged'
+      const needsReview = stored.isReviewed ? stored.matchesAnotherSegment : stored.targetChanged
+      return needsReview ? 'protected' : 'unchanged'
     }
 
     if (!(stored.listingChanged || stored.targetChanged || stored.decisionChanged)) {
