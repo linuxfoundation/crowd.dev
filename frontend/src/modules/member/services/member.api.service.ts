@@ -319,13 +319,10 @@ export const fetchBotSuggestions = async (
   limit: number,
   offset: number,
   query: Record<string, unknown> = {},
-): Promise<MemberBotSuggestionsResponse> => {
-  const segments = [getSelectedProjectGroup()!.id];
-
-  return authAxios
+): Promise<MemberBotSuggestionsResponse> =>
+  authAxios
     .get('/member/bot-suggestions', {
       params: {
-        segments,
         offset,
         limit,
         detail: 'true',
@@ -333,7 +330,6 @@ export const fetchBotSuggestions = async (
       },
     })
     .then(({ data }) => Promise.resolve(data));
-};
 
 export const getCustomAttribute = async (id: string): Promise<FilterCustomAttribute> => {
   const response = await authAxios.get(`/settings/members/attributes/${id}`, {

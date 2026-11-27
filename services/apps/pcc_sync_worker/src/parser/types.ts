@@ -27,6 +27,10 @@ export interface PccParquetRow {
   /** Slug of the ancestor at this hierarchy level. */
   MAPPED_PROJECT_SLUG: string | null
   MAPPED_PROJECT_MODEL: string | null
+  MAPPED_PROJECT_DESCRIPTION?: string | null
+  MAPPED_PROJECT_LOGO?: string | null
+  MAPPED_PROJECT_STATUS?: string | null
+  MAPPED_PROJECT_ADMIN_CATEGORY?: string | null
   /** 1 = leaf, N = topmost ancestor. */
   HIERARCHY_LEVEL: number
   SEGMENT_ID: string | null
@@ -47,6 +51,16 @@ export interface PccHierarchyNode {
   pccProjectId: string
   name: string
   slug: string
+}
+
+export interface PccParentMetadata {
+  pccProjectId: string
+  name: string
+  /** Mapped to CDP segmentsStatus_type enum value, or null if unknown. */
+  status: string | null
+  maturity: string | null
+  description: string | null
+  logoUrl: string | null
 }
 
 /** `subprojects` goes from the project's own sub-project down to the leaf. */
@@ -72,6 +86,8 @@ export interface ParsedPccProject {
   cdpTarget: CdpHierarchyTarget
   /** Null when a level the creation needs has no PCC id or slug in the export. */
   creationTarget: CdpCreationTarget | null
+  /** Levels above the leaf, nearest first, each with its own PCC metadata. Empty for an export without it. */
+  parents: PccParentMetadata[]
 }
 
 export type ParseResult =

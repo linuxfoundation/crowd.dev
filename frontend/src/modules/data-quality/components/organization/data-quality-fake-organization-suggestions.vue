@@ -77,7 +77,7 @@ defineOptions({
 });
 
 const props = defineProps<{
-  projectGroup: string,
+  projectGroup?: string,
 }>();
 
 const loading = ref(true);
@@ -89,7 +89,7 @@ const itemsLoading = ref<Record<string, boolean>>({});
 const isModalOpen = ref(false);
 const detailsOffset = ref(0);
 
-const segments = computed(() => [props.projectGroup]);
+const segments = computed(() => (props.projectGroup ? [props.projectGroup] : []));
 
 const loadSuggestions = () => {
   loading.value = true;

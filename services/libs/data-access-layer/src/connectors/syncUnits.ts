@@ -108,6 +108,7 @@ export async function countRunningUnits(
   return Object.fromEntries(rows.map((row) => [row.platform, row.running]))
 }
 
+// A NULL lockedAt means a run recorded its end after this claim, so its own nextRunAt is kept.
 export async function rescheduleUnit(
   qx: QueryExecutor,
   id: string,
@@ -116,7 +117,7 @@ export async function rescheduleUnit(
   await qx.result(
     `UPDATE integration.sync_units
      SET "nextRunAt" = $(nextRunAt), "lockedAt" = NULL, "updatedAt" = now()
-     WHERE id = $(id)`,
+     WHERE id = $(id) AND "lockedAt" IS NOT NULL`,
     { id, nextRunAt },
   )
 }
