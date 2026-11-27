@@ -101,8 +101,8 @@ const rows: Row[] = [
     eventName: 'Example Con Europe 2026',
     holdReason: 'ambiguous',
     candidates: [stored, mainEvent],
-    nearby: [],
-    expected: suggestion({ reason: 'ambiguous' }),
+    nearby: [stored, mainEvent],
+    expected: suggestion({ reason: 'ambiguous', hintCventEvent: mainEvent }),
   },
   {
     name: 'a clear similar name is similar_name',
@@ -133,14 +133,21 @@ const rows: Row[] = [
     expected: suggestion({ kind: 'similar_name', cventEvent: similar }),
   },
   {
-    name: 'a similar name from another source alone is still suggested',
+    name: 'a similar name keeps the cvent event over a copy from another source without the year',
     eventName: 'Sample Dev Summit Berlin 2026',
     holdReason: 'no_match',
-    nearby: [fromOtherSource('a-similar', similar), unrelated],
-    expected: suggestion({
-      kind: 'similar_name',
-      cventEvent: fromOtherSource('a-similar', similar),
-    }),
+    nearby: [
+      { ...fromOtherSource('a-similar', similar), eventName: 'Sample Developer Summit Berlin' },
+      similar,
+    ],
+    expected: suggestion({ kind: 'similar_name', cventEvent: similar }),
+  },
+  {
+    name: 'a similar name from another source alone is not suggested',
+    eventName: 'Sample Dev Summit Berlin 2026',
+    holdReason: 'no_match',
+    nearby: [fromOtherSource('a-similar', similar)],
+    expected: suggestion({ reason: 'no_cvent_event' }),
   },
   {
     name: 'a single contained name is name_contained',
@@ -183,6 +190,20 @@ const rows: Row[] = [
     holdReason: 'no_match',
     nearby: [unrelated],
     expected: suggestion({ reason: 'main_event_not_in_cdp' }),
+  },
+  {
+    name: 'a sub-event whose main event exists only in another source is main_event_not_in_cdp',
+    eventName: 'Maintainer Summit: Example Con Europe 2026',
+    holdReason: 'no_match',
+    nearby: [fromOtherSource('a-main', mainEvent)],
+    expected: suggestion({ reason: 'main_event_not_in_cdp' }),
+  },
+  {
+    name: 'an over-long sub-event name is not matched as a sub-event',
+    eventName: `Maintainer Summit: ${'Example Con Europe 2026 '.repeat(13)}`,
+    holdReason: 'no_match',
+    nearby: [mainEvent],
+    expected: suggestion({ reason: 'no_cvent_event' }),
   },
   {
     name: 'a sub-event without nearby events is main_event_not_in_cdp',

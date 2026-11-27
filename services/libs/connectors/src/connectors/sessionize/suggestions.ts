@@ -1,6 +1,6 @@
-import { CVENT_SOURCE, compareEventIds, normalizeEventName } from './matching'
+import { CVENT_SOURCE, compareEventIds } from './matching'
 import type { SessionizeHoldReason, SessionizeMatchCandidate } from './matching'
-import { isNameContained, nameSimilarity } from './nameSimilarity'
+import { MAX_COMPARED_NAME_LENGTH, isNameContained, nameSimilarity } from './nameSimilarity'
 
 const SIMILAR_NAME_THRESHOLD = 0.85
 const SIMILAR_NAME_MARGIN = 0.1
@@ -125,29 +125,10 @@ function sameNameEvent(
   return null
 }
 
-function preferredCopy(
-  kept: SessionizeMatchCandidate,
-  other: SessionizeMatchCandidate,
-): SessionizeMatchCandidate {
-  const keptIsCvent = kept.source === CVENT_SOURCE
-  if (keptIsCvent !== (other.source === CVENT_SOURCE)) {
-    return keptIsCvent ? kept : other
-  }
-  const order = kept.dayGap - other.dayGap || compareEventIds(kept, other)
-  return order <= 0 ? kept : other
-}
-
-function onePerName(events: SessionizeMatchCandidate[]): SessionizeMatchCandidate[] {
-  const byName = new Map<string, SessionizeMatchCandidate>()
-  for (const event of events) {
-    const name = normalizeEventName(event.eventName)
-    const kept = byName.get(name)
-    byName.set(name, kept === undefined ? event : preferredCopy(kept, event))
-  }
-  return [...byName.values()]
-}
-
 function findMainEventName(eventName: string): string | null {
+  if (eventName.length > MAX_COMPARED_NAME_LENGTH) {
+    return null
+  }
   for (const { pattern, mainEventName } of SUB_EVENT_PATTERNS) {
     const match = eventName.match(pattern)
     if (match) {
@@ -168,7 +149,7 @@ export function suggestSessionizeMapping(input: SessionizeSuggestionInput): Sess
   if (input.nearby === undefined) {
     return suggestionOf({ reason: 'not_checked' })
   }
-  const nearby = onePerName(input.nearby)
+  const nearby = input.nearby.filter(({ source }) => source === CVENT_SOURCE)
 
   const scored = scoreEvents(eventName, nearby)
   if (isClearlyTop(scored)) {
