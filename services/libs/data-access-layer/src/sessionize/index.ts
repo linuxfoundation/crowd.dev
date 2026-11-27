@@ -1,4 +1,5 @@
-import { PlatformType } from '@crowd/types'
+import { ConflictError } from '@crowd/common'
+import { PlatformType, SegmentStatus } from '@crowd/types'
 
 import { IFoundIntegration, findOrCreateAutoManagedIntegration } from '../integrations/autoManaged'
 import { QueryExecutor } from '../queryExecutor'
@@ -271,4 +272,140 @@ export async function markSessionizeEventOnboarded(
       `Sessionize event ${eventKey} is no longer a live match of segment ${segmentId}, refusing to mark it onboarded!`,
     )
   }
+}
+
+export interface ISessionizeEventForReview {
+  eventKey: string
+  eventName: string
+  eventStart: string
+  eventEnd: string
+  status: 'matched' | 'held' | 'excluded'
+  holdReason: string | null
+  cventEventId: string | null
+  segmentId: string | null
+  segmentName: string | null
+  projectGroupName: string | null
+  evidence: Record<string, unknown>
+  reviewedAt: string | null
+  lockedAt: string | null
+}
+
+export async function listSessionizeEventsForReview(
+  qx: QueryExecutor,
+): Promise<ISessionizeEventForReview[]> {
+  return qx.select(
+    `
+      SELECT m."eventKey", m."eventName", m."eventStart"::text AS "eventStart",
+             m."eventEnd"::text AS "eventEnd", m.status, m."holdReason", m."cventEventId",
+             m."segmentId", s.name AS "segmentName", pg.name AS "projectGroupName",
+             m.evidence, m."reviewedAt", m."lockedAt"
+      FROM integration."sessionizeEventMappings" m
+      LEFT JOIN segments s ON s.id = m."segmentId"
+      LEFT JOIN segments pg
+        ON pg.slug = s."grandparentSlug"
+       AND pg."tenantId" = s."tenantId"
+       AND pg."parentSlug" IS NULL
+       AND pg."grandparentSlug" IS NULL
+      WHERE m."deactivatedAt" IS NULL
+        AND (m.status = 'held' OR m."reviewedAt" IS NOT NULL)
+      ORDER BY m."eventStart" DESC, m."eventKey"
+    `,
+  )
+}
+
+async function applyReviewUpdate(
+  qx: QueryExecutor,
+  eventKey: string,
+  action: string,
+  query: string,
+  params: Record<string, unknown>,
+): Promise<void> {
+  await qx.tx(async (tx) => {
+    await tx.select(
+      `SELECT pg_advisory_xact_lock(hashtextextended('sessionizeEventMapping:' || $(eventKey), 0))`,
+      { eventKey },
+    )
+    const updated = await tx.result(query, { ...params, eventKey })
+    if (updated === 0) {
+      throw new ConflictError(`Sessionize event ${eventKey} can no longer be ${action}!`, {
+        eventKey,
+      })
+    }
+  })
+}
+
+export async function confirmSessionizeEventMapping(
+  qx: QueryExecutor,
+  input: { eventKey: string; segmentId: string; cventEventId: string | null; reviewedBy: string },
+): Promise<void> {
+  await applyReviewUpdate(
+    qx,
+    input.eventKey,
+    'confirmed',
+    `
+      UPDATE integration."sessionizeEventMappings"
+      SET status = 'matched',
+          "segmentId" = $(segmentId)::uuid,
+          "cventEventId" = $(cventEventId),
+          rule = 'review',
+          "reviewedBy" = $(reviewedBy),
+          "reviewedAt" = now(),
+          "updatedAt" = now()
+      WHERE "eventKey" = $(eventKey)
+        AND status = 'held'
+        AND "reviewedAt" IS NULL
+        AND "deactivatedAt" IS NULL
+        AND EXISTS (
+          SELECT 1 FROM segments
+          WHERE id = $(segmentId)::uuid AND "grandparentSlug" IS NOT NULL AND status = $(active)
+        )
+    `,
+    { ...input, active: SegmentStatus.ACTIVE },
+  )
+}
+
+export async function ignoreSessionizeEvent(
+  qx: QueryExecutor,
+  input: { eventKey: string; reviewedBy: string },
+): Promise<void> {
+  await applyReviewUpdate(
+    qx,
+    input.eventKey,
+    'ignored',
+    `
+      UPDATE integration."sessionizeEventMappings"
+      SET status = 'excluded',
+          "reviewedBy" = $(reviewedBy),
+          "reviewedAt" = now(),
+          "updatedAt" = now()
+      WHERE "eventKey" = $(eventKey)
+        AND status = 'held'
+        AND "reviewedAt" IS NULL
+        AND "deactivatedAt" IS NULL
+    `,
+    input,
+  )
+}
+
+export async function restoreSessionizeEvent(qx: QueryExecutor, eventKey: string): Promise<void> {
+  await applyReviewUpdate(
+    qx,
+    eventKey,
+    'restored',
+    `
+      UPDATE integration."sessionizeEventMappings"
+      SET status = 'held',
+          "segmentId" = NULL,
+          "cventEventId" = NULL,
+          rule = NULL,
+          "reviewedBy" = NULL,
+          "reviewedAt" = NULL,
+          "updatedAt" = now()
+      WHERE "eventKey" = $(eventKey)
+        AND "reviewedAt" IS NOT NULL
+        AND "lockedAt" IS NULL
+        AND "holdReason" IS NOT NULL
+    `,
+    {},
+  )
 }
