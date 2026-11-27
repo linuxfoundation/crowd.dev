@@ -20,6 +20,7 @@ import type {
   CdpHierarchyTarget,
   ParseResult,
   PccHierarchyNode,
+  PccParentMetadata,
   PccParquetRow,
 } from './types'
 
@@ -119,6 +120,11 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
         model: trimOrNull(row.MAPPED_PROJECT_MODEL),
         name: trimOrNull(row.MAPPED_PROJECT_NAME),
         slug: trimOrNull(row.MAPPED_PROJECT_SLUG),
+        carriesMetadata: 'MAPPED_PROJECT_STATUS' in r,
+        status: mapStatus(row.MAPPED_PROJECT_STATUS),
+        maturity: trimOrNull(row.MAPPED_PROJECT_ADMIN_CATEGORY),
+        description: trimOrNull(row.MAPPED_PROJECT_DESCRIPTION),
+        logoUrl: trimOrNull(row.MAPPED_PROJECT_LOGO),
       }
     })
     .filter((r) => Number.isSafeInteger(r.level) && r.level >= 1)
@@ -158,8 +164,22 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
     }
   }
 
-  const rawStatus = trimOrNull(firstRaw.PROJECT_STATUS)
-  const mappedStatus = rawStatus ? (STATUS_MAP[rawStatus] ?? null) : null
+  const parents: PccParentMetadata[] = []
+  const parentLevelsSeen = new Set<number>()
+  for (const row of levelRows) {
+    if (parentLevelsSeen.has(row.level)) continue
+    if (row.level > 1 && row.carriesMetadata && row.id && row.name) {
+      parentLevelsSeen.add(row.level)
+      parents.push({
+        pccProjectId: row.id,
+        name: row.name,
+        status: row.status,
+        maturity: row.maturity,
+        description: row.description,
+        logoUrl: row.logoUrl,
+      })
+    }
+  }
 
   return {
     ok: true,
@@ -167,15 +187,21 @@ export function parsePccRow(rawRows: Record<string, unknown>[]): ParseResult {
       pccProjectId: projectId,
       pccSlug: leafSlug,
       name,
-      status: mappedStatus,
+      status: mapStatus(firstRaw.PROJECT_STATUS),
       maturity: trimOrNull(firstRaw.PROJECT_ADMIN_CATEGORY),
       description: trimOrNull(firstRaw.DESCRIPTION),
       logoUrl: trimOrNull(firstRaw.PROJECT_LOGO),
       segmentIdsFromSnowflake: distinctSegmentIds(rawRows),
       cdpTarget: cdpTargetResult.target,
       creationTarget: buildCreationTarget(groupLevel, projectLevel, levelRows),
+      parents,
     },
   }
+}
+
+function mapStatus(value: unknown): SegmentStatus | null {
+  const rawStatus = trimOrNull(value)
+  return rawStatus ? (STATUS_MAP[rawStatus] ?? null) : null
 }
 
 function isMembershipUnderLinuxFoundation(

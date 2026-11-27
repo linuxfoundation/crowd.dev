@@ -53,6 +53,16 @@ export interface PccHierarchyNode {
   slug: string
 }
 
+export interface PccParentMetadata {
+  pccProjectId: string
+  name: string
+  /** Mapped to CDP segmentsStatus_type enum value, or null if unknown. */
+  status: string | null
+  maturity: string | null
+  description: string | null
+  logoUrl: string | null
+}
+
 /** `subprojects` goes from the project's own sub-project down to the leaf. */
 export interface CdpCreationTarget {
   group: PccHierarchyNode
@@ -76,6 +86,8 @@ export interface ParsedPccProject {
   cdpTarget: CdpHierarchyTarget
   /** Null when a level the creation needs has no PCC id or slug in the export. */
   creationTarget: CdpCreationTarget | null
+  /** Levels above the leaf, nearest first, each with its own PCC metadata. Empty for an export without it. */
+  parents: PccParentMetadata[]
 }
 
 export type ParseResult =
