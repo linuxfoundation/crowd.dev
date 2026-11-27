@@ -290,6 +290,33 @@ export async function listActiveSubprojectSegmentSources(
   )
 }
 
+export interface ISubprojectForMapping {
+  id: string
+  name: string
+  slug: string
+  sourceId: string | null
+  groupName: string
+}
+
+export async function listActiveSubprojectsForMapping(
+  qx: QueryExecutor,
+): Promise<ISubprojectForMapping[]> {
+  return qx.select(
+    `
+      SELECT s.id, s.name, s.slug, s."sourceId", pg.name AS "groupName"
+      FROM segments s
+      JOIN segments pg
+        ON pg.slug = s."grandparentSlug"
+       AND pg."tenantId" = s."tenantId"
+       AND pg."parentSlug" IS NULL
+       AND pg."grandparentSlug" IS NULL
+      WHERE s."grandparentSlug" IS NOT NULL AND s.status = $(status)
+      ORDER BY s.name, s.id
+    `,
+    { status: SegmentStatus.ACTIVE },
+  )
+}
+
 export async function getSegmentSubprojects(
   qx: QueryExecutor,
   segmentIds: string[],

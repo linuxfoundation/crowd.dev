@@ -254,6 +254,7 @@ setImmediate(async () => {
   require('./collections').default(routes)
   require('./categories').default(routes)
   require('./projectCatalog').default(routes)
+  require('./eventMapping').default(routes)
 
   await require('./nango').default(routes)
 

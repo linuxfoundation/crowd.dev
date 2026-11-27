@@ -321,6 +321,15 @@ class Permissions {
         id: 'projectCatalogEdit',
         allowedRoles: [roles.admin],
       },
+
+      eventMappingRead: {
+        id: 'eventMappingRead',
+        allowedRoles: [roles.admin],
+      },
+      eventMappingEdit: {
+        id: 'eventMappingEdit',
+        allowedRoles: [roles.admin],
+      },
     }
   }
 

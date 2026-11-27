@@ -22,7 +22,10 @@ import {
   loadCventCatalogue,
 } from './sessionizeEventMatching'
 
-vi.mock('@crowd/data-access-layer/src/sessionize', () => ({
+vi.mock('@crowd/data-access-layer/src/sessionize', async (importOriginal) => ({
+  compareSessionizeEventKeys: (
+    await importOriginal<typeof import('@crowd/data-access-layer/src/sessionize')>()
+  ).compareSessionizeEventKeys,
   upsertSessionizeEventDecision: vi.fn(),
   deactivateUnlistedSessionizeEvents: vi.fn(),
   listSessionizeEventMappings: vi.fn(),
@@ -207,7 +210,7 @@ describe('applySessionizeDecisions', () => {
     vi.resetAllMocks()
   })
 
-  it('writes every decision, reports a reviewed row once, then deactivates the unlisted ones', async () => {
+  it('writes every decision in event key order, reports a reviewed row once, then deactivates the unlisted ones', async () => {
     const outcomes: Record<string, SessionizeDecisionOutcome> = {
       new: 'inserted',
       same: 'unchanged',
@@ -238,7 +241,9 @@ describe('applySessionizeDecisions', () => {
       deactivated: 1,
       unitsDecommissioned: 0,
     })
-    expect(upsert.mock.calls.map(([, input]) => input)).toEqual(decisions.map(toInput))
+    expect(upsert.mock.calls.map(([, input]) => input)).toEqual(
+      [decisions[3], decisions[0], decisions[2], decisions[1]].map(toInput),
+    )
     expect(info).toHaveBeenCalledTimes(1)
     expect(info.mock.calls[0][0]).toEqual({
       event: 'sessionize_decision_needs_review',

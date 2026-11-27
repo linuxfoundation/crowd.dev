@@ -362,15 +362,17 @@ async function applyReviewUpdate(
   })
 }
 
+export interface ISessionizeEventConfirmation {
+  eventKey: string
+  segmentId: string
+  cventEventId: string | null
+  catalogueSource: string | null
+  reviewedBy: string
+}
+
 export async function confirmSessionizeEventMapping(
   qx: QueryExecutor,
-  input: {
-    eventKey: string
-    segmentId: string
-    cventEventId: string | null
-    catalogueSource: string | null
-    reviewedBy: string
-  },
+  input: ISessionizeEventConfirmation,
 ): Promise<void> {
   if ((input.cventEventId === null) !== (input.catalogueSource === null)) {
     throw new Error(
@@ -402,6 +404,41 @@ export async function confirmSessionizeEventMapping(
     `,
     { ...input, active: SegmentStatus.ACTIVE },
   )
+}
+
+export function compareSessionizeEventKeys(a: string, b: string): number {
+  if (a < b) {
+    return -1
+  }
+  return a > b ? 1 : 0
+}
+
+export async function lockSessionizeEventMappings(
+  tx: QueryExecutor,
+  eventKeys: string[],
+): Promise<void> {
+  for (const eventKey of [...eventKeys].sort(compareSessionizeEventKeys)) {
+    await tx.select(
+      `SELECT pg_advisory_xact_lock(hashtextextended('sessionizeEventMapping:' || $(eventKey), 0))`,
+      { eventKey },
+    )
+  }
+}
+
+export async function confirmSessionizeEventMappings(
+  qx: QueryExecutor,
+  inputs: ISessionizeEventConfirmation[],
+): Promise<void> {
+  const eventKeys = inputs.map(({ eventKey }) => eventKey)
+  if (new Set(eventKeys).size !== eventKeys.length) {
+    throw new Error('Each Sessionize event may be confirmed only once per batch!')
+  }
+  const inLockOrder = [...inputs].sort((a, b) => compareSessionizeEventKeys(a.eventKey, b.eventKey))
+  await qx.tx(async (tx) => {
+    for (const input of inLockOrder) {
+      await confirmSessionizeEventMapping(tx, input)
+    }
+  })
 }
 
 export async function ignoreSessionizeEvent(

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { SessionizeHoldReason, SessionizeMatchCandidate } from './matching'
-import { suggestSessionizeMapping } from './suggestions'
+import { aliasProjectSlug, suggestSessionizeMapping } from './suggestions'
 import type { SessionizeSuggestion } from './suggestions'
 
 function event(eventId: string, eventName: string): SessionizeMatchCandidate {
@@ -345,5 +345,40 @@ describe('suggestSessionizeMapping', () => {
     const expected = suggestion({ reason: 'ambiguous', hintCventEvent: first })
     expect(suggestSessionizeMapping({ ...input, nearby: [second, first] })).toStrictEqual(expected)
     expect(suggestSessionizeMapping({ ...input, nearby: [first, second] })).toStrictEqual(expected)
+  })
+})
+
+describe('aliasProjectSlug', () => {
+  it.each<[string, string | null]>([
+    ['Example KubeCon Days 2026', 'cncf'],
+    ['CNCF-hosted Co-located Example Days 2026', 'cncf'],
+    ['Example PyTorch Day 2026', 'ptproject'],
+    ['Example SONiC Workshop 2026', 'sonic-foundation'],
+    ['Example JupyterCon 2026', 'project-jupyter'],
+    ['Example useR! 2026', 'rcons'],
+    ['Example Xen Summit 2026', 'xen'],
+    ['Example OpenSearchCon 2026', 'opensearch-foundation'],
+    ['Example AGNTCon 2026', 'agentic-ai-foundation'],
+    ['Example BazelCon 2026', 'community-for-bazel'],
+    ['Example P4 Workshop 2026', 'p4-project'],
+    ['Example EuroP4 2026', 'p4-project'],
+    ['Example GraphQLConf 2026', 'gql'],
+    ['Example Cephalocon 2026', 'cephfoundation'],
+    ['Example Open Source in Finance Forum 2026', 'finos'],
+    ['Example FinOps Days 2026', 'finops'],
+    ['Example RISC-V Summit 2026', 'risc-v-international'],
+    ['Example Cloud Foundry Day 2026', 'cloud-foundry'],
+    ['Example seL4 Summit 2026', 'sel4'],
+    ['Example SODACON 2026', 'soda-foundation'],
+    ['Example OpenPOWER Summit 2026', 'openpowerfoundation'],
+    ['Example AI_dev Days 2026', 'tlf'],
+    ['Example AI.dev Days 2026', 'tlf'],
+    ['Example Open Source Summit 2026', 'tlf'],
+    ['KubeCon + Example + PyTorch Conference 2026', 'cncf'],
+    ['KubeCon + Example + Open Source Summit 2026', 'cncf'],
+    ['Zephyr Community Meetup Lisbon 2026', null],
+    [`Example PyTorch Day ${'Example Con Europe 2026 '.repeat(13)}`, null],
+  ])('maps %s to %s', (eventName, expected) => {
+    expect(aliasProjectSlug(eventName)).toBe(expected)
   })
 })

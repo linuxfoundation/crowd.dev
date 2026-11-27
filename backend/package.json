@@ -58,6 +58,7 @@
     "@crowd/audit-logs": "workspace:*",
     "@crowd/common": "workspace:*",
     "@crowd/common_services": "workspace:*",
+    "@crowd/connectors": "workspace:*",
     "@crowd/data-access-layer": "workspace:*",
     "@crowd/integrations": "workspace:*",
     "@crowd/logging": "workspace:*",

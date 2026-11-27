@@ -138,6 +138,9 @@ importers:
       '@crowd/common_services':
         specifier: workspace:*
         version: link:../services/libs/common_services
+      '@crowd/connectors':
+        specifier: workspace:*
+        version: link:../services/libs/connectors
       '@crowd/data-access-layer':
         specifier: workspace:*
         version: link:../services/libs/data-access-layer

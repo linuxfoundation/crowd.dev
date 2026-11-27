@@ -4,10 +4,11 @@ import { ConflictError, DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 import type { QueryExecutor } from '@crowd/database'
 import { withQx } from '@crowd/test-kit/db'
 
-import { listActiveSubprojectSegmentSources } from '../segments'
+import { listActiveSubprojectSegmentSources, listActiveSubprojectsForMapping } from '../segments'
 import {
   ISessionizeEventDecisionInput,
   confirmSessionizeEventMapping,
+  confirmSessionizeEventMappings,
   deactivateUnlistedSessionizeEvents,
   findOrCreateSessionizeIntegration,
   getSessionizeEvent,
@@ -15,6 +16,7 @@ import {
   listOnboardableSessionizeEvents,
   listSessionizeEventMappings,
   listSessionizeEventsForReview,
+  lockSessionizeEventMappings,
   markSessionizeEventOnboarded,
   restoreSessionizeEvent,
   upsertSessionizeEventDecision,
@@ -609,5 +611,157 @@ describe('sessionize event review', () => {
       reviewedAt: expect.any(String),
     })
     expect(listed[2]).toMatchObject({ status: 'held', reviewedAt: null })
+  })
+})
+
+describe('listActiveSubprojectsForMapping', () => {
+  test('returns active subprojects with their project group name', async ({ qx }) => {
+    const groupSlug = `group-${generateUUIDv1()}`
+    await createSegment(qx, { slug: groupSlug, name: 'Made Up Group', grandparentSlug: null })
+    const subproject = await createSegment(qx, {
+      slug: `sub-${groupSlug}`,
+      name: 'Made Up Subproject',
+      parentSlug: groupSlug,
+      grandparentSlug: groupSlug,
+      sourceId: 'pcc-made-up',
+    })
+    const withoutSource = await createSegment(qx, {
+      slug: `bare-${groupSlug}`,
+      name: 'Bare Subproject',
+      parentSlug: groupSlug,
+      grandparentSlug: groupSlug,
+      sourceId: null,
+    })
+    const excluded = [
+      await createSegment(qx, { grandparentSlug: null, parentSlug: groupSlug }),
+      await createSegment(qx, { status: 'archived', grandparentSlug: groupSlug }),
+    ]
+
+    const listed = (await listActiveSubprojectsForMapping(qx)).filter((row) =>
+      [subproject, withoutSource, ...excluded].includes(row.id),
+    )
+
+    expect(listed).toEqual([
+      {
+        id: withoutSource,
+        name: 'Bare Subproject',
+        slug: `bare-${groupSlug}`,
+        sourceId: null,
+        groupName: 'Made Up Group',
+      },
+      {
+        id: subproject,
+        name: 'Made Up Subproject',
+        slug: `sub-${groupSlug}`,
+        sourceId: 'pcc-made-up',
+        groupName: 'Made Up Group',
+      },
+    ])
+  })
+})
+
+describe('confirmSessionizeEventMappings', () => {
+  test('confirms every event in one transaction', async ({ qx }) => {
+    const segmentId = await createSegment(qx)
+    for (const eventKey of ['3101', '3102']) {
+      await upsertSessionizeEventDecision(qx, held(eventKey))
+    }
+
+    await confirmSessionizeEventMappings(qx, [
+      confirmInput('3102', segmentId),
+      confirmInput('3101', segmentId),
+    ])
+
+    for (const eventKey of ['3101', '3102']) {
+      expect(await readMapping(qx, eventKey)).toMatchObject({
+        status: 'matched',
+        segmentId,
+        cventEventId: `cvent-${eventKey}`,
+        catalogueSource: 'cvent',
+      })
+    }
+  })
+
+  test('refuses a batch that names an event twice before changing anything', async ({ qx }) => {
+    const segmentId = await createSegment(qx)
+    await upsertSessionizeEventDecision(qx, held('3106'))
+
+    await expect(
+      confirmSessionizeEventMappings(qx, [
+        confirmInput('3106', segmentId),
+        confirmInput('3106', segmentId),
+      ]),
+    ).rejects.toThrow(/only once/)
+    expect(await readMapping(qx, '3106')).toMatchObject({ status: 'held', segmentId: null })
+  })
+
+  test('a conflict on a later event rolls back the ones before it', async ({ qx }) => {
+    const segmentId = await createSegment(qx)
+    for (const eventKey of ['3103', '3104', '3105']) {
+      await upsertSessionizeEventDecision(qx, held(eventKey))
+    }
+    await ignoreSessionizeEvent(qx, { eventKey: '3105', reviewedBy: REVIEWER })
+
+    await expect(
+      confirmSessionizeEventMappings(qx, [
+        confirmInput('3103', segmentId),
+        confirmInput('3104', segmentId),
+        confirmInput('3105', segmentId),
+      ]),
+    ).rejects.toBeInstanceOf(ConflictError)
+
+    for (const eventKey of ['3103', '3104']) {
+      expect(await readMapping(qx, eventKey)).toMatchObject({ status: 'held', segmentId: null })
+      expect(await readReview(qx, eventKey)).toEqual({
+        rule: null,
+        reviewedBy: null,
+        reviewedAt: null,
+      })
+    }
+  })
+})
+
+async function waitForAdvisoryLockWaiter(qx: QueryExecutor): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const { waiting } = await qx.selectOne(
+      `
+      SELECT count(*)::int AS waiting
+      FROM pg_locks
+      WHERE locktype = 'advisory'
+        AND NOT granted
+        AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+      `,
+    )
+    if (waiting > 0) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  throw new Error('No session waited for a Sessionize event lock')
+}
+
+describe('lockSessionizeEventMappings', () => {
+  test('holds a concurrent decision on a locked event until the transaction ends', async ({
+    qx,
+  }) => {
+    await upsertSessionizeEventDecision(qx, held('3201'))
+    let decided = false
+    let decision: Promise<unknown> = Promise.resolve()
+
+    await qx.tx(async (tx) => {
+      await lockSessionizeEventMappings(tx, ['3202', '3201'])
+      decision = upsertSessionizeEventDecision(qx, {
+        ...held('3201'),
+        evidence: { candidates: 3 },
+      }).then(() => {
+        decided = true
+      })
+      await waitForAdvisoryLockWaiter(tx)
+      expect(decided).toBe(false)
+      expect((await readMapping(tx, '3201')).evidence).toEqual({ candidates: 2 })
+    })
+
+    await decision
+    expect((await readMapping(qx, '3201')).evidence).toEqual({ candidates: 3 })
   })
 })
