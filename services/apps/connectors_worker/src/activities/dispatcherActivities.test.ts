@@ -150,20 +150,23 @@ describe('admitByBudget', () => {
     expect(mocks.getHandle).not.toHaveBeenCalled()
   })
 
-  it('counts a live lease-lapsed unit as running and defers it without starting a run', async () => {
-    mocks.countRunningUnits.mockResolvedValue({})
-    mocks.describe.mockResolvedValue(executionStatus('RUNNING'))
-    const live = sessionizeUnit('event-1', true)
-    const fresh = sessionizeUnit('event-2')
+  it.each(['RUNNING', 'PAUSED'])(
+    'counts a lease-lapsed unit whose workflow is %s as running and defers it without starting a run',
+    async (statusName) => {
+      mocks.countRunningUnits.mockResolvedValue({})
+      mocks.describe.mockResolvedValue(executionStatus(statusName))
+      const live = sessionizeUnit('event-1', true)
+      const fresh = sessionizeUnit('event-2')
 
-    expect(await admitByBudget([live, fresh])).toEqual({
-      admitted: [],
-      deferred: [live, fresh],
-    })
-    expect(mocks.getHandle).toHaveBeenCalledWith(syncRunWorkflowId(live))
-    expect(mocks.getHandle).toHaveBeenCalledTimes(1)
-    expect(mocks.start).not.toHaveBeenCalled()
-  })
+      expect(await admitByBudget([live, fresh])).toEqual({
+        admitted: [],
+        deferred: [live, fresh],
+      })
+      expect(mocks.getHandle).toHaveBeenCalledWith(syncRunWorkflowId(live))
+      expect(mocks.getHandle).toHaveBeenCalledTimes(1)
+      expect(mocks.start).not.toHaveBeenCalled()
+    },
+  )
 
   it('admits an orphan whose workflow finished into a free slot', async () => {
     mocks.countRunningUnits.mockResolvedValue({})
