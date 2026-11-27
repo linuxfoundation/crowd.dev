@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ConnectorHttp } from '@crowd/connectors'
 import type { SessionizeEventDecision } from '@crowd/connectors/src/connectors/sessionize/matching'
+import { decommissionSyncUnitsForChannelIds } from '@crowd/data-access-layer/src/connectors'
 import type { QueryExecutor } from '@crowd/data-access-layer/src/queryExecutor'
 import { listActiveSubprojectSegmentSources } from '@crowd/data-access-layer/src/segments'
 import {
@@ -25,6 +26,10 @@ vi.mock('@crowd/data-access-layer/src/sessionize', () => ({
   upsertSessionizeEventDecision: vi.fn(),
   deactivateUnlistedSessionizeEvents: vi.fn(),
   listSessionizeEventMappings: vi.fn(),
+}))
+
+vi.mock('@crowd/data-access-layer/src/connectors', () => ({
+  decommissionSyncUnitsForChannelIds: vi.fn(),
 }))
 
 vi.mock('@crowd/data-access-layer/src/segments', () => ({
@@ -195,6 +200,7 @@ describe('applySessionizeDecisions', () => {
   const upsert = vi.mocked(upsertSessionizeEventDecision)
   const deactivate = vi.mocked(deactivateUnlistedSessionizeEvents)
   const list = vi.mocked(listSessionizeEventMappings)
+  const decommission = vi.mocked(decommissionSyncUnitsForChannelIds)
   const qx = { tx: (fn: (tx: QueryExecutor) => unknown) => fn(qx) } as unknown as QueryExecutor
 
   beforeEach(() => {
@@ -209,7 +215,7 @@ describe('applySessionizeDecisions', () => {
       fresh: 'inserted',
     }
     upsert.mockImplementation(async (_tx, input) => outcomes[input.eventKey])
-    deactivate.mockResolvedValue(1)
+    deactivate.mockResolvedValue([{ eventKey: 'gone', integrationId: null }])
     list.mockResolvedValue([
       storedRow(matchedDecision('reviewed', 'seg-1')),
       storedRow(heldDecision('same', 'ambiguous')),
@@ -230,6 +236,7 @@ describe('applySessionizeDecisions', () => {
       held: { no_match: 1, ambiguous: 1, not_cvent: 0, no_segment: 1 },
       outcomes: { inserted: 2, updated: 0, unchanged: 1, protected: 1 },
       deactivated: 1,
+      unitsDecommissioned: 0,
     })
     expect(upsert.mock.calls.map(([, input]) => input)).toEqual(decisions.map(toInput))
     expect(info).toHaveBeenCalledTimes(1)
@@ -256,6 +263,39 @@ describe('applySessionizeDecisions', () => {
     expect(deactivate.mock.invocationCallOrder[0]).toBeGreaterThan(
       Math.max(...upsert.mock.invocationCallOrder),
     )
+    expect(decommission).not.toHaveBeenCalled()
+  })
+
+  it('decommissions the units of deactivated onboarded events in the decisions transaction', async () => {
+    upsert.mockResolvedValue('protected')
+    list.mockResolvedValue([])
+    deactivate.mockResolvedValue([
+      { eventKey: 'gone-1', integrationId: 'int-1' },
+      { eventKey: 'gone-2', integrationId: null },
+      { eventKey: 'gone-3', integrationId: 'int-1' },
+      { eventKey: 'gone-4', integrationId: 'int-2' },
+    ])
+    decommission.mockImplementation(async (_tx, _integrationId, channelIds) => channelIds.length)
+    const txQx = { name: 'tx' } as unknown as QueryExecutor
+    const outer = {
+      tx: (fn: (tx: QueryExecutor) => unknown) => fn(txQx),
+    } as unknown as QueryExecutor
+
+    const summary = await applySessionizeDecisions(
+      outer,
+      [heldDecision('onboarded', 'not_cvent')],
+      fakeLog().log,
+    )
+
+    expect(summary).toMatchObject({
+      outcomes: { protected: 1 },
+      deactivated: 4,
+      unitsDecommissioned: 3,
+    })
+    expect(decommission.mock.calls).toEqual([
+      [txQx, 'int-1', ['gone-1', 'gone-3']],
+      [txQx, 'int-2', ['gone-4']],
+    ])
   })
 
   it('refuses an empty listing and writes nothing', async () => {

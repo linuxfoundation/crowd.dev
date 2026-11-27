@@ -4,6 +4,7 @@ import { dbStoreQx } from '@crowd/data-access-layer/src/queryExecutor'
 import { SlackChannel, SlackPersona, sendSlackNotificationAsync } from '@crowd/slack'
 
 import { svc } from '../main'
+import { onboardMatchedSessionizeEvents } from '../onboardSessionizeEvent'
 import {
   SessionizeMatchingSummary,
   applySessionizeDecisions,
@@ -40,7 +41,11 @@ export async function runSessionizeEventMatching(): Promise<SessionizeEventMatch
     await snowflake.destroy()
   }
 
-  const summary = await applySessionizeDecisions(qx, decisions, log)
+  const decided = await applySessionizeDecisions(qx, decisions, log)
+  const summary: SessionizeMatchingSummary = {
+    ...decided,
+    onboarding: await onboardMatchedSessionizeEvents(qx, log),
+  }
   log.info(
     { event: 'sessionize_event_matching_summary', ...summary },
     'sessionize event matching done',
