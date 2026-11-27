@@ -1,3 +1,4 @@
+import { HttpError } from '@crowd/common'
 import { LoggerBase } from '@crowd/logging'
 import {
   SlackChannel,
@@ -146,6 +147,13 @@ export default class ApiResponseHandler extends LoggerBase {
         dbErrorMessage: error.original?.message,
       })
       res.status(500).send('Internal Server Error')
+    } else if (error instanceof HttpError && error.status < 500) {
+      req.log.error(
+        error,
+        { code: error.status, url: req.url, method: req.method, query: req.query, body: req.body },
+        'Client error while processing REST API request!',
+      )
+      res.status(error.status).send(error.message)
     } else if (error && [400, 401, 403, 404].includes(error.code)) {
       req.log.error(
         error,
