@@ -168,6 +168,7 @@ describe('parsePccRow', () => {
           subproject: 'Kubescape',
         },
         creationTarget: null,
+        parents: [],
       },
     })
   })
@@ -511,5 +512,106 @@ describe('parsePccRow creation target', () => {
     const result = parsePccRow([rows[0], rows[1], { ...rows[2], MAPPED_PROJECT_ID: null }, rows[3]])
 
     expect(result).toMatchObject({ ok: true, project: { creationTarget: null } })
+  })
+})
+
+describe('parsePccRow parents', () => {
+  const kubectlUnderCncf = (parentColumns: Record<string, unknown>) => [
+    {
+      PROJECT_ID: 'pcc-kubectl',
+      NAME: 'kubectl',
+      PROJECT_STATUS: 'Active',
+      MAPPED_PROJECT_ID: 'pcc-kubectl',
+      MAPPED_PROJECT_NAME: 'kubectl',
+      MAPPED_PROJECT_SLUG: 'kubectl',
+      HIERARCHY_LEVEL: 1,
+      MAPPED_PROJECT_STATUS: 'Active',
+    },
+    {
+      PROJECT_ID: 'pcc-kubectl',
+      NAME: 'kubectl',
+      PROJECT_STATUS: 'Active',
+      MAPPED_PROJECT_ID: 'pcc-cncf',
+      MAPPED_PROJECT_NAME: 'CNCF',
+      MAPPED_PROJECT_SLUG: 'cncf',
+      HIERARCHY_LEVEL: 2,
+      ...parentColumns,
+    },
+  ]
+
+  const parentsOf = (rows: Record<string, unknown>[]) => {
+    const result = parsePccRow(rows)
+    if (!result.ok) throw new Error('expected a parsed project')
+    return result.project.parents
+  }
+
+  it('returns each level above the project with its own metadata', () => {
+    const parents = parentsOf(
+      kubectlUnderCncf({
+        MAPPED_PROJECT_STATUS: 'Formation - Engaged',
+        MAPPED_PROJECT_ADMIN_CATEGORY: ' Graduated ',
+        MAPPED_PROJECT_DESCRIPTION: 'Cloud native computing',
+        MAPPED_PROJECT_LOGO: 'https://logos.test/cncf.svg',
+      }),
+    )
+
+    expect(parents).toEqual([
+      {
+        pccProjectId: 'pcc-cncf',
+        name: 'CNCF',
+        status: SegmentStatus.FORMATION,
+        maturity: 'Graduated',
+        description: 'Cloud native computing',
+        logoUrl: 'https://logos.test/cncf.svg',
+      },
+    ])
+  })
+
+  it('keeps a parent whose metadata is empty in pcc', () => {
+    const parents = parentsOf(
+      kubectlUnderCncf({
+        MAPPED_PROJECT_STATUS: null,
+        MAPPED_PROJECT_ADMIN_CATEGORY: null,
+        MAPPED_PROJECT_DESCRIPTION: '',
+        MAPPED_PROJECT_LOGO: null,
+      }),
+    )
+
+    expect(parents).toEqual([
+      {
+        pccProjectId: 'pcc-cncf',
+        name: 'CNCF',
+        status: null,
+        maturity: null,
+        description: null,
+        logoUrl: null,
+      },
+    ])
+  })
+
+  it('returns no parents for an export that does not carry their metadata', () => {
+    expect(parentsOf(kubectlUnderCncf({}))).toEqual([])
+  })
+
+  it('returns no parents for a project with no level above it', () => {
+    const [leafRow] = kubectlUnderCncf({})
+
+    expect(parentsOf([leafRow])).toEqual([])
+  })
+
+  it('returns a parent once when the project matches several segments', () => {
+    const rows = kubectlUnderCncf({ MAPPED_PROJECT_STATUS: 'Active' })
+    const parents = parentsOf([
+      ...rows.map((row) => ({ ...row, SEGMENT_ID: 'segment-1' })),
+      ...rows.map((row) => ({ ...row, SEGMENT_ID: 'segment-2' })),
+    ])
+
+    expect(parents.map((parent) => parent.pccProjectId)).toEqual(['pcc-cncf'])
+  })
+
+  it('leaves out a status it does not know', () => {
+    const [parent] = parentsOf(kubectlUnderCncf({ MAPPED_PROJECT_STATUS: 'Something New' }))
+
+    expect(parent.status).toBeNull()
   })
 })

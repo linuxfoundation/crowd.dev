@@ -39,6 +39,7 @@ function zephyrInPcc(overrides: Partial<ParsedPccProject> = {}): ParsedPccProjec
       subproject: ZEPHYR.name,
     },
     creationTarget: { group: ZEPHYR, project: ZEPHYR, subprojects: [ZEPHYR] },
+    parents: [],
     ...overrides,
   }
 }

@@ -5,5 +5,6 @@ export type {
   ParseResult,
   ParsedPccProject,
   PccHierarchyNode,
+  PccParentMetadata,
   PccParquetRow,
 } from './types'
