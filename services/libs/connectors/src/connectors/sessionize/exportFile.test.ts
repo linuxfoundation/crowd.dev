@@ -117,11 +117,27 @@ describe('readExportSheet', () => {
     expect(sheet.rows[0][4]).toBeInstanceOf(Date)
   })
 
+  it('reads a worksheet without a header row as an empty export', async () => {
+    const file = await workbookFile((workbook) => workbook.addWorksheet('Sessions and speakers'))
+
+    expect(await readExportSheet(file)).toEqual({
+      sheetNames: ['Sessions and speakers'],
+      headers: [],
+      rows: [],
+    })
+  })
+
   const workbookWith = (build: (workbook: ExcelJS.Workbook) => void) => () => workbookFile(build)
 
   it.each([
     ['has no worksheet', workbookWith(() => undefined)],
-    ['has a first worksheet without a header row', workbookWith((w) => w.addWorksheet('Empty'))],
+    [
+      'has values under an empty header row',
+      workbookWith((w) => {
+        const sheet = w.addWorksheet('Sessions')
+        sheet.getRow(2).getCell(1).value = 'secret-export-detail'
+      }),
+    ],
     [
       'has a value beyond the header columns',
       workbookWith((w) => {
