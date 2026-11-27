@@ -200,10 +200,11 @@ export async function applySessionizeDecisions(
         )
       }
     }
-    summary.deactivated = await deactivateUnlistedSessionizeEvents(
+    const deactivated = await deactivateUnlistedSessionizeEvents(
       tx,
       decisions.map((decision) => decision.event.eventKey),
     )
+    summary.deactivated = deactivated.length
     return summary
   })
 }

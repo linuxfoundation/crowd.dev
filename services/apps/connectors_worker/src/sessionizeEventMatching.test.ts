@@ -209,7 +209,7 @@ describe('applySessionizeDecisions', () => {
       fresh: 'inserted',
     }
     upsert.mockImplementation(async (_tx, input) => outcomes[input.eventKey])
-    deactivate.mockResolvedValue(1)
+    deactivate.mockResolvedValue([{ eventKey: 'gone', integrationId: null }])
     list.mockResolvedValue([
       storedRow(matchedDecision('reviewed', 'seg-1')),
       storedRow(heldDecision('same', 'ambiguous')),

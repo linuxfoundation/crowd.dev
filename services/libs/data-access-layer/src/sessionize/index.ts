@@ -1,3 +1,6 @@
+import { PlatformType } from '@crowd/types'
+
+import { IFoundIntegration, findOrCreateAutoManagedIntegration } from '../integrations/autoManaged'
 import { QueryExecutor } from '../queryExecutor'
 
 export interface ISessionizeEventDecisionInput {
@@ -179,20 +182,87 @@ export async function upsertSessionizeEventDecision(
   })
 }
 
+export interface IDeactivatedSessionizeEvent {
+  eventKey: string
+  integrationId: string | null
+}
+
 export async function deactivateUnlistedSessionizeEvents(
   qx: QueryExecutor,
   listedEventKeys: string[],
-): Promise<number> {
+): Promise<IDeactivatedSessionizeEvent[]> {
   if (listedEventKeys.length === 0) {
     throw new Error('Refusing to deactivate every Sessionize event against an empty listing!')
   }
-  return qx.result(
+  return qx.select(
     `
       UPDATE integration."sessionizeEventMappings"
       SET "deactivatedAt" = now()
       WHERE "deactivatedAt" IS NULL
         AND NOT ("eventKey" = ANY($(listedEventKeys)::text[]))
+      RETURNING "eventKey", "integrationId"
     `,
     { listedEventKeys },
   )
+}
+
+export async function findOrCreateSessionizeIntegration(
+  qx: QueryExecutor,
+  segmentId: string,
+): Promise<IFoundIntegration> {
+  return qx.tx(async (tx) => {
+    const subproject = await tx.selectOneOrNone(
+      `SELECT 1 FROM public.segments WHERE id = $(segmentId) AND "grandparentSlug" IS NOT NULL`,
+      { segmentId },
+    )
+    if (!subproject) {
+      throw new Error(
+        `Segment ${segmentId} is not a subproject, refusing a Sessionize integration!`,
+      )
+    }
+    return findOrCreateAutoManagedIntegration(tx, PlatformType.SESSIONIZE, segmentId)
+  })
+}
+
+export interface IOnboardableSessionizeEvent {
+  eventKey: string
+  eventName: string
+  segmentId: string
+  integrationId: string | null
+}
+
+export async function listOnboardableSessionizeEvents(
+  qx: QueryExecutor,
+): Promise<IOnboardableSessionizeEvent[]> {
+  return qx.select(
+    `
+      SELECT "eventKey", "eventName", "segmentId", "integrationId"
+      FROM integration."sessionizeEventMappings"
+      WHERE status = 'matched' AND "deactivatedAt" IS NULL
+      ORDER BY "eventKey"
+    `,
+  )
+}
+
+export async function markSessionizeEventOnboarded(
+  qx: QueryExecutor,
+  eventKey: string,
+  integrationId: string,
+): Promise<void> {
+  const found = await qx.result(
+    `
+      UPDATE integration."sessionizeEventMappings"
+      SET "updatedAt" = CASE
+            WHEN "lockedAt" IS NULL OR "integrationId" IS DISTINCT FROM $(integrationId)::uuid
+            THEN now() ELSE "updatedAt"
+          END,
+          "integrationId" = $(integrationId),
+          "lockedAt" = COALESCE("lockedAt", now())
+      WHERE "eventKey" = $(eventKey)
+    `,
+    { eventKey, integrationId },
+  )
+  if (found === 0) {
+    throw new Error(`Sessionize event ${eventKey} has no mapping row to mark onboarded!`)
+  }
 }

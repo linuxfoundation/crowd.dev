@@ -8,8 +8,11 @@ import { listActiveSubprojectSegmentSources } from '../segments'
 import {
   ISessionizeEventDecisionInput,
   deactivateUnlistedSessionizeEvents,
+  findOrCreateSessionizeIntegration,
   getSessionizeEvent,
+  listOnboardableSessionizeEvents,
   listSessionizeEventMappings,
+  markSessionizeEventOnboarded,
   upsertSessionizeEventDecision,
 } from './index'
 
@@ -53,6 +56,8 @@ async function readMapping(
   cventEventId: string | null
   segmentId: string | null
   evidence: Record<string, unknown>
+  integrationId: string | null
+  lockedAt: string | null
   deactivatedAt: string | null
   updatedAt: string
   lastSeenAt: string
@@ -60,7 +65,7 @@ async function readMapping(
   return qx.selectOne(
     `
     SELECT "eventName", status, "holdReason", "cventEventId", "segmentId", evidence,
-           "deactivatedAt", "updatedAt", "lastSeenAt"
+           "integrationId", "lockedAt", "deactivatedAt", "updatedAt", "lastSeenAt"
     FROM integration."sessionizeEventMappings"
     WHERE "eventKey" = $(eventKey)
     `,
@@ -213,8 +218,13 @@ describe('sessionize event decisions', () => {
     await upsertSessionizeEventDecision(qx, matched('1005', segmentId))
     await upsertSessionizeEventDecision(qx, held('1006'))
 
-    expect(await deactivateUnlistedSessionizeEvents(qx, ['1006'])).toBe(1)
-    expect(await deactivateUnlistedSessionizeEvents(qx, ['1006'])).toBe(0)
+    const { id: integrationId } = await findOrCreateSessionizeIntegration(qx, segmentId)
+    await markSessionizeEventOnboarded(qx, '1005', integrationId)
+
+    expect(await deactivateUnlistedSessionizeEvents(qx, ['1006'])).toEqual([
+      { eventKey: '1005', integrationId },
+    ])
+    expect(await deactivateUnlistedSessionizeEvents(qx, ['1006'])).toEqual([])
     expect((await readMapping(qx, '1005')).deactivatedAt).not.toBeNull()
     expect((await readMapping(qx, '1006')).deactivatedAt).toBeNull()
 
@@ -227,6 +237,70 @@ describe('sessionize event decisions', () => {
 
     await expect(deactivateUnlistedSessionizeEvents(qx, [])).rejects.toThrow()
     expect((await readMapping(qx, '1007')).deactivatedAt).toBeNull()
+  })
+})
+
+describe('sessionize onboarding', () => {
+  test('creates the integration only on a subproject segment', async ({ qx }) => {
+    const project = await createSegment(qx, { grandparentSlug: null })
+
+    await expect(findOrCreateSessionizeIntegration(qx, project)).rejects.toThrow(/subproject/)
+    await expect(findOrCreateSessionizeIntegration(qx, generateUUIDv1())).rejects.toThrow(
+      /subproject/,
+    )
+    expect(
+      await qx.select(`SELECT id FROM public.integrations WHERE platform = 'sessionize'`),
+    ).toEqual([])
+
+    const subproject = await createSegment(qx)
+    expect(await findOrCreateSessionizeIntegration(qx, subproject)).toMatchObject({
+      created: true,
+      restored: false,
+    })
+  })
+
+  test('lists the live matched events in key order', async ({ qx }) => {
+    const segmentId = await createSegment(qx)
+    await upsertSessionizeEventDecision(qx, matched('2003', segmentId))
+    await upsertSessionizeEventDecision(qx, matched('2001', segmentId))
+    await upsertSessionizeEventDecision(qx, held('2002'))
+    await upsertSessionizeEventDecision(qx, matched('2004', segmentId))
+    await deactivateUnlistedSessionizeEvents(qx, ['2001', '2002', '2003'])
+    const { id: integrationId } = await findOrCreateSessionizeIntegration(qx, segmentId)
+    await markSessionizeEventOnboarded(qx, '2003', integrationId)
+
+    expect(await listOnboardableSessionizeEvents(qx)).toEqual([
+      {
+        eventKey: '2001',
+        eventName: 'Open Source Summit 2001',
+        segmentId,
+        integrationId: null,
+      },
+      { eventKey: '2003', eventName: 'Open Source Summit 2003', segmentId, integrationId },
+    ])
+  })
+
+  test('marks an event onboarded once and leaves a marked row untouched', async ({ qx }) => {
+    const segmentId = await createSegment(qx)
+    await upsertSessionizeEventDecision(qx, matched('2005', segmentId))
+    await backdateMapping(qx, '2005')
+    const { id: integrationId } = await findOrCreateSessionizeIntegration(qx, segmentId)
+
+    await markSessionizeEventOnboarded(qx, '2005', integrationId)
+    const marked = await readMapping(qx, '2005')
+    expect(marked.integrationId).toBe(integrationId)
+    expect(typeof marked.lockedAt).toBe('string')
+    expect(millis(marked.updatedAt)).toBeGreaterThan(millis(BACKDATED))
+
+    await backdateMapping(qx, '2005')
+    await markSessionizeEventOnboarded(qx, '2005', integrationId)
+    const again = await readMapping(qx, '2005')
+    expect(again.lockedAt).toBe(marked.lockedAt)
+    expect(millis(again.updatedAt)).toBe(millis(BACKDATED))
+
+    await expect(markSessionizeEventOnboarded(qx, 'unknown-event', integrationId)).rejects.toThrow(
+      /unknown-event/,
+    )
   })
 })
 
