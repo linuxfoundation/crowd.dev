@@ -81,18 +81,21 @@ describe('eventMappingConfirm', () => {
         eventKey: 'event-1',
         segmentId: EXAMPLE_SEGMENT_ID,
         cventEventId: 'cvent-event-1',
+        catalogueSource: 'cvent',
         reviewedBy: 'user-1',
       },
       {
         eventKey: 'event-2',
         segmentId: OTHER_SEGMENT_ID,
         cventEventId: null,
+        catalogueSource: null,
         reviewedBy: 'user-1',
       },
       {
         eventKey: 'not-listed',
         segmentId: EXAMPLE_SEGMENT_ID,
         cventEventId: null,
+        catalogueSource: null,
         reviewedBy: 'user-1',
       },
     ])

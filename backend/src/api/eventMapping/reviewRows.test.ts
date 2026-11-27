@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { ISessionizeEventForReview } from '@crowd/data-access-layer/src/sessionize'
 
-import { buildEventMappingRows, suggestedCventEventId } from './reviewRows'
+import { buildEventMappingRows, suggestedCatalogueEvent } from './reviewRows'
 import type { EventMappingMatch, SubprojectForMapping } from './reviewRows'
 
 const EXAMPLE_CON = {
@@ -226,6 +226,16 @@ describe('buildEventMappingRows', () => {
     expect(row.suggestedProject).toBeNull()
   })
 
+  it('never resolves an empty project id, even to a subproject with an empty source id', () => {
+    const row = rowOf(
+      heldEvent({ evidence: { candidates: [{ ...EXAMPLE_CON, projectId: '' }] } }),
+      [...SUBPROJECTS, { ...SUBPROJECTS[2], id: 'segment-blank', sourceId: '' }],
+    )
+
+    expect(row.match).toBe('project_not_in_cdp')
+    expect(row.suggestedProject).toBeNull()
+  })
+
   it('refuses to pick between two subprojects sharing an alias slug', () => {
     const row = rowOf(
       heldEvent({
@@ -298,19 +308,35 @@ describe('buildEventMappingRows', () => {
   })
 })
 
-describe('suggestedCventEventId', () => {
-  it('returns the suggested Cvent event only for the suggested segment', () => {
-    expect(suggestedCventEventId(heldEvent(), SUBPROJECTS, 'segment-example')).toBe('cvent-100')
-    expect(suggestedCventEventId(heldEvent(), SUBPROJECTS, 'segment-other')).toBeNull()
+describe('suggestedCatalogueEvent', () => {
+  const NONE = { cventEventId: null, catalogueSource: null }
+
+  it('returns the suggested catalogue event only for the suggested segment', () => {
+    expect(suggestedCatalogueEvent(heldEvent(), SUBPROJECTS, 'segment-example')).toEqual({
+      cventEventId: 'cvent-100',
+      catalogueSource: 'cvent',
+    })
+    expect(suggestedCatalogueEvent(heldEvent(), SUBPROJECTS, 'segment-other')).toEqual(NONE)
+    expect(suggestedCatalogueEvent(undefined, SUBPROJECTS, 'segment-example')).toEqual(NONE)
   })
 
-  it('returns null for a project alias suggestion, which has no Cvent event', () => {
+  it('returns neither id nor source for a suggested event without a source', () => {
+    const sourceless = heldEvent({
+      holdReason: 'not_cvent',
+      evidence: { candidates: [{ ...EXAMPLE_CON, source: null }] },
+    })
+
+    expect(rowOf(sourceless).suggestedProject).toEqual(EXAMPLE_PROJECT)
+    expect(suggestedCatalogueEvent(sourceless, SUBPROJECTS, 'segment-example')).toEqual(NONE)
+  })
+
+  it('returns neither for a project alias suggestion, which has no catalogue event', () => {
     const alias = heldEvent({
       eventName: 'Example PyTorch Meetup',
       holdReason: 'no_match',
       evidence: { candidates: [], nearby: [] },
     })
 
-    expect(suggestedCventEventId(alias, SUBPROJECTS, 'segment-torch')).toBeNull()
+    expect(suggestedCatalogueEvent(alias, SUBPROJECTS, 'segment-torch')).toEqual(NONE)
   })
 })

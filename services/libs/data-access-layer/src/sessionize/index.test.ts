@@ -672,8 +672,26 @@ describe('confirmSessionizeEventMappings', () => {
     ])
 
     for (const eventKey of ['3101', '3102']) {
-      expect(await readMapping(qx, eventKey)).toMatchObject({ status: 'matched', segmentId })
+      expect(await readMapping(qx, eventKey)).toMatchObject({
+        status: 'matched',
+        segmentId,
+        cventEventId: `cvent-${eventKey}`,
+        catalogueSource: 'cvent',
+      })
     }
+  })
+
+  test('refuses a batch that names an event twice before changing anything', async ({ qx }) => {
+    const segmentId = await createSegment(qx)
+    await upsertSessionizeEventDecision(qx, held('3106'))
+
+    await expect(
+      confirmSessionizeEventMappings(qx, [
+        confirmInput('3106', segmentId),
+        confirmInput('3106', segmentId),
+      ]),
+    ).rejects.toThrow(/only once/)
+    expect(await readMapping(qx, '3106')).toMatchObject({ status: 'held', segmentId: null })
   })
 
   test('a conflict on a later event rolls back the ones before it', async ({ qx }) => {

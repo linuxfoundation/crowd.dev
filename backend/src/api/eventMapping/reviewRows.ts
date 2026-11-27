@@ -11,7 +11,10 @@ import type {
   SessionizeUnresolvedReason,
 } from '@crowd/connectors/src/connectors/sessionize/suggestions'
 import type { ISubprojectForMapping } from '@crowd/data-access-layer/src/segments'
-import type { ISessionizeEventForReview } from '@crowd/data-access-layer/src/sessionize'
+import type {
+  ISessionizeEventConfirmation,
+  ISessionizeEventForReview,
+} from '@crowd/data-access-layer/src/sessionize'
 
 export type EventMappingState = 'suggested' | 'unresolved' | 'confirmed' | 'ignored'
 export type EventMappingMatch =
@@ -111,7 +114,7 @@ function groupBy(
 
 function indexSubprojects(subprojects: SubprojectForMapping[]): SubprojectIndex {
   return {
-    bySourceId: groupBy(subprojects, ({ sourceId }) => sourceId && sourceId.toLowerCase()),
+    bySourceId: groupBy(subprojects, ({ sourceId }) => (sourceId ? sourceId.toLowerCase() : null)),
     bySlug: groupBy(subprojects, ({ slug }) => slug),
   }
 }
@@ -128,7 +131,7 @@ function subprojectOfEvent(
   index: SubprojectIndex,
   event: SessionizeMatchCandidate | null,
 ): SubprojectForMapping | null {
-  if (event === null || event.projectId === null) {
+  if (event === null || !event.projectId) {
     return null
   }
   return single(index.bySourceId, event.projectId.toLowerCase())
@@ -247,14 +250,23 @@ export function buildEventMappingRows(
   return { rows, counts }
 }
 
-export function suggestedCventEventId(
-  event: ISessionizeEventForReview,
+export type SuggestedCatalogueEvent = Pick<
+  ISessionizeEventConfirmation,
+  'cventEventId' | 'catalogueSource'
+>
+
+export function suggestedCatalogueEvent(
+  event: ISessionizeEventForReview | undefined,
   subprojects: SubprojectForMapping[],
   segmentId: string,
-): string | null {
-  const { suggestion, suggested } = resolveSuggestion(event, indexSubprojects(subprojects))
-  if (suggested === null || suggested.id !== segmentId || suggestion.cventEvent === null) {
-    return null
+): SuggestedCatalogueEvent {
+  if (event === undefined) {
+    return { cventEventId: null, catalogueSource: null }
   }
-  return suggestion.cventEvent.eventId
+  const { suggestion, suggested } = resolveSuggestion(event, indexSubprojects(subprojects))
+  const { cventEvent } = suggestion
+  if (suggested?.id !== segmentId || cventEvent === null || cventEvent.source === null) {
+    return { cventEventId: null, catalogueSource: null }
+  }
+  return { cventEventId: cventEvent.eventId, catalogueSource: cventEvent.source }
 }

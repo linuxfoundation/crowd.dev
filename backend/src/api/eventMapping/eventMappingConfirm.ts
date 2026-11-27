@@ -12,7 +12,7 @@ import {
 import Permissions from '../../security/permissions'
 import PermissionChecker from '../../services/user/permissionChecker'
 import { eventReferenceSchema } from './eventSchema'
-import { suggestedCventEventId } from './reviewRows'
+import { suggestedCatalogueEvent } from './reviewRows'
 
 const MAX_ITEMS = 200
 
@@ -53,16 +53,12 @@ export default async (req, res) => {
 
     await confirmSessionizeEventMappings(
       tx,
-      items.map(({ eventKey, segmentId }) => {
-        const event = events.get(eventKey)
-        return {
-          eventKey,
-          segmentId,
-          cventEventId:
-            event === undefined ? null : suggestedCventEventId(event, subprojects, segmentId),
-          reviewedBy,
-        }
-      }),
+      items.map(({ eventKey, segmentId }) => ({
+        eventKey,
+        segmentId,
+        ...suggestedCatalogueEvent(events.get(eventKey), subprojects, segmentId),
+        reviewedBy,
+      })),
     )
   })
 

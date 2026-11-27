@@ -406,11 +406,22 @@ export async function confirmSessionizeEventMapping(
   )
 }
 
+function compareCodeUnits(a: string, b: string): number {
+  if (a < b) {
+    return -1
+  }
+  return a > b ? 1 : 0
+}
+
 export async function confirmSessionizeEventMappings(
   qx: QueryExecutor,
   inputs: ISessionizeEventConfirmation[],
 ): Promise<void> {
-  const inLockOrder = [...inputs].sort((a, b) => (a.eventKey < b.eventKey ? -1 : 1))
+  const eventKeys = inputs.map(({ eventKey }) => eventKey)
+  if (new Set(eventKeys).size !== eventKeys.length) {
+    throw new Error('Each Sessionize event may be confirmed only once per batch!')
+  }
+  const inLockOrder = [...inputs].sort((a, b) => compareCodeUnits(a.eventKey, b.eventKey))
   await qx.tx(async (tx) => {
     for (const input of inLockOrder) {
       await confirmSessionizeEventMapping(tx, input)
