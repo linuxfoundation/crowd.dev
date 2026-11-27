@@ -26,7 +26,7 @@
     "aws-sdk": "2.814.0",
     "json2csv": "^5.0.7",
     "lodash.pick": "~4.4.0",
-    "moment": "~2.30.1",
+    "moment": "~2.31.0",
     "tsx": "catalog:"
   },
   "devDependencies": {
