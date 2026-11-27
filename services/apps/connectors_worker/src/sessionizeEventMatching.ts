@@ -154,7 +154,7 @@ function toDecisionInput(decision: SessionizeEventDecision): ISessionizeEventDec
 
 function reviewTarget(
   row: Pick<
-    ISessionizeEventDecisionInput,
+    IStoredSessionizeEventMapping,
     'status' | 'holdReason' | 'segmentId' | 'cventEventId' | 'catalogueSource'
   >,
 ) {

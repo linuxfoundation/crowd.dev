@@ -21,7 +21,13 @@ export interface ISessionizeEventDecisionInput {
   evidence: Record<string, unknown>
 }
 
-export interface IStoredSessionizeEventMapping extends ISessionizeEventDecisionInput {
+export type SessionizeMappingStatus = 'matched' | 'held' | 'excluded'
+
+export interface IStoredSessionizeEventMapping extends Omit<
+  ISessionizeEventDecisionInput,
+  'status'
+> {
+  status: SessionizeMappingStatus
   reviewedAt: string | null
   lockedAt: string | null
   deactivatedAt: string | null
@@ -37,6 +43,7 @@ export type SessionizeDecisionOutcome = 'inserted' | 'updated' | 'unchanged' | '
 interface IStoredDecisionDiff {
   isProtected: boolean
   isReviewed: boolean
+  isConfirmedOnInactiveSegment: boolean
   matchesAnotherSegment: boolean
   listingChanged: boolean
   targetChanged: boolean
@@ -111,6 +118,15 @@ export async function upsertSessionizeEventDecision(
       `
         SELECT ("reviewedAt" IS NOT NULL OR "lockedAt" IS NOT NULL) AS "isProtected",
                "reviewedAt" IS NOT NULL AS "isReviewed",
+               ("reviewedAt" IS NOT NULL
+                 AND status = 'matched'
+                 AND "lockedAt" IS NULL
+                 AND NOT EXISTS (
+                   SELECT 1 FROM segments s
+                   WHERE s.id = "sessionizeEventMappings"."segmentId"
+                     AND s."grandparentSlug" IS NOT NULL
+                     AND s.status = $(active)
+                 )) AS "isConfirmedOnInactiveSegment",
                ($(status) = 'matched'
                  AND "segmentId" IS DISTINCT FROM $(segmentId)::uuid) AS "matchesAnotherSegment",
                ("eventName" IS DISTINCT FROM $(eventName)
@@ -130,7 +146,7 @@ export async function upsertSessionizeEventDecision(
         WHERE "eventKey" = $(eventKey)
         FOR UPDATE
       `,
-      values,
+      { ...values, active: SegmentStatus.ACTIVE },
     )
 
     if (!stored) {
@@ -153,7 +169,9 @@ export async function upsertSessionizeEventDecision(
 
     if (stored.isProtected) {
       await refreshListing(tx, values, stored.listingChanged)
-      const needsReview = stored.isReviewed ? stored.matchesAnotherSegment : stored.targetChanged
+      const needsReview = stored.isReviewed
+        ? stored.matchesAnotherSegment || stored.isConfirmedOnInactiveSegment
+        : stored.targetChanged
       return needsReview ? 'protected' : 'unchanged'
     }
 
@@ -243,11 +261,15 @@ export async function listOnboardableSessionizeEvents(
 ): Promise<IOnboardableSessionizeEvent[]> {
   return qx.select(
     `
-      SELECT "eventKey", "eventName", "segmentId", "integrationId"
-      FROM integration."sessionizeEventMappings"
-      WHERE status = 'matched' AND "deactivatedAt" IS NULL
-      ORDER BY "eventKey"
+      SELECT m."eventKey", m."eventName", m."segmentId", m."integrationId"
+      FROM integration."sessionizeEventMappings" m
+      LEFT JOIN segments s ON s.id = m."segmentId"
+      WHERE m.status = 'matched'
+        AND m."deactivatedAt" IS NULL
+        AND (m."lockedAt" IS NOT NULL OR (s."grandparentSlug" IS NOT NULL AND s.status = $(active)))
+      ORDER BY m."eventKey"
     `,
+    { active: SegmentStatus.ACTIVE },
   )
 }
 
@@ -285,7 +307,7 @@ export interface ISessionizeEventForReview {
   eventName: string
   eventStart: string
   eventEnd: string
-  status: 'matched' | 'held' | 'excluded'
+  status: SessionizeMappingStatus
   holdReason: string | null
   cventEventId: string | null
   segmentId: string | null
@@ -342,8 +364,19 @@ async function applyReviewUpdate(
 
 export async function confirmSessionizeEventMapping(
   qx: QueryExecutor,
-  input: { eventKey: string; segmentId: string; cventEventId: string | null; reviewedBy: string },
+  input: {
+    eventKey: string
+    segmentId: string
+    cventEventId: string | null
+    catalogueSource: string | null
+    reviewedBy: string
+  },
 ): Promise<void> {
+  if ((input.cventEventId === null) !== (input.catalogueSource === null)) {
+    throw new Error(
+      `Sessionize event ${input.eventKey} needs both cventEventId and catalogueSource or neither!`,
+    )
+  }
   await applyReviewUpdate(
     qx,
     input.eventKey,
@@ -353,6 +386,7 @@ export async function confirmSessionizeEventMapping(
       SET status = 'matched',
           "segmentId" = $(segmentId)::uuid,
           "cventEventId" = $(cventEventId),
+          "catalogueSource" = $(catalogueSource),
           rule = 'review',
           "reviewedBy" = $(reviewedBy),
           "reviewedAt" = now(),
@@ -402,7 +436,8 @@ export async function restoreSessionizeEvent(qx: QueryExecutor, eventKey: string
       UPDATE integration."sessionizeEventMappings"
       SET status = 'held',
           "segmentId" = NULL,
-          "cventEventId" = NULL,
+          "cventEventId" = CASE WHEN status = 'matched' THEN NULL ELSE "cventEventId" END,
+          "catalogueSource" = CASE WHEN status = 'matched' THEN NULL ELSE "catalogueSource" END,
           rule = NULL,
           "reviewedBy" = NULL,
           "reviewedAt" = NULL,

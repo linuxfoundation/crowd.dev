@@ -64,6 +64,7 @@ async function readMapping(
   status: string
   holdReason: string | null
   cventEventId: string | null
+  catalogueSource: string | null
   segmentId: string | null
   evidence: Record<string, unknown>
   integrationId: string | null
@@ -74,7 +75,7 @@ async function readMapping(
 }> {
   return qx.selectOne(
     `
-    SELECT "eventName", status, "holdReason", "cventEventId", "segmentId", evidence,
+    SELECT "eventName", status, "holdReason", "cventEventId", "catalogueSource", "segmentId", evidence,
            "integrationId", "lockedAt", "deactivatedAt", "updatedAt", "lastSeenAt"
     FROM integration."sessionizeEventMappings"
     WHERE "eventKey" = $(eventKey)
@@ -105,6 +106,12 @@ async function markMapping(
     `UPDATE integration."sessionizeEventMappings" SET $(column:name) = now() WHERE "eventKey" = $(eventKey)`,
     { eventKey, column },
   )
+}
+
+async function archiveSegment(qx: QueryExecutor, segmentId: string): Promise<void> {
+  await qx.result(`UPDATE public.segments SET status = 'archived' WHERE id = $(segmentId)`, {
+    segmentId,
+  })
 }
 
 function millis(timestamp: string): number {
@@ -297,6 +304,11 @@ describe('sessionize onboarding', () => {
       },
       { eventKey: '2003', eventName: 'Open Source Summit 2003', segmentId, integrationId },
     ])
+
+    await archiveSegment(qx, segmentId)
+    expect(await listOnboardableSessionizeEvents(qx)).toEqual([
+      { eventKey: '2003', eventName: 'Open Source Summit 2003', segmentId, integrationId },
+    ])
   })
 
   test('marks an event onboarded once and leaves a marked row untouched', async ({ qx }) => {
@@ -387,7 +399,13 @@ async function readReview(
 const REVIEWER = 'reviewer@example.org'
 
 function confirmInput(eventKey: string, segmentId: string) {
-  return { eventKey, segmentId, cventEventId: `cvent-${eventKey}`, reviewedBy: REVIEWER }
+  return {
+    eventKey,
+    segmentId,
+    cventEventId: `cvent-${eventKey}`,
+    catalogueSource: 'cvent',
+    reviewedBy: REVIEWER,
+  }
 }
 
 describe('sessionize event review', () => {
@@ -404,6 +422,7 @@ describe('sessionize event review', () => {
       status: 'matched',
       holdReason: 'ambiguous',
       cventEventId: 'cvent-3001',
+      catalogueSource: 'cvent',
       segmentId,
     })
     expect(await readReview(qx, '3001')).toMatchObject({ rule: 'review', reviewedBy: REVIEWER })
@@ -418,6 +437,10 @@ describe('sessionize event review', () => {
       cventEventId: 'cvent-3001',
       segmentId,
     })
+
+    await archiveSegment(qx, segmentId)
+    expect(await listOnboardableSessionizeEvents(qx)).toEqual([])
+    expect(await upsertSessionizeEventDecision(qx, held('3001'))).toBe('protected')
   })
 
   test('confirm refuses a segment that is not an active subproject', async ({ qx }) => {
@@ -429,6 +452,15 @@ describe('sessionize event review', () => {
       await expect(
         confirmSessionizeEventMapping(qx, confirmInput('3002', segmentId)),
       ).rejects.toBeInstanceOf(ConflictError)
+    }
+    const subproject = await createSegment(qx)
+    for (const pair of [
+      { cventEventId: 'cvent-3002', catalogueSource: null },
+      { cventEventId: null, catalogueSource: 'cvent' },
+    ]) {
+      await expect(
+        confirmSessionizeEventMapping(qx, { ...confirmInput('3002', subproject), ...pair }),
+      ).rejects.toThrow(/catalogueSource/)
     }
     expect(await readMapping(qx, '3002')).toMatchObject({ status: 'held', segmentId: null })
   })
@@ -479,17 +511,26 @@ describe('sessionize event review', () => {
 
   test('restore puts a reviewed event back on hold for the daily run', async ({ qx }) => {
     const segmentId = await createSegment(qx)
-    await upsertSessionizeEventDecision(qx, held('3008'))
+    await upsertSessionizeEventDecision(qx, {
+      ...held('3008'),
+      holdReason: 'no_segment',
+      cventEventId: 'cvent-3008',
+      catalogueSource: 'lfx',
+    })
     await upsertSessionizeEventDecision(qx, held('3009'))
     await ignoreSessionizeEvent(qx, { eventKey: '3008', reviewedBy: REVIEWER })
     await confirmSessionizeEventMapping(qx, confirmInput('3009', segmentId))
 
-    for (const eventKey of ['3008', '3009']) {
+    for (const [eventKey, holdReason, cventEventId, catalogueSource] of [
+      ['3008', 'no_segment', 'cvent-3008', 'lfx'],
+      ['3009', 'ambiguous', null, null],
+    ] as const) {
       await restoreSessionizeEvent(qx, eventKey)
       expect(await readMapping(qx, eventKey)).toMatchObject({
         status: 'held',
-        holdReason: 'ambiguous',
-        cventEventId: null,
+        holdReason,
+        cventEventId,
+        catalogueSource,
         segmentId: null,
       })
       expect(await readReview(qx, eventKey)).toEqual({
