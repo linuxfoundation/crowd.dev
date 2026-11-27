@@ -1,7 +1,8 @@
 import type { SessionizeConsoleEvent } from './consoleEvents'
 
-export const MATCHING_RULE_VERSION = 3
+export const MATCHING_RULE_VERSION = 4
 export const MATCH_WINDOW_DAYS = 21
+export const SUGGESTION_WINDOW_DAYS = 3
 
 const MILLISECONDS_PER_DAY = 86_400_000
 const CVENT_SOURCE = 'cvent'
@@ -51,7 +52,18 @@ export interface SessionizeEventDecision {
   ruleVersion: number
   evidence: {
     candidates: SessionizeMatchCandidate[]
+    nearby: SessionizeMatchCandidate[]
   }
+}
+
+interface FoundCandidate {
+  catalogueEvent: CventCatalogueEvent
+  candidate: SessionizeMatchCandidate
+}
+
+interface CatalogueScan {
+  found: FoundCandidate[]
+  nearby: SessionizeMatchCandidate[]
 }
 
 export function normalizeEventName(name: string): string {
@@ -72,28 +84,47 @@ function dayGap(first: string, second: string): number {
   )
 }
 
-function findCandidates(
+function toCandidate(entry: CventCatalogueEvent, gap: number): SessionizeMatchCandidate {
+  return {
+    eventId: entry.eventId,
+    eventName: entry.eventName,
+    startDate: entry.startDate,
+    projectId: entry.projectId,
+    source: entry.source,
+    dayGap: gap,
+  }
+}
+
+function compareEventIds(
+  first: SessionizeMatchCandidate,
+  second: SessionizeMatchCandidate,
+): number {
+  if (first.eventId === second.eventId) {
+    return 0
+  }
+  return first.eventId < second.eventId ? -1 : 1
+}
+
+function scanCatalogue(
   event: SessionizeConsoleEvent,
   catalogue: CventCatalogueEvent[],
-): { catalogueEvent: CventCatalogueEvent; candidate: SessionizeMatchCandidate }[] {
+): CatalogueScan {
   const normalizedName = normalizeEventName(event.eventName)
-  if (normalizedName === '') {
-    return []
+  const found: FoundCandidate[] = []
+  const nearby: SessionizeMatchCandidate[] = []
+  for (const entry of catalogue) {
+    const gap = dayGap(entry.startDate, event.eventStart)
+    if (gap <= MATCH_WINDOW_DAYS) {
+      const candidate = toCandidate(entry, gap)
+      if (gap <= SUGGESTION_WINDOW_DAYS) {
+        nearby.push(candidate)
+      }
+      if (normalizedName !== '' && normalizeEventName(entry.eventName) === normalizedName) {
+        found.push({ catalogueEvent: entry, candidate })
+      }
+    }
   }
-  return catalogue
-    .filter((entry) => normalizeEventName(entry.eventName) === normalizedName)
-    .map((entry) => ({
-      catalogueEvent: entry,
-      candidate: {
-        eventId: entry.eventId,
-        eventName: entry.eventName,
-        startDate: entry.startDate,
-        projectId: entry.projectId,
-        source: entry.source,
-        dayGap: dayGap(entry.startDate, event.eventStart),
-      },
-    }))
-    .filter(({ candidate }) => candidate.dayGap <= MATCH_WINDOW_DAYS)
+  return { found, nearby: nearby.sort(compareEventIds) }
 }
 
 export function matchSessionizeEvent(
@@ -101,8 +132,8 @@ export function matchSessionizeEvent(
   catalogue: CventCatalogueEvent[],
   subprojectFor: SubprojectLookup,
 ): SessionizeEventDecision {
-  const found = findCandidates(event, catalogue)
-  const evidence = { candidates: found.map(({ candidate }) => candidate) }
+  const { found, nearby } = scanCatalogue(event, catalogue)
+  const candidates = found.map(({ candidate }) => candidate)
   const held = (
     holdReason: SessionizeHoldReason,
     candidate: CventCatalogueEvent | null = null,
@@ -115,7 +146,7 @@ export function matchSessionizeEvent(
     segmentId: null,
     rule: null,
     ruleVersion: MATCHING_RULE_VERSION,
-    evidence,
+    evidence: { candidates, nearby },
   })
 
   if (found.length === 0) {
@@ -144,6 +175,6 @@ export function matchSessionizeEvent(
     segmentId,
     rule: 'exact_name',
     ruleVersion: MATCHING_RULE_VERSION,
-    evidence,
+    evidence: { candidates, nearby: [] },
   }
 }

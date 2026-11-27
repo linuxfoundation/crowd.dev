@@ -166,7 +166,7 @@ function matchedDecision(eventKey: string, segmentId: string): SessionizeEventDe
     segmentId,
     rule: 'exact_name',
     ruleVersion: 1,
-    evidence: { candidates: [] },
+    evidence: { candidates: [], nearby: [] },
   }
 }
 
@@ -183,7 +183,7 @@ function heldDecision(
     segmentId: null,
     rule: null,
     ruleVersion: 1,
-    evidence: { candidates: [] },
+    evidence: { candidates: [], nearby: [] },
   }
 }
 
