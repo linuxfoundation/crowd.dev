@@ -2,6 +2,7 @@ import { normalizeEventName } from './matching'
 
 const YEAR_TOKEN = /^(19|20)\d\d$/
 const MIN_CONTAINED_TOKENS = 3
+export const MAX_COMPARED_NAME_LENGTH = 300
 
 interface Block {
   firstStart: number
@@ -75,20 +76,34 @@ function withoutYears(normalizedName: string): string {
     .join(' ')
 }
 
+function isOverLong(normalizedName: string): boolean {
+  return normalizedName.length > MAX_COMPARED_NAME_LENGTH
+}
+
 export function nameSimilarity(first: string, second: string): number {
   const normalizedFirst = withoutYears(normalizeEventName(first))
   const normalizedSecond = withoutYears(normalizeEventName(second))
-  if (normalizedFirst === '' || normalizedSecond === '') {
+  if (
+    normalizedFirst === '' ||
+    normalizedSecond === '' ||
+    isOverLong(normalizedFirst) ||
+    isOverLong(normalizedSecond)
+  ) {
     return 0
   }
   return similarityRatio(normalizedFirst, normalizedSecond)
 }
 
 export function isNameContained(first: string, second: string): boolean {
-  const firstTokens = new Set(normalizeEventName(first).split(' ').filter(Boolean))
+  const normalizedFirst = normalizeEventName(first)
+  const normalizedSecond = normalizeEventName(second)
+  if (isOverLong(normalizedFirst) || isOverLong(normalizedSecond)) {
+    return false
+  }
+  const firstTokens = new Set(normalizedFirst.split(' ').filter(Boolean))
   if (firstTokens.size < MIN_CONTAINED_TOKENS) {
     return false
   }
-  const secondTokens = new Set(normalizeEventName(second).split(' '))
+  const secondTokens = new Set(normalizedSecond.split(' '))
   return [...firstTokens].every((token) => secondTokens.has(token))
 }

@@ -29,6 +29,13 @@ const nonCventTwin: SessionizeMatchCandidate = {
   source: 'other',
 }
 
+function fromOtherSource(
+  eventId: string,
+  copied: SessionizeMatchCandidate,
+): SessionizeMatchCandidate {
+  return { ...copied, eventId, projectId: null, source: 'other' }
+}
+
 function suggestion(overrides: Partial<SessionizeSuggestion>): SessionizeSuggestion {
   return {
     kind: null,
@@ -119,10 +126,34 @@ const rows: Row[] = [
     expected: suggestion({ reason: 'ambiguous', hintCventEvent: nearTwin }),
   },
   {
+    name: 'a similar name keeps the cvent copy over a same-name copy from another source',
+    eventName: 'Sample Dev Summit Berlin 2026',
+    holdReason: 'no_match',
+    nearby: [fromOtherSource('a-similar', similar), similar],
+    expected: suggestion({ kind: 'similar_name', cventEvent: similar }),
+  },
+  {
+    name: 'a similar name from another source alone is still suggested',
+    eventName: 'Sample Dev Summit Berlin 2026',
+    holdReason: 'no_match',
+    nearby: [fromOtherSource('a-similar', similar), unrelated],
+    expected: suggestion({
+      kind: 'similar_name',
+      cventEvent: fromOtherSource('a-similar', similar),
+    }),
+  },
+  {
     name: 'a single contained name is name_contained',
     eventName: 'Example Con Europe 2026',
     holdReason: 'no_match',
     nearby: [contained, unrelated],
+    expected: suggestion({ kind: 'name_contained', cventEvent: contained }),
+  },
+  {
+    name: 'a contained name keeps the cvent copy over a same-name copy from another source',
+    eventName: 'Example Con Europe 2026',
+    holdReason: 'no_match',
+    nearby: [fromOtherSource('a-contained', contained), contained],
     expected: suggestion({ kind: 'name_contained', cventEvent: contained }),
   },
   {
@@ -137,6 +168,13 @@ const rows: Row[] = [
     eventName: 'Maintainer Summit: Example Con Europe 2026',
     holdReason: 'no_match',
     nearby: [mainEvent],
+    expected: suggestion({ kind: 'sub_event', cventEvent: mainEvent }),
+  },
+  {
+    name: 'a sub-event keeps the cvent copy of its main event over a copy from another source',
+    eventName: 'Maintainer Summit: Example Con Europe 2026',
+    holdReason: 'no_match',
+    nearby: [fromOtherSource('a-main', mainEvent), mainEvent],
     expected: suggestion({ kind: 'sub_event', cventEvent: mainEvent }),
   },
   {
@@ -193,6 +231,13 @@ const rows: Row[] = [
     eventName: 'Acme Cloud Forum Lisbon',
     holdReason: 'no_match',
     nearby: [loose, unrelated],
+    expected: suggestion({ reason: 'ambiguous', hintCventEvent: loose }),
+  },
+  {
+    name: 'a hint keeps the cvent copy over a same-name copy from another source',
+    eventName: 'Acme Cloud Forum Lisbon',
+    holdReason: 'no_match',
+    nearby: [fromOtherSource('a-loose', loose), loose],
     expected: suggestion({ reason: 'ambiguous', hintCventEvent: loose }),
   },
   {

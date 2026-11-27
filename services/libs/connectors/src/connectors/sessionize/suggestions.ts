@@ -1,4 +1,4 @@
-import { CVENT_SOURCE, compareEventIds } from './matching'
+import { CVENT_SOURCE, compareEventIds, normalizeEventName } from './matching'
 import type { SessionizeHoldReason, SessionizeMatchCandidate } from './matching'
 import { isNameContained, nameSimilarity } from './nameSimilarity'
 
@@ -125,6 +125,28 @@ function sameNameEvent(
   return null
 }
 
+function preferredCopy(
+  kept: SessionizeMatchCandidate,
+  other: SessionizeMatchCandidate,
+): SessionizeMatchCandidate {
+  const keptIsCvent = kept.source === CVENT_SOURCE
+  if (keptIsCvent !== (other.source === CVENT_SOURCE)) {
+    return keptIsCvent ? kept : other
+  }
+  const order = kept.dayGap - other.dayGap || compareEventIds(kept, other)
+  return order <= 0 ? kept : other
+}
+
+function onePerName(events: SessionizeMatchCandidate[]): SessionizeMatchCandidate[] {
+  const byName = new Map<string, SessionizeMatchCandidate>()
+  for (const event of events) {
+    const name = normalizeEventName(event.eventName)
+    const kept = byName.get(name)
+    byName.set(name, kept === undefined ? event : preferredCopy(kept, event))
+  }
+  return [...byName.values()]
+}
+
 function findMainEventName(eventName: string): string | null {
   for (const { pattern, mainEventName } of SUB_EVENT_PATTERNS) {
     const match = eventName.match(pattern)
@@ -136,16 +158,17 @@ function findMainEventName(eventName: string): string | null {
 }
 
 export function suggestSessionizeMapping(input: SessionizeSuggestionInput): SessionizeSuggestion {
-  const { eventName, holdReason, candidates, nearby } = input
+  const { eventName, holdReason, candidates } = input
 
   const sameName = sameNameEvent(holdReason, candidates)
   if (sameName !== null) {
     return suggestionOf({ kind: 'same_name', cventEvent: sameName })
   }
 
-  if (nearby === undefined) {
+  if (input.nearby === undefined) {
     return suggestionOf({ reason: 'not_checked' })
   }
+  const nearby = onePerName(input.nearby)
 
   const scored = scoreEvents(eventName, nearby)
   if (isClearlyTop(scored)) {

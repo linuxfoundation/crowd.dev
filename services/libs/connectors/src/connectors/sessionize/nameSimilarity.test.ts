@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { isNameContained, nameSimilarity, similarityRatio } from './nameSimilarity'
+import {
+  MAX_COMPARED_NAME_LENGTH,
+  isNameContained,
+  nameSimilarity,
+  similarityRatio,
+} from './nameSimilarity'
+
+const overLongName = `Example Con ${'a'.repeat(MAX_COMPARED_NAME_LENGTH)}`
 
 describe('similarityRatio', () => {
   it.each([
@@ -29,6 +36,10 @@ describe('nameSimilarity', () => {
   it('returns 0 when a name normalizes to empty', () => {
     expect(nameSimilarity('🎉', 'Example Con')).toBe(0)
   })
+
+  it('returns 0 when a name is longer than the compared length bound', () => {
+    expect(nameSimilarity(overLongName, overLongName)).toBe(0)
+  })
 })
 
 describe('isNameContained', () => {
@@ -40,5 +51,9 @@ describe('isNameContained', () => {
 
   it('rejects names with fewer than 3 tokens', () => {
     expect(isNameContained('Example Day', 'Example Day Europe')).toBe(false)
+  })
+
+  it('rejects names longer than the compared length bound', () => {
+    expect(isNameContained(overLongName, overLongName)).toBe(false)
   })
 })
