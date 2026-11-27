@@ -704,6 +704,7 @@ class SegmentRepository extends RepositoryBase<
           s.url,
           s.slug,
           s.description,
+          s."grandparentName",
           COUNT(*) OVER () AS "totalCount"
         FROM segments s
         WHERE s."grandparentSlug" IS NOT NULL
