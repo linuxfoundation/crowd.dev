@@ -1,24 +1,31 @@
 import { test as base, describe, expect } from 'vitest'
 
-import { DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
+import { ConflictError, DEFAULT_TENANT_ID, generateUUIDv1 } from '@crowd/common'
 import type { QueryExecutor } from '@crowd/database'
 import { withQx } from '@crowd/test-kit/db'
 
 import { listActiveSubprojectSegmentSources } from '../segments'
 import {
   ISessionizeEventDecisionInput,
+  confirmSessionizeEventMapping,
   deactivateUnlistedSessionizeEvents,
   findOrCreateSessionizeIntegration,
   getSessionizeEvent,
+  ignoreSessionizeEvent,
   listOnboardableSessionizeEvents,
   listSessionizeEventMappings,
+  listSessionizeEventsForReview,
   markSessionizeEventOnboarded,
+  restoreSessionizeEvent,
   upsertSessionizeEventDecision,
 } from './index'
 
 const test = withQx(base)
 
 interface ISegmentFixture {
+  slug?: string
+  name?: string
+  parentSlug?: string | null
   grandparentSlug?: string | null
   status?: string
   sourceId?: string | null
@@ -26,17 +33,20 @@ interface ISegmentFixture {
 
 async function createSegment(qx: QueryExecutor, fixture: ISegmentFixture = {}): Promise<string> {
   const id = generateUUIDv1()
-  const slug = `segment-${id}`
+  const slug = fixture.slug ?? `segment-${id}`
   await qx.result(
     `
     INSERT INTO public.segments
-      (id, slug, name, "grandparentSlug", status, "sourceId", "tenantId", "createdAt", "updatedAt")
-    VALUES ($(id), $(slug), $(slug), $(grandparentSlug), $(status), $(sourceId), $(tenantId),
-            NOW(), NOW())
+      (id, slug, name, "parentSlug", "grandparentSlug", status, "sourceId", "tenantId",
+       "createdAt", "updatedAt")
+    VALUES ($(id), $(slug), $(name), $(parentSlug), $(grandparentSlug), $(status), $(sourceId),
+            $(tenantId), NOW(), NOW())
     `,
     {
       id,
       slug,
+      name: fixture.name ?? slug,
+      parentSlug: fixture.parentSlug ?? null,
       grandparentSlug: 'grandparentSlug' in fixture ? fixture.grandparentSlug : 'lf',
       status: fixture.status ?? 'active',
       sourceId: 'sourceId' in fixture ? fixture.sourceId : `source-${id}`,
@@ -54,6 +64,7 @@ async function readMapping(
   status: string
   holdReason: string | null
   cventEventId: string | null
+  catalogueSource: string | null
   segmentId: string | null
   evidence: Record<string, unknown>
   integrationId: string | null
@@ -64,7 +75,7 @@ async function readMapping(
 }> {
   return qx.selectOne(
     `
-    SELECT "eventName", status, "holdReason", "cventEventId", "segmentId", evidence,
+    SELECT "eventName", status, "holdReason", "cventEventId", "catalogueSource", "segmentId", evidence,
            "integrationId", "lockedAt", "deactivatedAt", "updatedAt", "lastSeenAt"
     FROM integration."sessionizeEventMappings"
     WHERE "eventKey" = $(eventKey)
@@ -95,6 +106,12 @@ async function markMapping(
     `UPDATE integration."sessionizeEventMappings" SET $(column:name) = now() WHERE "eventKey" = $(eventKey)`,
     { eventKey, column },
   )
+}
+
+async function archiveSegment(qx: QueryExecutor, segmentId: string): Promise<void> {
+  await qx.result(`UPDATE public.segments SET status = 'archived' WHERE id = $(segmentId)`, {
+    segmentId,
+  })
 }
 
 function millis(timestamp: string): number {
@@ -179,9 +196,12 @@ describe('sessionize event decisions', () => {
     expect(millis(row.updatedAt)).toBeGreaterThan(millis(BACKDATED))
   })
 
-  test.for(['reviewedAt', 'lockedAt'] as const)(
-    'a row with %s keeps its target and reports the differing decision',
-    async (column, { qx }) => {
+  test.for([
+    ['reviewedAt', 'unchanged'],
+    ['lockedAt', 'protected'],
+  ] as const)(
+    'a row with %s keeps its target and reports a held decision as %s',
+    async ([column, heldOutcome], { qx }) => {
       const segmentId = await createSegment(qx)
       await upsertSessionizeEventDecision(qx, matched('1004', segmentId))
       await markMapping(qx, '1004', column)
@@ -192,6 +212,12 @@ describe('sessionize event decisions', () => {
 
       expect(
         await upsertSessionizeEventDecision(qx, { ...held('1004'), eventName: 'Renamed Summit' }),
+      ).toBe(heldOutcome)
+      expect(
+        await upsertSessionizeEventDecision(qx, {
+          ...matched('1004', await createSegment(qx)),
+          eventName: 'Renamed Summit',
+        }),
       ).toBe('protected')
       expect(
         await upsertSessionizeEventDecision(qx, {
@@ -278,6 +304,11 @@ describe('sessionize onboarding', () => {
       },
       { eventKey: '2003', eventName: 'Open Source Summit 2003', segmentId, integrationId },
     ])
+
+    await archiveSegment(qx, segmentId)
+    expect(await listOnboardableSessionizeEvents(qx)).toEqual([
+      { eventKey: '2003', eventName: 'Open Source Summit 2003', segmentId, integrationId },
+    ])
   })
 
   test('marks an event onboarded once and leaves a marked row untouched', async ({ qx }) => {
@@ -348,5 +379,235 @@ describe('listActiveSubprojectSegmentSources', () => {
     )
 
     expect(sources).toEqual([{ id: subproject, sourceId: 'pcc-1' }])
+  })
+})
+
+async function readReview(
+  qx: QueryExecutor,
+  eventKey: string,
+): Promise<{ rule: string | null; reviewedBy: string | null; reviewedAt: string | null }> {
+  return qx.selectOne(
+    `
+    SELECT rule, "reviewedBy", "reviewedAt"
+    FROM integration."sessionizeEventMappings"
+    WHERE "eventKey" = $(eventKey)
+    `,
+    { eventKey },
+  )
+}
+
+const REVIEWER = 'reviewer@example.org'
+
+function confirmInput(eventKey: string, segmentId: string) {
+  return {
+    eventKey,
+    segmentId,
+    cventEventId: `cvent-${eventKey}`,
+    catalogueSource: 'cvent',
+    reviewedBy: REVIEWER,
+  }
+}
+
+describe('sessionize event review', () => {
+  test('a confirmed held event is onboardable and protected from the daily run', async ({ qx }) => {
+    const segmentId = await createSegment(qx)
+    await upsertSessionizeEventDecision(qx, held('3001'))
+
+    await confirmSessionizeEventMapping(qx, confirmInput('3001', segmentId))
+
+    expect(await listOnboardableSessionizeEvents(qx)).toEqual([
+      { eventKey: '3001', eventName: 'Open Source Summit 3001', segmentId, integrationId: null },
+    ])
+    expect(await readMapping(qx, '3001')).toMatchObject({
+      status: 'matched',
+      holdReason: 'ambiguous',
+      cventEventId: 'cvent-3001',
+      catalogueSource: 'cvent',
+      segmentId,
+    })
+    expect(await readReview(qx, '3001')).toMatchObject({ rule: 'review', reviewedBy: REVIEWER })
+    expect(await upsertSessionizeEventDecision(qx, held('3001'))).toBe('unchanged')
+    expect(await upsertSessionizeEventDecision(qx, matched('3001', segmentId))).toBe('unchanged')
+    expect(await upsertSessionizeEventDecision(qx, matched('3001', await createSegment(qx)))).toBe(
+      'protected',
+    )
+    expect(await readMapping(qx, '3001')).toMatchObject({
+      status: 'matched',
+      holdReason: 'ambiguous',
+      cventEventId: 'cvent-3001',
+      segmentId,
+    })
+
+    await archiveSegment(qx, segmentId)
+    expect(await listOnboardableSessionizeEvents(qx)).toEqual([])
+    expect(await upsertSessionizeEventDecision(qx, held('3001'))).toBe('protected')
+  })
+
+  test('confirm refuses a segment that is not an active subproject', async ({ qx }) => {
+    await upsertSessionizeEventDecision(qx, held('3002'))
+    const project = await createSegment(qx, { grandparentSlug: null })
+    const archived = await createSegment(qx, { status: 'archived' })
+
+    for (const segmentId of [project, archived, generateUUIDv1()]) {
+      await expect(
+        confirmSessionizeEventMapping(qx, confirmInput('3002', segmentId)),
+      ).rejects.toBeInstanceOf(ConflictError)
+    }
+    const subproject = await createSegment(qx)
+    for (const pair of [
+      { cventEventId: 'cvent-3002', catalogueSource: null },
+      { cventEventId: null, catalogueSource: 'cvent' },
+    ]) {
+      await expect(
+        confirmSessionizeEventMapping(qx, { ...confirmInput('3002', subproject), ...pair }),
+      ).rejects.toThrow(/catalogueSource/)
+    }
+    expect(await readMapping(qx, '3002')).toMatchObject({ status: 'held', segmentId: null })
+  })
+
+  test('confirm and ignore refuse a row that is not an unreviewed live hold', async ({ qx }) => {
+    const segmentId = await createSegment(qx)
+    await upsertSessionizeEventDecision(qx, held('3003'))
+    await confirmSessionizeEventMapping(qx, confirmInput('3003', segmentId))
+    await upsertSessionizeEventDecision(qx, matched('3004', segmentId))
+    await upsertSessionizeEventDecision(qx, held('3005'))
+    await markMapping(qx, '3005', 'reviewedAt')
+    await upsertSessionizeEventDecision(qx, held('3006'))
+    await deactivateUnlistedSessionizeEvents(qx, ['3003', '3004', '3005'])
+
+    for (const eventKey of ['3003', '3004', '3005', '3006', 'unknown-event']) {
+      await expect(
+        confirmSessionizeEventMapping(qx, confirmInput(eventKey, segmentId)),
+      ).rejects.toBeInstanceOf(ConflictError)
+      await expect(
+        ignoreSessionizeEvent(qx, { eventKey, reviewedBy: REVIEWER }),
+      ).rejects.toBeInstanceOf(ConflictError)
+    }
+    expect((await readMapping(qx, '3004')).status).toBe('matched')
+    expect((await readMapping(qx, '3005')).status).toBe('held')
+    expect((await readMapping(qx, '3006')).status).toBe('held')
+  })
+
+  test('an ignored event is not onboardable and stays ignored', async ({ qx }) => {
+    await upsertSessionizeEventDecision(qx, held('3007'))
+
+    await ignoreSessionizeEvent(qx, { eventKey: '3007', reviewedBy: REVIEWER })
+
+    expect(await listOnboardableSessionizeEvents(qx)).toEqual([])
+    expect(await readMapping(qx, '3007')).toMatchObject({
+      status: 'excluded',
+      holdReason: 'ambiguous',
+      segmentId: null,
+    })
+    expect(await readReview(qx, '3007')).toMatchObject({ rule: null, reviewedBy: REVIEWER })
+    expect(await upsertSessionizeEventDecision(qx, held('3007'))).toBe('unchanged')
+    expect(await upsertSessionizeEventDecision(qx, matched('3007', await createSegment(qx)))).toBe(
+      'protected',
+    )
+    await expect(
+      ignoreSessionizeEvent(qx, { eventKey: '3007', reviewedBy: REVIEWER }),
+    ).rejects.toBeInstanceOf(ConflictError)
+  })
+
+  test('restore puts a reviewed event back on hold for the daily run', async ({ qx }) => {
+    const segmentId = await createSegment(qx)
+    await upsertSessionizeEventDecision(qx, {
+      ...held('3008'),
+      holdReason: 'no_segment',
+      cventEventId: 'cvent-3008',
+      catalogueSource: 'lfx',
+    })
+    await upsertSessionizeEventDecision(qx, held('3009'))
+    await ignoreSessionizeEvent(qx, { eventKey: '3008', reviewedBy: REVIEWER })
+    await confirmSessionizeEventMapping(qx, confirmInput('3009', segmentId))
+
+    for (const [eventKey, holdReason, cventEventId, catalogueSource] of [
+      ['3008', 'no_segment', 'cvent-3008', 'lfx'],
+      ['3009', 'ambiguous', null, null],
+    ] as const) {
+      await restoreSessionizeEvent(qx, eventKey)
+      expect(await readMapping(qx, eventKey)).toMatchObject({
+        status: 'held',
+        holdReason,
+        cventEventId,
+        catalogueSource,
+        segmentId: null,
+      })
+      expect(await readReview(qx, eventKey)).toEqual({
+        rule: null,
+        reviewedBy: null,
+        reviewedAt: null,
+      })
+    }
+    expect(await listOnboardableSessionizeEvents(qx)).toEqual([])
+    expect(await upsertSessionizeEventDecision(qx, matched('3008', segmentId))).toBe('updated')
+  })
+
+  test('restore refuses an onboarded, unreviewed or never held row', async ({ qx }) => {
+    const segmentId = await createSegment(qx)
+    await upsertSessionizeEventDecision(qx, held('3010'))
+    await confirmSessionizeEventMapping(qx, confirmInput('3010', segmentId))
+    const { id: integrationId } = await findOrCreateSessionizeIntegration(qx, segmentId)
+    await markSessionizeEventOnboarded(qx, '3010', segmentId, integrationId)
+    await upsertSessionizeEventDecision(qx, held('3011'))
+    await upsertSessionizeEventDecision(qx, matched('3012', segmentId))
+    await markMapping(qx, '3012', 'reviewedAt')
+
+    for (const eventKey of ['3010', '3011', '3012', 'unknown-event']) {
+      await expect(restoreSessionizeEvent(qx, eventKey)).rejects.toBeInstanceOf(ConflictError)
+    }
+    expect((await readMapping(qx, '3010')).status).toBe('matched')
+    expect((await readMapping(qx, '3012')).status).toBe('matched')
+  })
+
+  test('lists held and reviewed events with their segment and project group', async ({ qx }) => {
+    const groupSlug = `group-${generateUUIDv1()}`
+    await createSegment(qx, { slug: groupSlug, name: 'Made Up Group', grandparentSlug: null })
+    await createSegment(qx, {
+      slug: groupSlug,
+      name: 'Made Up Project',
+      parentSlug: groupSlug,
+      grandparentSlug: null,
+    })
+    const segmentId = await createSegment(qx, {
+      name: 'Made Up Subproject',
+      parentSlug: groupSlug,
+      grandparentSlug: groupSlug,
+    })
+    await upsertSessionizeEventDecision(qx, { ...held('3013'), eventStart: '2027-01-10' })
+    await upsertSessionizeEventDecision(qx, { ...held('3014'), eventStart: '2027-03-10' })
+    await upsertSessionizeEventDecision(qx, { ...held('3015'), eventStart: '2027-03-10' })
+    await upsertSessionizeEventDecision(qx, matched('3016', segmentId))
+    await upsertSessionizeEventDecision(qx, held('3017'))
+    await deactivateUnlistedSessionizeEvents(qx, ['3013', '3014', '3015', '3016'])
+    await confirmSessionizeEventMapping(qx, confirmInput('3014', segmentId))
+    await ignoreSessionizeEvent(qx, { eventKey: '3015', reviewedBy: REVIEWER })
+
+    const listed = await listSessionizeEventsForReview(qx)
+
+    expect(listed.map((row) => row.eventKey)).toEqual(['3014', '3015', '3013'])
+    expect(listed[0]).toEqual({
+      eventKey: '3014',
+      eventName: 'Open Source Summit 3014',
+      eventStart: '2027-03-10',
+      eventEnd: '2027-04-29',
+      status: 'matched',
+      holdReason: 'ambiguous',
+      cventEventId: 'cvent-3014',
+      segmentId,
+      segmentName: 'Made Up Subproject',
+      projectGroupName: 'Made Up Group',
+      evidence: { candidates: 2 },
+      reviewedAt: expect.any(String),
+      lockedAt: null,
+    })
+    expect(listed[1]).toMatchObject({
+      status: 'excluded',
+      segmentId: null,
+      segmentName: null,
+      projectGroupName: null,
+      reviewedAt: expect.any(String),
+    })
+    expect(listed[2]).toMatchObject({ status: 'held', reviewedAt: null })
   })
 })

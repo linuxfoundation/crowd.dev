@@ -1,4 +1,5 @@
-import { PlatformType } from '@crowd/types'
+import { ConflictError } from '@crowd/common'
+import { PlatformType, SegmentStatus } from '@crowd/types'
 
 import { IFoundIntegration, findOrCreateAutoManagedIntegration } from '../integrations/autoManaged'
 import { QueryExecutor } from '../queryExecutor'
@@ -20,7 +21,13 @@ export interface ISessionizeEventDecisionInput {
   evidence: Record<string, unknown>
 }
 
-export interface IStoredSessionizeEventMapping extends ISessionizeEventDecisionInput {
+export type SessionizeMappingStatus = 'matched' | 'held' | 'excluded'
+
+export interface IStoredSessionizeEventMapping extends Omit<
+  ISessionizeEventDecisionInput,
+  'status'
+> {
+  status: SessionizeMappingStatus
   reviewedAt: string | null
   lockedAt: string | null
   deactivatedAt: string | null
@@ -35,6 +42,9 @@ export type SessionizeDecisionOutcome = 'inserted' | 'updated' | 'unchanged' | '
 
 interface IStoredDecisionDiff {
   isProtected: boolean
+  isReviewed: boolean
+  isConfirmedOnInactiveSegment: boolean
+  matchesAnotherSegment: boolean
   listingChanged: boolean
   targetChanged: boolean
   decisionChanged: boolean
@@ -107,6 +117,18 @@ export async function upsertSessionizeEventDecision(
     const stored: IStoredDecisionDiff | null = await tx.selectOneOrNone(
       `
         SELECT ("reviewedAt" IS NOT NULL OR "lockedAt" IS NOT NULL) AS "isProtected",
+               "reviewedAt" IS NOT NULL AS "isReviewed",
+               ("reviewedAt" IS NOT NULL
+                 AND status = 'matched'
+                 AND "lockedAt" IS NULL
+                 AND NOT EXISTS (
+                   SELECT 1 FROM segments s
+                   WHERE s.id = "sessionizeEventMappings"."segmentId"
+                     AND s."grandparentSlug" IS NOT NULL
+                     AND s.status = $(active)
+                 )) AS "isConfirmedOnInactiveSegment",
+               ($(status) = 'matched'
+                 AND "segmentId" IS DISTINCT FROM $(segmentId)::uuid) AS "matchesAnotherSegment",
                ("eventName" IS DISTINCT FROM $(eventName)
                  OR "eventStart" IS DISTINCT FROM $(eventStart)::date
                  OR "eventEnd" IS DISTINCT FROM $(eventEnd)::date
@@ -124,7 +146,7 @@ export async function upsertSessionizeEventDecision(
         WHERE "eventKey" = $(eventKey)
         FOR UPDATE
       `,
-      values,
+      { ...values, active: SegmentStatus.ACTIVE },
     )
 
     if (!stored) {
@@ -147,7 +169,10 @@ export async function upsertSessionizeEventDecision(
 
     if (stored.isProtected) {
       await refreshListing(tx, values, stored.listingChanged)
-      return stored.targetChanged ? 'protected' : 'unchanged'
+      const needsReview = stored.isReviewed
+        ? stored.matchesAnotherSegment || stored.isConfirmedOnInactiveSegment
+        : stored.targetChanged
+      return needsReview ? 'protected' : 'unchanged'
     }
 
     if (!(stored.listingChanged || stored.targetChanged || stored.decisionChanged)) {
@@ -236,11 +261,15 @@ export async function listOnboardableSessionizeEvents(
 ): Promise<IOnboardableSessionizeEvent[]> {
   return qx.select(
     `
-      SELECT "eventKey", "eventName", "segmentId", "integrationId"
-      FROM integration."sessionizeEventMappings"
-      WHERE status = 'matched' AND "deactivatedAt" IS NULL
-      ORDER BY "eventKey"
+      SELECT m."eventKey", m."eventName", m."segmentId", m."integrationId"
+      FROM integration."sessionizeEventMappings" m
+      LEFT JOIN segments s ON s.id = m."segmentId"
+      WHERE m.status = 'matched'
+        AND m."deactivatedAt" IS NULL
+        AND (m."lockedAt" IS NOT NULL OR (s."grandparentSlug" IS NOT NULL AND s.status = $(active)))
+      ORDER BY m."eventKey"
     `,
+    { active: SegmentStatus.ACTIVE },
   )
 }
 
@@ -271,4 +300,153 @@ export async function markSessionizeEventOnboarded(
       `Sessionize event ${eventKey} is no longer a live match of segment ${segmentId}, refusing to mark it onboarded!`,
     )
   }
+}
+
+export interface ISessionizeEventForReview {
+  eventKey: string
+  eventName: string
+  eventStart: string
+  eventEnd: string
+  status: SessionizeMappingStatus
+  holdReason: string | null
+  cventEventId: string | null
+  segmentId: string | null
+  segmentName: string | null
+  projectGroupName: string | null
+  evidence: Record<string, unknown>
+  reviewedAt: string | null
+  lockedAt: string | null
+}
+
+export async function listSessionizeEventsForReview(
+  qx: QueryExecutor,
+): Promise<ISessionizeEventForReview[]> {
+  return qx.select(
+    `
+      SELECT m."eventKey", m."eventName", m."eventStart"::text AS "eventStart",
+             m."eventEnd"::text AS "eventEnd", m.status, m."holdReason", m."cventEventId",
+             m."segmentId", s.name AS "segmentName", pg.name AS "projectGroupName",
+             m.evidence, m."reviewedAt", m."lockedAt"
+      FROM integration."sessionizeEventMappings" m
+      LEFT JOIN segments s ON s.id = m."segmentId"
+      LEFT JOIN segments pg
+        ON pg.slug = s."grandparentSlug"
+       AND pg."tenantId" = s."tenantId"
+       AND pg."parentSlug" IS NULL
+       AND pg."grandparentSlug" IS NULL
+      WHERE m."deactivatedAt" IS NULL
+        AND (m.status = 'held' OR m."reviewedAt" IS NOT NULL)
+      ORDER BY m."eventStart" DESC, m."eventKey"
+    `,
+  )
+}
+
+async function applyReviewUpdate(
+  qx: QueryExecutor,
+  eventKey: string,
+  action: string,
+  query: string,
+  params: Record<string, unknown>,
+): Promise<void> {
+  await qx.tx(async (tx) => {
+    await tx.select(
+      `SELECT pg_advisory_xact_lock(hashtextextended('sessionizeEventMapping:' || $(eventKey), 0))`,
+      { eventKey },
+    )
+    const updated = await tx.result(query, { ...params, eventKey })
+    if (updated === 0) {
+      throw new ConflictError(`Sessionize event ${eventKey} can no longer be ${action}!`, {
+        eventKey,
+      })
+    }
+  })
+}
+
+export async function confirmSessionizeEventMapping(
+  qx: QueryExecutor,
+  input: {
+    eventKey: string
+    segmentId: string
+    cventEventId: string | null
+    catalogueSource: string | null
+    reviewedBy: string
+  },
+): Promise<void> {
+  if ((input.cventEventId === null) !== (input.catalogueSource === null)) {
+    throw new Error(
+      `Sessionize event ${input.eventKey} needs both cventEventId and catalogueSource or neither!`,
+    )
+  }
+  await applyReviewUpdate(
+    qx,
+    input.eventKey,
+    'confirmed',
+    `
+      UPDATE integration."sessionizeEventMappings"
+      SET status = 'matched',
+          "segmentId" = $(segmentId)::uuid,
+          "cventEventId" = $(cventEventId),
+          "catalogueSource" = $(catalogueSource),
+          rule = 'review',
+          "reviewedBy" = $(reviewedBy),
+          "reviewedAt" = now(),
+          "updatedAt" = now()
+      WHERE "eventKey" = $(eventKey)
+        AND status = 'held'
+        AND "reviewedAt" IS NULL
+        AND "deactivatedAt" IS NULL
+        AND EXISTS (
+          SELECT 1 FROM segments
+          WHERE id = $(segmentId)::uuid AND "grandparentSlug" IS NOT NULL AND status = $(active)
+        )
+    `,
+    { ...input, active: SegmentStatus.ACTIVE },
+  )
+}
+
+export async function ignoreSessionizeEvent(
+  qx: QueryExecutor,
+  input: { eventKey: string; reviewedBy: string },
+): Promise<void> {
+  await applyReviewUpdate(
+    qx,
+    input.eventKey,
+    'ignored',
+    `
+      UPDATE integration."sessionizeEventMappings"
+      SET status = 'excluded',
+          "reviewedBy" = $(reviewedBy),
+          "reviewedAt" = now(),
+          "updatedAt" = now()
+      WHERE "eventKey" = $(eventKey)
+        AND status = 'held'
+        AND "reviewedAt" IS NULL
+        AND "deactivatedAt" IS NULL
+    `,
+    input,
+  )
+}
+
+export async function restoreSessionizeEvent(qx: QueryExecutor, eventKey: string): Promise<void> {
+  await applyReviewUpdate(
+    qx,
+    eventKey,
+    'restored',
+    `
+      UPDATE integration."sessionizeEventMappings"
+      SET status = 'held',
+          "segmentId" = NULL,
+          "cventEventId" = CASE WHEN status = 'matched' THEN NULL ELSE "cventEventId" END,
+          "catalogueSource" = CASE WHEN status = 'matched' THEN NULL ELSE "catalogueSource" END,
+          rule = NULL,
+          "reviewedBy" = NULL,
+          "reviewedAt" = NULL,
+          "updatedAt" = now()
+      WHERE "eventKey" = $(eventKey)
+        AND "reviewedAt" IS NOT NULL
+        AND "lockedAt" IS NULL
+        AND "holdReason" IS NOT NULL
+    `,
+    {},
+  )
 }
