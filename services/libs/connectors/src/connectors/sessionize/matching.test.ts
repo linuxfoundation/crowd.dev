@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import type { SessionizeConsoleEvent } from './consoleEvents'
-import { type CventCatalogueEvent, matchSessionizeEvent, normalizeEventName } from './matching'
+import {
+  type CventCatalogueEvent,
+  MATCHING_RULE_VERSION,
+  matchSessionizeEvent,
+  normalizeEventName,
+} from './matching'
 
 function sessionizeEvent(eventName: string, eventStart: string): SessionizeConsoleEvent {
   return {
@@ -54,6 +59,70 @@ describe('normalizeEventName', () => {
 })
 
 describe('matchSessionizeEvent', () => {
+  it('uses rule version 4', () => {
+    expect(MATCHING_RULE_VERSION).toBe(4)
+  })
+
+  it('keeps every catalogue event within 3 days on a held event, sorted by event id', () => {
+    const decision = matchSessionizeEvent(
+      sessionizeEvent('Fake Gadget Days 2027', '2027-05-10'),
+      [
+        cventEvent('cv-30', 'Fake Widget Summit 2027', '2027-05-13'),
+        cventEvent('cv-40', 'Fake Widget Forum 2027', '2027-05-14'),
+        cventEvent('cv-20', 'Fake Sprocket Meetup', '2027-05-07', 'example-project', 'luma'),
+      ],
+      subprojectFor,
+    )
+    expect(decision).toMatchObject({ status: 'held', holdReason: 'no_match' })
+    expect(decision.evidence).toEqual({
+      candidates: [],
+      nearby: [
+        {
+          eventId: 'cv-20',
+          eventName: 'Fake Sprocket Meetup',
+          startDate: '2027-05-07',
+          projectId: 'example-project-id',
+          source: 'luma',
+          dayGap: 3,
+        },
+        {
+          eventId: 'cv-30',
+          eventName: 'Fake Widget Summit 2027',
+          startDate: '2027-05-13',
+          projectId: 'example-project-id',
+          source: 'cvent',
+          dayGap: 3,
+        },
+      ],
+    })
+  })
+
+  it('sorts nearby events by plain code-unit order of the event id', () => {
+    const decision = matchSessionizeEvent(
+      sessionizeEvent('Fake Gadget Days 2027', '2027-05-10'),
+      [
+        cventEvent('b-1', 'Fake Widget Summit 2027', '2027-05-10'),
+        cventEvent('B-2', 'Fake Widget Forum 2027', '2027-05-10'),
+        cventEvent('a-3', 'Fake Sprocket Meetup', '2027-05-10'),
+      ],
+      subprojectFor,
+    )
+    expect(decision.evidence.nearby.map(({ eventId }) => eventId)).toEqual(['B-2', 'a-3', 'b-1'])
+  })
+
+  it('keeps nearby events on other held decisions too', () => {
+    const decision = matchSessionizeEvent(
+      sessionizeEvent('Summit 2025', '2025-06-10'),
+      [
+        cventEvent('cv-1', 'Summit 2025', '2025-06-10', 'example-project'),
+        cventEvent('cv-2', 'Summit 2025', '2025-06-12', 'unknown'),
+      ],
+      subprojectFor,
+    )
+    expect(decision.holdReason).toBe('ambiguous')
+    expect(decision.evidence.nearby.map(({ eventId }) => eventId)).toEqual(['cv-1', 'cv-2'])
+  })
+
   it('matches one exact-name candidate within 21 days', () => {
     const decision = matchSessionizeEvent(
       sessionizeEvent('Example Cloud + NativeCon NA 2025', '2025-11-10'),
@@ -70,7 +139,8 @@ describe('matchSessionizeEvent', () => {
       catalogueSource: 'cvent',
       segmentId: 'segment-example',
       rule: 'exact_name',
-      ruleVersion: 3,
+      ruleVersion: 4,
+      evidence: { nearby: [] },
     })
     expect(decision.evidence.candidates).toEqual([
       {
@@ -118,7 +188,7 @@ describe('matchSessionizeEvent', () => {
       holdReason: 'ambiguous',
       cventEventId: null,
       segmentId: null,
-      ruleVersion: 3,
+      ruleVersion: 4,
     })
     expect(decision.evidence.candidates.map(({ eventId }) => eventId)).toEqual(['cv-1', 'cv-2'])
   })
@@ -139,7 +209,7 @@ describe('matchSessionizeEvent', () => {
       catalogueSource: 'cvent',
       segmentId: 'segment-example',
       rule: 'exact_name',
-      ruleVersion: 3,
+      ruleVersion: 4,
     })
     expect(decision.evidence.candidates.map(({ eventId }) => eventId)).toEqual(['lu-1', 'cv-1'])
   })
@@ -158,7 +228,7 @@ describe('matchSessionizeEvent', () => {
       holdReason: 'ambiguous',
       cventEventId: null,
       catalogueSource: null,
-      ruleVersion: 3,
+      ruleVersion: 4,
     })
     expect(decision.evidence.candidates).toHaveLength(2)
   })
@@ -178,7 +248,7 @@ describe('matchSessionizeEvent', () => {
       cventEventId: 'cv-9',
       catalogueSource: 'cvent',
       segmentId: null,
-      ruleVersion: 3,
+      ruleVersion: 4,
     })
     expect(decision.evidence.candidates).toHaveLength(2)
   })
@@ -237,7 +307,19 @@ describe('matchSessionizeEvent', () => {
     expect(decision).toMatchObject({
       status: 'held',
       holdReason: 'no_match',
-      evidence: { candidates: [] },
+      evidence: {
+        candidates: [],
+        nearby: [
+          {
+            eventId: 'cv-1',
+            eventName: 'Virtual',
+            startDate: '2025-11-10',
+            projectId: 'example-project-id',
+            source: 'cvent',
+            dayGap: 0,
+          },
+        ],
+      },
     })
   })
 })
