@@ -19,10 +19,20 @@ DESCRIPTION >
     - With granularity: `startDate`, `endDate`, and all metric fields for each time period
 
 NODE package_downloads_filtered
+DESCRIPTION >
+    Package rows in scope, read without `FINAL`: rows are inserted once per package and day, and `FINAL` made collection calls read every sorting key string.
+
 SQL >
     %
-    SELECT *
-    FROM packageDownloads p FINAL
+    SELECT
+        insightsProjectId,
+        date,
+        downloadsCount,
+        dockerDownloadsCount,
+        dockerDependentsCount,
+        dependentPackagesCount,
+        dependentReposCount
+    FROM packageDownloads p
     where
         {% if defined(collectionSlug) %}
             insightsProjectId IN (select insightsProjectId from segments_filtered_by_collection)
